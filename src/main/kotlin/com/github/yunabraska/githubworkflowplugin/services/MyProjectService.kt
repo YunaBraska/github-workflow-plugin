@@ -1,9 +1,9 @@
-package com.github.yunabraska.githubworkflowpligun.services
+package com.github.yunabraska.githubworkflowplugin.services
 
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.project.Project
-import com.github.yunabraska.githubworkflowpligun.MyBundle
+import com.github.yunabraska.githubworkflowplugin.MyBundle
 
 @Service(Service.Level.PROJECT)
 class MyProjectService(project: Project) {

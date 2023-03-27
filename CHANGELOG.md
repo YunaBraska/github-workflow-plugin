@@ -1,6 +1,6 @@
 <!-- Keep a Changelog guide -> https://keepachangelog.com -->
 
-# github-workflow-pligun Changelog
+# github-workflow-plugin Changelog
 
 ## [Unreleased]
 ### Added

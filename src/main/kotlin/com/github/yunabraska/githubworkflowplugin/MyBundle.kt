@@ -1,4 +1,4 @@
-package com.github.yunabraska.githubworkflowpligun
+package com.github.yunabraska.githubworkflowplugin
 
 import com.intellij.DynamicBundle
 import org.jetbrains.annotations.NonNls

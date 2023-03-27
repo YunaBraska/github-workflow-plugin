@@ -1,4 +1,4 @@
-package com.github.yunabraska.githubworkflowpligun.listeners
+package com.github.yunabraska.githubworkflowplugin.listeners
 
 import com.intellij.ide.FrameStateListener
 import com.intellij.openapi.diagnostic.thisLogger

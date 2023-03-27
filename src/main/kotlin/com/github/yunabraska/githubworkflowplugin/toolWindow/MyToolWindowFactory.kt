@@ -1,4 +1,4 @@
-package com.github.yunabraska.githubworkflowpligun.toolWindow
+package com.github.yunabraska.githubworkflowplugin.toolWindow
 
 import com.intellij.openapi.components.service
 import com.intellij.openapi.diagnostic.thisLogger
@@ -8,8 +8,8 @@ import com.intellij.openapi.wm.ToolWindowFactory
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBPanel
 import com.intellij.ui.content.ContentFactory
-import com.github.yunabraska.githubworkflowpligun.MyBundle
-import com.github.yunabraska.githubworkflowpligun.services.MyProjectService
+import com.github.yunabraska.githubworkflowplugin.MyBundle
+import com.github.yunabraska.githubworkflowplugin.services.MyProjectService
 import javax.swing.JButton
 
 
