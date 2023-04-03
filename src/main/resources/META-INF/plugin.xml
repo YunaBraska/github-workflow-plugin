@@ -1,36 +1,15 @@
 <!-- Plugin Configuration File. Read more: https://plugins.jetbrains.com/docs/intellij/plugin-configuration-file.html -->
-<idea-plugin>
+<idea-plugin require-restart="false">
     <id>com.github.yunabraska.githubworkflowplugin</id>
-    <name>Github-Workflow</name>
-    <vendor>yunabraska</vendor>
+    <name>Github Workflow</name>
+    <vendor url="https://github.com/YunaBraska/github-workflow-plugin">Yuna Morgenstern</vendor>
 
-<!--    <depends>com.intellij.modules.platform</depends>-->
-    <depends>com.intellij.modules.lang</depends>
-<!--    <depends>com.intellij.java</depends>-->
+    <depends>org.jetbrains.plugins.yaml</depends>
+    <depends>com.intellij.modules.platform</depends>
 
     <extensions defaultExtensionNs="com.intellij">
-<!--        <fileType name="GitHubWorkflow"-->
-<!--                  id="GitHubWorkflow"-->
-<!--                  fieldName="INSTANCE"-->
-<!--                  language="GitHubWorkflow"-->
-<!--                  extensions="yml;yaml;simple"-->
-<!--                  implementationClass="com.github.yunabraska.githubworkflowplugin.language.GitHubWorkflowFileType"-->
-<!--        />-->
 
         <completion.contributor language="any"
-                                implementationClass="com.github.yunabraska.githubworkflowplugin.completion.GitHubWorkflowCompletionContributor" />
-<!--        <fileType name="GitHubWorkflow"-->
-<!--                  language="GitHubWorkflow"-->
-<!--                  fileNames="*.yml;*.yaml;*.YML;*.YAML;*.simple"-->
-<!--                  fieldName="INSTANCE"-->
-<!--                  implementationClass="com.github.yunabraska.githubworkflowplugin.language.GitHubWorkflowFileType"-->
-<!--                  extensions="com.github.yunabraska.githubworkflowplugin.completion.GitHubWorkflowCompletionContributor"-->
-<!--        />-->
-
-
-<!--        <completion.contributor language="GitHubWorkflow"-->
-<!--                                factoryClass="com.github.yunabraska.githubworkflowplugin.language.GitHubWorkflowFileTypeFactory"-->
-<!--                                implementationClass="com.github.yunabraska.githubworkflowplugin.completion.GitHubWorkflowCompletionContributor"/>-->
-
+                                implementationClass="com.github.yunabraska.githubworkflow.completion.GitHubWorkflowCompletionContributor"/>
     </extensions>
 </idea-plugin>

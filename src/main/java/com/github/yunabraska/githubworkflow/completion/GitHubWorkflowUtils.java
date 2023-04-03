@@ -1,6 +1,12 @@
-package com.github.yunabraska.githubworkflowplugin.completion;
+package com.github.yunabraska.githubworkflow.completion;
 
+import com.intellij.codeInsight.completion.InsertionContext;
+import com.intellij.codeInsight.completion.PrioritizedLookupElement;
+import com.intellij.codeInsight.lookup.LookupElement;
+import com.intellij.codeInsight.lookup.LookupElementBuilder;
+import com.intellij.icons.AllIcons;
 import com.intellij.lang.Language;
+import com.intellij.openapi.editor.Document;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.psi.FileViewProvider;
 import com.intellij.psi.PsiElement;
@@ -15,18 +21,86 @@ import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.function.Predicate;
+import java.util.stream.Collectors;
 
-public class GitHubWorkFlowUtils {
+import static java.util.Optional.ofNullable;
+
+public class GitHubWorkflowUtils {
+
+    public static int lastIndexOf(final String input, final String... indexOf) {
+        return Arrays.stream(indexOf).mapToInt(input::lastIndexOf).max().orElse(-1);
+    }
+
+    private static String orEmpty(final String text) {
+        return ofNullable(text).orElse("");
+    }
+
+    public static String getDescription(final YamlNode n) {
+        return n.getChild("required").map(YamlNode::value).map(required -> "req[" + required + "] ").orElse("")
+                + n.getChild("default").map(YamlNode::value).map(def -> "def[" + def + "] ").orElse("")
+                + n.getChild("description").map(YamlNode::value).orElse("");
+    }
+
+    public static List<LookupElement> mapToLookupElements(final Map<String, String> map, final int prio, final boolean bold) {
+        return mapToLookupElements(map, prio, bold, Character.MIN_VALUE);
+    }
+
+    public static List<LookupElement> mapToLookupElements(final Map<String, String> map, final int prio, final boolean bold, final char suffix) {
+        return map.entrySet().stream().map(item -> PrioritizedLookupElement.withPriority(mapToLookupElementBuilder(item, bold, suffix), prio)).collect(Collectors.toList());
+    }
+
+    private static LookupElementBuilder mapToLookupElementBuilder(final Map.Entry<String, String> item, final boolean bold, final char suffix) {
+        final LookupElementBuilder lookupElementBuilder = LookupElementBuilder
+                .create(item.getKey())
+                .withIcon(AllIcons.General.Add)
+                .withBoldness(bold)
+                .withTypeText(item.getValue());
+        return suffix != Character.MIN_VALUE ? lookupElementBuilder.withInsertHandler((ctx, i) -> addDoubleDots(ctx, item.getKey(), suffix)) : lookupElementBuilder;
+    }
+
+    private static void addDoubleDots(final InsertionContext ctx, final String value, final char suffix) {
+        final int startOffset = ctx.getStartOffset();
+        final int tailOffset = ctx.getTailOffset();
+        int newOffset = startOffset + value.length();
+        final Document document = ctx.getDocument();
+
+        // Find the start of the identifier
+        final CharSequence documentChars = document.getCharsSequence();
+        // Find the end of the previous value
+        int valueEnd = tailOffset;
+        if (ctx.getCompletionChar() == '\t') {
+            while (valueEnd < documentChars.length() &&
+                    documentChars.charAt(valueEnd) != suffix &&
+                    documentChars.charAt(valueEnd) != '\n' &&
+                    documentChars.charAt(valueEnd) != '\r') {
+                valueEnd++;
+            }
+            valueEnd++;
+        }
+        // Remove the previous value
+        document.deleteString(startOffset, valueEnd);
+        // Insert the new value
+        document.insertString(startOffset, value);
+        // Add ': ' after the inserted value
+        final String toInsert = suffix + "";
+        document.insertString(startOffset + value.length(), toInsert);
+        newOffset += toInsert.length();
+        // Update caret position
+        ctx.getEditor().getCaretModel().moveToOffset(newOffset);
+    }
 
     public static String downloadContent(final String urlString) throws IOException {
         final URL url = new URL(urlString);
         final HttpURLConnection connection = (HttpURLConnection) url.openConnection();
         connection.setRequestMethod("GET");
         connection.connect();
+        //TODO: set user agent
 
         final int responseCode = connection.getResponseCode();
         if (responseCode == HttpURLConnection.HTTP_OK) {
@@ -49,7 +123,7 @@ public class GitHubWorkFlowUtils {
                 .map(PsiFile::getViewProvider)
                 .map(FileViewProvider::getVirtualFile)
                 .map(VirtualFile::getPath)
-                .map(Path::of)
+                .map(Paths::get)
                 .filter(isWorkflowPath());
     }
 
@@ -93,13 +167,13 @@ public class GitHubWorkFlowUtils {
                 .map(PsiFile::getViewProvider)
                 .map(FileViewProvider::getVirtualFile)
                 .map(VirtualFile::getPath)
-                .map(Path::of);
+                .map(Paths::get);
     }
 
     private static boolean isYamlFile(final Language language) {
         return language.isKindOf("yaml") || language.isKindOf("yml");
     }
 
-    private GitHubWorkFlowUtils() {
+    private GitHubWorkflowUtils() {
     }
 }

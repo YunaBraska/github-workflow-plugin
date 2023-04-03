@@ -1,54 +1,51 @@
-package com.github.yunabraska.githubworkflowplugin.completion;
+package com.github.yunabraska.githubworkflow.completion;
 
-import com.intellij.codeInsight.completion.PrioritizedLookupElement;
 import com.intellij.codeInsight.lookup.LookupElement;
-import com.intellij.codeInsight.lookup.LookupElementBuilder;
-import com.intellij.icons.AllIcons;
 
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.function.Function;
-import java.util.stream.Collectors;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Supplier;
 
-public class GitHubWorkflowContext {
+import static com.github.yunabraska.githubworkflow.completion.GitHubWorkflowUtils.mapToLookupElements;
 
-    public static final Map<String, Function<Object, List<LookupElement>>> processorMap = initProcessorMap();
+public class GitHubWorkflowConfig {
 
-    public static List<LookupElement> getContextLookupElements(final String text, final int caretOffset) {
-        final String partString = text.substring(0, caretOffset);
-        final int bracketStart = partString.lastIndexOf("${{");
-        if (bracketStart == -1 || partString.lastIndexOf("}}") > bracketStart) {
-            return Collections.emptyList();
-        }
+    public static final Map<String, Supplier<List<LookupElement>>> DEFAULT_VALUE_MAP = initProcessorMap();
 
-        for (Map.Entry<String, Function<Object, List<LookupElement>>> processor : processorMap.entrySet()) {
-            if (caretOffset - processor.getKey().length() > 0 && text.substring(caretOffset - processor.getKey().length() - 1, caretOffset - 1).equals(processor.getKey())) {
-                //TODO: add dynamic envs
-                // e.g. run: echo "DYNAMIC_VARIABLE=some value" >> $GITHUB_ENV
-                // e.g. env: CC_TEST_REPORTER_ID: ${{ secrets.CC_TEST_REPORTER_ID }}
-                return processor.getValue().apply(text);
-            }
-        }
-        return Collections.emptyList();
-    }
+    public static final Map<String, GitHubAction> ACTION_CACHE = new ConcurrentHashMap<>();
 
-    private static Map<String, Function<Object, List<LookupElement>>> initProcessorMap() {
-        final Map<String, Function<Object, List<LookupElement>>> result = new HashMap<>();
-        result.put("github", o -> mapToLookupElements(getGitHubContextEnvs()));
-        result.put("env", o -> mapToLookupElements(getGitHubEnvs()));
+    public static final Map<String, WorkflowFile> WORKFLOW_CACHE = new ConcurrentHashMap<>();
+    public static final long CACHE_ONE_DAY = 24L * 60 * 60 * 1000;
+    public static final long CACHE_TEN_MINUTES = 600000;
+    public static final String FIELD_STEPS = "steps";
+    public static final String FIELD_JOBS = "jobs";
+    public static final String FIELD_ENVS = "env";
+    public static final String FIELD_INPUTS = "inputs";
+    public static final String FIELD_SECRETS = "secrets";
+    public static final String FIELD_OUTPUTS = "outputs";
+    public static final String FIELD_GITHUB = "github";
+    public static final String FIELD_VARS = "vars";
+
+    public static Map<String, Supplier<List<LookupElement>>> initProcessorMap() {
+        final Map<String, Supplier<List<LookupElement>>> result = new HashMap<>();
+        result.put(FIELD_GITHUB, () -> mapToLookupElements(getGitHubContextEnvs(), 0, false));
+        result.put(FIELD_ENVS, () -> mapToLookupElements(getGitHubEnvs(), 0, false));
+        result.put("${{}}", () -> mapToLookupElements(getCaretBracketItems(), 5, true));
         return result;
     }
 
-    public static List<LookupElement> mapToLookupElements(final Map<String, String> map) {
-        return map.entrySet().stream().map(item -> PrioritizedLookupElement.withPriority(
-                LookupElementBuilder
-                        .create(item.getKey())
-                        .withIcon(AllIcons.General.Add)
-                        .withTypeText(item.getValue()),
-                1)
-        ).collect(Collectors.toList());
+    private static HashMap<String, String> getCaretBracketItems() {
+        final HashMap<String, String> result = new HashMap<>();
+        result.put(FIELD_INPUTS, "Workflow inputs e.g. from workflow_dispatch, workflow_call");
+        result.put(FIELD_SECRETS, "Workflow secrets");
+        result.put(FIELD_JOBS, "Workflow jobs");
+        result.put(FIELD_STEPS, "steps with 'id' of the current job");
+        result.put(FIELD_ENVS, "Environment variables from jobs amd steps");
+        result.put(FIELD_VARS, "The vars context contains custom configuration variables set at the organization, repository, and environment levels. For more information about defining configuration variables for use in multiple workflows");
+        result.put(FIELD_GITHUB, "Information about the workflow run and the event that triggered the run. You can also read most of the github context data in environment variables. For more information about environment variables");
+        return result;
     }
 
     //TODO: autogenerate this
@@ -145,6 +142,6 @@ public class GitHubWorkflowContext {
         return result;
     }
 
-    private GitHubWorkflowContext() {
+    private GitHubWorkflowConfig() {
     }
 }

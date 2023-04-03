@@ -1,1 +1,1 @@
-rootProject.name = "Github-Workflow-Plugin"
+rootProject.name = "github-workflow-plugin"
