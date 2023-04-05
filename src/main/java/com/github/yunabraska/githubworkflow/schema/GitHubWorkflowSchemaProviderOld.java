@@ -1,25 +1,27 @@
 package com.github.yunabraska.githubworkflow.schema;
 
 import com.github.yunabraska.githubworkflow.completion.GitHubWorkflowUtils;
+import com.intellij.openapi.project.Project;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.jetbrains.jsonSchema.extension.JsonSchemaFileProvider;
+import com.jetbrains.jsonSchema.extension.JsonSchemaInfo;
 import com.jetbrains.jsonSchema.extension.SchemaType;
-import org.jetbrains.annotations.NonNls;
+import com.jetbrains.jsonSchema.ide.JsonSchemaService;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.nio.file.Paths;
 import java.util.Optional;
 
-import static com.github.yunabraska.githubworkflow.completion.GitHubWorkflowUtils.downloadSchema;
-import static com.github.yunabraska.githubworkflow.schema.GitHubSchemaProviderFactory.GITHUB_SCHEMA_CACHE;
+public class GitHubWorkflowSchemaProviderOld implements JsonSchemaFileProvider {
 
-public class GitHubWorkflowSchemaProvider implements JsonSchemaFileProvider {
+    private final JsonSchemaFileProvider jsonSchemaFileProvider;
 
-    private static final String NAME = "workflow";
-    private static final String SCHEMA_URL = "https://json.schemastore.org/github-" + NAME;
-
-    public GitHubWorkflowSchemaProvider() {
+    public GitHubWorkflowSchemaProviderOld(@NotNull final Project project) {
+        jsonSchemaFileProvider = JsonSchemaService.Impl.get(project).getAllUserVisibleSchemas().stream()
+                .map(JsonSchemaInfo::getProvider)
+                .filter(jsonSchemaInfo -> jsonSchemaInfo != null && "GitHub Workflow".equals(jsonSchemaInfo.getName()))
+                .findFirst().orElse(null);
     }
 
     @Override
@@ -30,26 +32,19 @@ public class GitHubWorkflowSchemaProvider implements JsonSchemaFileProvider {
     @NotNull
     @Override
     public String getName() {
-        return "GitHub Workflow [Auto]";
+        return "GitHub Workflow [YAML]";
     }
 
 
     @Nullable
     @Override
     public VirtualFile getSchemaFile() {
-        return GITHUB_SCHEMA_CACHE.computeIfAbsent(SCHEMA_URL, key -> downloadSchema(SCHEMA_URL, NAME));
+        return jsonSchemaFileProvider.getSchemaFile();
     }
 
     @NotNull
     @Override
     public SchemaType getSchemaType() {
-        return SchemaType.schema;
-    }
-
-    @Nullable
-    @NonNls
-    @Override
-    public String getRemoteSource() {
-        return SCHEMA_URL;
+        return jsonSchemaFileProvider.getSchemaType();
     }
 }

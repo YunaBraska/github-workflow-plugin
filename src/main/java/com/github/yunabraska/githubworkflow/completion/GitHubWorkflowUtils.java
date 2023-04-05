@@ -5,24 +5,21 @@ import com.intellij.codeInsight.completion.PrioritizedLookupElement;
 import com.intellij.codeInsight.lookup.LookupElement;
 import com.intellij.codeInsight.lookup.LookupElementBuilder;
 import com.intellij.icons.AllIcons;
-import com.intellij.lang.Language;
+import com.intellij.json.JsonFileType;
 import com.intellij.openapi.application.ApplicationInfo;
+import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.editor.Document;
+import com.intellij.openapi.vfs.VfsUtil;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.psi.FileViewProvider;
 import com.intellij.psi.PsiElement;
 import com.intellij.psi.PsiFile;
+import com.intellij.testFramework.LightVirtualFile;
 import com.intellij.util.io.HttpRequests;
-import com.intellij.util.net.HttpConfigurable;
-import org.jetbrains.annotations.NotNull;
 import org.yaml.snakeyaml.Yaml;
 
-import java.io.BufferedReader;
 import java.io.FileReader;
 import java.io.IOException;
-import java.io.InputStreamReader;
-import java.net.HttpURLConnection;
-import java.net.URL;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Arrays;
@@ -120,43 +117,30 @@ public class GitHubWorkflowUtils {
         ctx.getEditor().getCaretModel().moveToOffset(newOffset);
     }
 
+    public static VirtualFile downloadSchema(final String url, final String name) {
+        try {
+            final VirtualFile newVirtualFile = new LightVirtualFile("github-workflow-plugin-" + name + "-schema.json", JsonFileType.INSTANCE, "");
+            VfsUtil.saveText(newVirtualFile, downloadContent(url));
+            return newVirtualFile;
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
     public static String downloadContent(final String urlString) {
         try {
             final ApplicationInfo applicationInfo = ApplicationInfo.getInstance();
-            return  HttpRequests.request(urlString)
-                    .userAgent(applicationInfo.getBuild().getProductCode() + "/" + applicationInfo.getFullVersion())
-                    .connectTimeout(5000)
-                    .readTimeout(5000)
+            return ApplicationManager.getApplication().executeOnPooledThread(() -> HttpRequests
+                    .request(urlString)
                     .gzip(true)
-                    .readString();
-        } catch (IOException ignored) {
-
+                    .readTimeout(5000)
+                    .connectTimeout(5000)
+                    .userAgent(applicationInfo.getBuild().getProductCode() + "/" + applicationInfo.getFullVersion()).tuner(request -> request.setRequestProperty("Client-Name", "GitHub Workflow Plugin")).readString()).get();
+        } catch (Exception ignored) {
+            System.out.println(ignored.getMessage());
+            //ignored
         }
-
-//        try {
-//            final URL url = new URL(urlString);
-//            final HttpURLConnection connection = (HttpURLConnection) url.openConnection();
-//            connection.setRequestMethod("GET");
-//            connection.setRequestProperty("User-Agent", "JetBrains/1.0");
-//
-//            connection.connect();
-//            //TODO: set user agent
-//
-//            final int responseCode = connection.getResponseCode();
-//            if (responseCode == HttpURLConnection.HTTP_OK) {
-//                try (final BufferedReader reader = new BufferedReader(new InputStreamReader(connection.getInputStream()))) {
-//                    final StringBuilder content = new StringBuilder();
-//                    String line;
-//                    while ((line = reader.readLine()) != null) {
-//                        content.append(line).append("\n");
-//                    }
-//                    return content.toString();
-//                }
-//            }
-//        } catch (Exception ignored) {
-//            //ignored
-//        }
-        return null;
+        return "";
     }
 
     public static Optional<Path> getWorkflowFile(final PsiElement psiElement) {
@@ -194,27 +178,15 @@ public class GitHubWorkflowUtils {
         }
     }
 
-    @NotNull
     public static boolean isWorkflowPath(final Path path) {
         return path.getNameCount() > 2
+                && isYamlFile(path)
                 && path.getName(path.getNameCount() - 2).toString().equalsIgnoreCase("workflows")
-                && path.getName(path.getNameCount() - 3).toString().equalsIgnoreCase(".github")
-                && (path.getName(path.getNameCount() - 1).toString().toLowerCase().endsWith(".yml") || path.getName(path.getNameCount() - 1).toString().toLowerCase().endsWith(".yaml"));
+                && path.getName(path.getNameCount() - 3).toString().equalsIgnoreCase(".github");
     }
 
-    @NotNull
-    private static Optional<Path> getFilePath(@NotNull final PsiElement psiElement) {
-        return Optional.of(psiElement)
-                .map(PsiElement::getContainingFile)
-                .map(PsiFile::getOriginalFile)
-                .map(PsiFile::getViewProvider)
-                .map(FileViewProvider::getVirtualFile)
-                .map(VirtualFile::getPath)
-                .map(Paths::get);
-    }
-
-    private static boolean isYamlFile(final Language language) {
-        return language.isKindOf("yaml") || language.isKindOf("yml");
+    public static boolean isYamlFile(final Path path) {
+        return path.getName(path.getNameCount() - 1).toString().toLowerCase().endsWith(".yml") || path.getName(path.getNameCount() - 1).toString().toLowerCase().endsWith(".yaml");
     }
 
     private GitHubWorkflowUtils() {
