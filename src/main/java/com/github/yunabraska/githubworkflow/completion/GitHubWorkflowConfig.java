@@ -7,16 +7,16 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Supplier;
+import java.util.regex.Pattern;
 
 import static com.github.yunabraska.githubworkflow.completion.GitHubWorkflowUtils.mapToLookupElements;
 
 public class GitHubWorkflowConfig {
 
     public static final Map<String, Supplier<List<LookupElement>>> DEFAULT_VALUE_MAP = initProcessorMap();
-
     public static final Map<String, GitHubAction> ACTION_CACHE = new ConcurrentHashMap<>();
-
     public static final Map<String, WorkflowFile> WORKFLOW_CACHE = new ConcurrentHashMap<>();
+    public static final Pattern PATTERN_GITHUB_OUTPUT = Pattern.compile("echo\\s+\"(.*?)=(.*?)\"\\s*>>\\s*\"?\\$\\{?GITHUB_OUTPUT\\}?\"?");
     public static final long CACHE_ONE_DAY = 24L * 60 * 60 * 1000;
     public static final long CACHE_TEN_MINUTES = 600000;
     public static final String FIELD_STEPS = "steps";

@@ -13,7 +13,7 @@ import static com.github.yunabraska.githubworkflow.completion.GitHubWorkflowConf
 import static com.github.yunabraska.githubworkflow.completion.GitHubWorkflowConfig.FIELD_INPUTS;
 import static com.github.yunabraska.githubworkflow.completion.GitHubWorkflowConfig.FIELD_OUTPUTS;
 import static com.github.yunabraska.githubworkflow.completion.GitHubWorkflowUtils.downloadContent;
-import static com.vladsch.flexmark.util.misc.Utils.orEmpty;
+import static com.github.yunabraska.githubworkflow.completion.GitHubWorkflowUtils.orEmpty;
 import static java.util.Optional.ofNullable;
 
 public class GitHubAction {

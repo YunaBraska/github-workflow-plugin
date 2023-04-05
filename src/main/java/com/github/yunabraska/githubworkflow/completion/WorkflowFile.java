@@ -49,6 +49,25 @@ public class WorkflowFile {
                 .collect(Collectors.toMap(key, value));
     }
 
+    public Optional<Map<String, String>> getActionOutputs(final String stepId) {
+        return getStepById(stepId).flatMap(step -> step.getChild("uses")
+                .map(YamlNode::value)
+                .map(GitHubAction::getGitHubAction)
+                .map(GitHubAction::outputs)
+        );
+    }
+
+    public Optional<YamlNode> getStepById(final String stepId) {
+        final Optional<YamlNode> jobs = getParent(getLastChild(yaml()), "jobs");
+        return jobs.flatMap(node -> node.getNodes(
+                n -> n.getChild("id")
+                        .map(YamlNode::value)
+                        .filter(stepId::equals)
+                        .isPresent()
+        ).stream().findFirst());
+
+    }
+
     public Optional<Map<String, String>> getUses() {
         final YamlNode lastChild = getLastChild(yaml());
         final YamlNode withChild = Optional.of(lastChild).filter(n -> "with".equals(n.name())).orElseGet(() -> Optional.ofNullable(lastChild.parent()).filter(n -> "with".equals(n.name())).orElse(null));
@@ -89,6 +108,16 @@ public class WorkflowFile {
             return yamlNode;
         }
         return getLastChild(yamlNode.children().get(yamlNode.children().size() - 1));
+    }
+
+    private static Optional<YamlNode> getParent(final YamlNode yamlNode, final String name) {
+        if (name.equals(yamlNode.name())) {
+            return Optional.of(yamlNode);
+        } else if (yamlNode.parent() != null) {
+            return getParent(yamlNode.parent(), name);
+        } else {
+            return Optional.empty();
+        }
     }
 
     protected WorkflowFile(final YamlNode yaml) {

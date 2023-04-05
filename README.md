@@ -21,16 +21,16 @@ Enjoy lightning-fast autocompletion for
 
 #### TODO
 
-- [ ] Automatically change File Schema to `GitHub Workflow`
 - [ ] Autocomplete needs: e.g. `needs: my_job_id`
 - [ ] Add `.` to autocompletion of `steps`, `jobs`, `outputs`, `env`, `github`, `var`
+- [ ] Set different priorities for LookupElements
 - [ ] Add autocompletion in `if` statements (`getCaretBracketItem`)
-- [ ] Autocomplete env(s) from echo outputs e.g. `run: echo "DYNAMIC_VARIABLE=some value" >> $GITHUB_ENV`
-- [ ] Autocomplete outputs(s) from step echo outputs e.g. `echo "has_changes=$has_changes" >> $GITHUB_OUTPUT`
 - [ ] Autocomplete workflow and actions refs e.g. `@main`, `@v1`, ...
+- [ ] Autocomplete env(s) from echo outputs e.g. `run: echo "DYNAMIC_VARIABLE=some value" >> $GITHUB_ENV`
 - [ ] Autocomplete env(s) from current step input e.g. `env: CC_TEST_REPORTER_ID: ${{ secrets.CC_TEST_REPORTER_ID }}`
 - [ ] Add links to Workflows and action files (GitHubUrl && MarketplaceUrl)
-- [ ] Download files via `GithubApiRequest` && set custom `user agent`
+- [ ] Automatically change File Schema to `GitHub Workflow`
+- [x] Download files via `GithubApiRequest` && set custom `user agent`
   e.g. (https://github.com/cunla/ghactions-manager/blob/master/src/main/kotlin/com/dsoftware/ghmanager/api/Workflows.kt)
 - [ ] Autogenerate `getGitHubContextEnvs`
   from (https://docs.github.com/en/actions/learn-github-actions/contexts#github-context)

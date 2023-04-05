@@ -11,5 +11,9 @@
 
         <completion.contributor language="any"
                                 implementationClass="com.github.yunabraska.githubworkflow.completion.GitHubWorkflowCompletionContributor"/>
+
+    </extensions>
+    <extensions defaultExtensionNs="JavaScript.JsonSchema">
+        <ProviderFactory implementation="com.github.yunabraska.githubworkflow.schema.GitHubSchemaProviderFactory"/>
     </extensions>
 </idea-plugin>

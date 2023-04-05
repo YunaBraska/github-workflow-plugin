@@ -11,8 +11,13 @@ import com.intellij.codeInsight.lookup.LookupElementBuilder;
 import com.intellij.icons.AllIcons;
 import com.intellij.patterns.PlatformPatterns;
 import com.intellij.util.ProcessingContext;
+import com.jetbrains.jsonSchema.extension.JsonSchemaFileProvider;
+import com.jetbrains.jsonSchema.extension.JsonSchemaInfo;
+import com.jetbrains.jsonSchema.ide.JsonSchemaService;
+import com.jetbrains.jsonSchema.impl.JsonSchemaServiceImpl;
 import org.jetbrains.annotations.NotNull;
 
+import java.util.Map;
 import java.util.Optional;
 import java.util.function.Supplier;
 
@@ -25,8 +30,9 @@ import static com.github.yunabraska.githubworkflow.completion.GitHubWorkflowConf
 import static com.github.yunabraska.githubworkflow.completion.GitHubWorkflowConfig.FIELD_STEPS;
 import static com.github.yunabraska.githubworkflow.completion.GitHubWorkflowUtils.getWorkflowFile;
 import static com.github.yunabraska.githubworkflow.completion.GitHubWorkflowUtils.mapToLookupElements;
+import static com.github.yunabraska.githubworkflow.completion.GitHubWorkflowUtils.orEmpty;
+import static com.github.yunabraska.githubworkflow.completion.GitHubWorkflowUtils.toGithubOutputs;
 import static com.github.yunabraska.githubworkflow.completion.WorkflowContext.getCaretBracketItem;
-import static com.vladsch.flexmark.util.misc.Utils.orEmpty;
 import static java.util.Optional.ofNullable;
 
 /**
@@ -57,6 +63,12 @@ public class GitHubWorkflowCompletionContributor extends CompletionContributor {
                     @NotNull final ProcessingContext context,
                     @NotNull final CompletionResultSet resultSet
             ) {
+
+                //TODO: set file schema when actual is not present
+                final Optional<String> actual = ((JsonSchemaServiceImpl) JsonSchemaService.Impl.get(parameters.getOriginalFile().getProject())).getProvidersForFile(parameters.getPosition().getContainingFile().getOriginalFile().getViewProvider().getVirtualFile()).stream().map(JsonSchemaFileProvider::getName).filter("GitHub Workflow"::equals).findFirst();
+                final Optional<String> expected = JsonSchemaService.Impl.get(parameters.getOriginalFile().getProject()).getAllUserVisibleSchemas().stream().map(JsonSchemaInfo::getName).filter("GitHub Workflow"::equals).findFirst();
+                System.out.println("FILE SCHEMA [" + actual.orElse(null) + "] [" + expected.orElse(null) + "]");
+
                 getWorkflowFile(parameters.getPosition()).ifPresent(path -> {
                     final int caretOffset = parameters.getOffset();
                     final String wholeText = parameters.getOriginalFile().getText();
@@ -89,6 +101,7 @@ public class GitHubWorkflowCompletionContributor extends CompletionContributor {
                                     ));
                                     break;
                                 case FIELD_ENVS:
+                                    //TODO: Envs from echo and step.env
                                     resultSetForced.addAllElements(workflowFile.nodesToLookupElement(
                                             FIELD_ENVS,
                                             env -> env.name() != null,
@@ -119,10 +132,14 @@ public class GitHubWorkflowCompletionContributor extends CompletionContributor {
                         } else if (cbi.length == 2 && (FIELD_STEPS.equals(cbi[0]) || FIELD_JOBS.equals(cbi[0]))) {
                             resultSetForced.addElement(PrioritizedLookupElement.withPriority(LookupElementBuilder.create(FIELD_OUTPUTS).withIcon(AllIcons.General.Add).withBoldness(true).withTypeText("output values of " + cbi[0]), 5));
                         } else if (cbi.length == 3 && FIELD_STEPS.equals(cbi[0])) {
-                            //TODO: echo outputs (echo "has_changes=$has_changes" >> $GITHUB_OUTPUT)
-                            //TODO: action outputs
-                            //TODO: workflow outputs (uses: YunaBraska/YunaBraska/.github/workflows/wc_maven_tag.yml@main)
-//                             resultSetForced.addAllElements(mapToLookupElements(getNodesAsMap(workflowFile, "steps", input -> input.getChild("id").isPresent(), n -> n.getChild("id").map(desc -> desc.value).orElse(""), n -> n.getChild("uses").map(desc -> desc.value).orElseGet(() -> n.getChild("name").map(desc -> desc.value).orElse(""))), 5, true));
+                            workflowFile.getActionOutputs(cbi[1]).ifPresent(map -> resultSetForced.addAllElements(mapToLookupElements(map, 5, true, ':')));
+                            workflowFile.getStepById(cbi[1]).ifPresent(step -> {
+                                step.getChild("uses").map(YamlNode::value).map(GitHubAction::getGitHubAction).map(GitHubAction::outputs).ifPresent(map -> resultSetForced.addAllElements(mapToLookupElements(map, 5, true)));
+                                final Map<String, String> githubOutputs = toGithubOutputs(step);
+                                if (!githubOutputs.isEmpty()) {
+                                    resultSetForced.addAllElements(mapToLookupElements(githubOutputs, 5, true));
+                                }
+                            });
                         } else if (cbi.length == 3 && FIELD_JOBS.equals(cbi[0])) {
                             resultSetForced.addAllElements(workflowFile.nodesToLookupElement(
                                     FIELD_OUTPUTS, output ->
