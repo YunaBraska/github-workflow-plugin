@@ -23,10 +23,13 @@ import static com.github.yunabraska.githubworkflow.completion.GitHubWorkflowConf
 import static com.github.yunabraska.githubworkflow.completion.GitHubWorkflowConfig.FIELD_OUTPUTS;
 import static com.github.yunabraska.githubworkflow.completion.GitHubWorkflowConfig.FIELD_SECRETS;
 import static com.github.yunabraska.githubworkflow.completion.GitHubWorkflowConfig.FIELD_STEPS;
+import static com.github.yunabraska.githubworkflow.completion.GitHubWorkflowUtils.addLookupElements;
+import static com.github.yunabraska.githubworkflow.completion.GitHubWorkflowUtils.getCaretBracketItem;
 import static com.github.yunabraska.githubworkflow.completion.GitHubWorkflowUtils.getWorkflowFile;
-import static com.github.yunabraska.githubworkflow.completion.GitHubWorkflowUtils.mapToLookupElements;
-import static com.github.yunabraska.githubworkflow.completion.WorkflowContext.getCaretBracketItem;
-import static com.vladsch.flexmark.util.misc.Utils.orEmpty;
+import static com.github.yunabraska.githubworkflow.completion.GitHubWorkflowUtils.orEmpty;
+import static com.github.yunabraska.githubworkflow.completion.GitHubWorkflowUtils.toGithubOutputs;
+import static com.github.yunabraska.githubworkflow.completion.NodeIcon.ICON_JOB;
+import static com.github.yunabraska.githubworkflow.completion.NodeIcon.ICON_STEP;
 import static java.util.Optional.ofNullable;
 
 /**
@@ -60,40 +63,42 @@ public class GitHubWorkflowCompletionContributor extends CompletionContributor {
                 getWorkflowFile(parameters.getPosition()).ifPresent(path -> {
                     final int caretOffset = parameters.getOffset();
                     final String wholeText = parameters.getOriginalFile().getText();
-                    final int endIndex = Math.max(wholeText.lastIndexOf("\n", caretOffset), wholeText.lastIndexOf("\r", caretOffset));
-                    final WorkflowFile workflowFile = WorkflowFile.workflowFileOf(path.toString(), wholeText.substring(0, endIndex != -1 ? endIndex : caretOffset));
+                    final int endIndex = Math.max(wholeText.indexOf("\n", caretOffset), wholeText.indexOf("\r", caretOffset));
+                    final WorkflowFile workflowFileComplete = WorkflowFile.workflowFileOf("complete_" + path, wholeText);
+                    final WorkflowFile workflowFile = WorkflowFile.workflowFileOf("part_" + path, wholeText.substring(0, endIndex != -1 ? endIndex : caretOffset));
+//                    final Optional<YamlNode> jobNode = workflowFile.getParent(node -> node.hasParent(FIELD_JOBS));
+//                    final Optional<YamlNode> stepNode = workflowFile.getParent(node -> node.hasParent(FIELD_STEPS));
 
                     //TODO: needs: job list
-                    final Optional<String[]> caretBracketItem = getCaretBracketItem(wholeText, caretOffset);
+                    //TODO: validate every cbi item
+                    final CompletionResultSet resultSetForced = resultSet.withPrefixMatcher(PrefixMatcher.ALWAYS_TRUE);
+                    final Optional<String[]> caretBracketItem = getCaretBracketItem(wholeText, caretOffset, workflowFile::getCurrentNode);
                     caretBracketItem.ifPresent(cbi -> {
-                        final CompletionResultSet resultSetForced = resultSet.withPrefixMatcher(PrefixMatcher.ALWAYS_TRUE);
+
                         if (cbi.length == 1) {
                             switch (cbi[0]) {
-                                case "":
-                                    ofNullable(DEFAULT_VALUE_MAP.getOrDefault("${{}}", null)).map(Supplier::get).ifPresent(resultSetForced::addAllElements);
-                                    break;
                                 case FIELD_STEPS:
+                                    final WorkflowFile workflowFile1 = Optional.of(workflowFile.getCurrentNode()).map(YamlNode::parent).filter(parent -> FIELD_OUTPUTS.equals(parent.name())).map(YamlNode::parent).filter(parent -> FIELD_JOBS.equals(parent.name())).map(n -> workflowFileComplete).orElse(workflowFile);
                                     resultSetForced.addAllElements(workflowFile.nodesToLookupElement(
                                             FIELD_STEPS,
                                             input -> input.getChild("id").isPresent(),
                                             n -> n.getChild("id").map(YamlNode::value).orElse(""),
-                                            n -> n.getChild("uses").map(YamlNode::value).orElseGet(() -> n.getChild("name").map(YamlNode::value).orElse(""))
+                                            n -> n.getChild("uses").map(YamlNode::value).orElseGet(() -> n.getChild("name").map(YamlNode::value).orElse("")),
+                                            ICON_STEP
+//                                            '.'
                                     ));
                                     break;
                                 case FIELD_JOBS:
-                                    resultSetForced.addAllElements(workflowFile.nodesToLookupElement(
-                                            FIELD_JOBS,
-                                            job -> job.name() != null && job.getChild(FIELD_OUTPUTS).isPresent(),
-                                            n -> orEmpty(n.name()),
-                                            n -> n.getChild("name").map(YamlNode::value).orElse("")
-                                    ));
+                                    addJobNames(workflowFile, resultSetForced);
                                     break;
                                 case FIELD_ENVS:
+                                    //TODO: Envs from echo and step.env
                                     resultSetForced.addAllElements(workflowFile.nodesToLookupElement(
                                             FIELD_ENVS,
                                             env -> env.name() != null,
                                             n -> orEmpty(n.name()),
-                                            n -> ofNullable(n.value()).orElse("")
+                                            n -> ofNullable(n.value()).orElse(""),
+                                            NodeIcon.ICON_INPUT
                                     ));
                                     break;
                                 case FIELD_INPUTS:
@@ -101,7 +106,8 @@ public class GitHubWorkflowCompletionContributor extends CompletionContributor {
                                             FIELD_INPUTS,
                                             input -> input.name() != null,
                                             n -> orEmpty(n.name()),
-                                            GitHubWorkflowUtils::getDescription
+                                            GitHubWorkflowUtils::getDescription,
+                                            NodeIcon.ICON_INPUT
                                     ));
                                     break;
                                 case FIELD_SECRETS:
@@ -109,20 +115,22 @@ public class GitHubWorkflowCompletionContributor extends CompletionContributor {
                                             FIELD_SECRETS,
                                             secret -> secret.name() != null,
                                             n -> orEmpty(n.name()),
-                                            GitHubWorkflowUtils::getDescription
+                                            GitHubWorkflowUtils::getDescription,
+                                            NodeIcon.ICON_SECRET
                                     ));
                                     break;
                                 default:
-                                    break;
+                                    ofNullable(DEFAULT_VALUE_MAP.getOrDefault("${{}}", null)).map(Supplier::get).ifPresent(resultSetForced::addAllElements);
                             }
                             ofNullable(DEFAULT_VALUE_MAP.getOrDefault(cbi[0], null)).map(Supplier::get).ifPresent(resultSetForced::addAllElements);
-                        } else if (cbi.length == 2 && (FIELD_STEPS.equals(cbi[0]) || FIELD_JOBS.equals(cbi[0]))) {
-                            resultSetForced.addElement(PrioritizedLookupElement.withPriority(LookupElementBuilder.create(FIELD_OUTPUTS).withIcon(AllIcons.General.Add).withBoldness(true).withTypeText("output values of " + cbi[0]), 5));
+                        } else if ((cbi.length == 2 && (FIELD_STEPS.equals(cbi[0]) || FIELD_JOBS.equals(cbi[0])))
+                                || (cbi.length == 3 && !FIELD_OUTPUTS.equals(cbi[2]))) {
+                            resultSetForced.addElement(PrioritizedLookupElement.withPriority(LookupElementBuilder.create(FIELD_OUTPUTS).withIcon(AllIcons.Nodes.Method).withBoldness(true).withTypeText("output values of " + cbi[0]), 5));
                         } else if (cbi.length == 3 && FIELD_STEPS.equals(cbi[0])) {
-                            //TODO: echo outputs (echo "has_changes=$has_changes" >> $GITHUB_OUTPUT)
-                            //TODO: action outputs
-                            //TODO: workflow outputs (uses: YunaBraska/YunaBraska/.github/workflows/wc_maven_tag.yml@main)
-//                             resultSetForced.addAllElements(mapToLookupElements(getNodesAsMap(workflowFile, "steps", input -> input.getChild("id").isPresent(), n -> n.getChild("id").map(desc -> desc.value).orElse(""), n -> n.getChild("uses").map(desc -> desc.value).orElseGet(() -> n.getChild("name").map(desc -> desc.value).orElse(""))), 5, true));
+                            workflowFile.getActionOutputs(cbi[1]).ifPresent(map -> addLookupElements(resultSetForced, map, NodeIcon.ICON_OUTPUT));
+//                            workflowFile.getActionOutputs(cbi[1]).ifPresent(map -> addLookupElements(resultSetForced, map, NodeIcon.ICON_OUTPUT, '.'));
+                            workflowFile.getStepById(cbi[1]).ifPresent(step -> addLookupElements(resultSetForced, toGithubOutputs(step), NodeIcon.ICON_GITHUB_OUTPUT));
+//                            workflowFile.getStepById(cbi[1]).ifPresent(step -> addLookupElements(resultSetForced, toGithubOutputs(step), NodeIcon.ICON_GITHUB_OUTPUT, '.'));
                         } else if (cbi.length == 3 && FIELD_JOBS.equals(cbi[0])) {
                             resultSetForced.addAllElements(workflowFile.nodesToLookupElement(
                                     FIELD_OUTPUTS, output ->
@@ -135,16 +143,32 @@ public class GitHubWorkflowCompletionContributor extends CompletionContributor {
                                     ,
                                     n -> orEmpty(n.name()),
                                     //TODO: resolve to step outputs (from actions, workflows and echo "has_changes=$has_changes" >> $GITHUB_OUTPUT)
-                                    n -> orEmpty(n.value())
+                                    n -> orEmpty(n.value()),
+                                    NodeIcon.ICON_OUTPUT
                             ));
                         }
                     });
                     //ACTIONS && WORKFLOWS
                     if (!caretBracketItem.isPresent()) {
-                        workflowFile.getUses().ifPresent(map -> resultSet.addAllElements(mapToLookupElements(map, 5, true, ':')));
+                        if ("needs".equals(workflowFile.getCurrentNode().name())) {
+                            addJobNames(workflowFile, resultSetForced);
+                        } else {
+                            workflowFile.getActionInputs().ifPresent(map -> addLookupElements(resultSet, map, NodeIcon.ICON_INPUT, ':'));
+                        }
                     }
                 });
             }
         };
+    }
+
+    private static void addJobNames(final WorkflowFile workflowFile, final CompletionResultSet resultSetForced) {
+        resultSetForced.addAllElements(workflowFile.nodesToLookupElement(
+                FIELD_JOBS,
+                job -> job.name() != null && job.getChild(FIELD_OUTPUTS).isPresent(),
+                n -> orEmpty(n.name()),
+                n -> n.getChild("name").map(YamlNode::value).orElse(""),
+                ICON_JOB
+//                                            '.'
+        ));
     }
 }

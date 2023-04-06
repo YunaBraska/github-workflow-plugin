@@ -14,6 +14,8 @@ import java.util.Optional;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
+import static java.util.Optional.ofNullable;
+
 @SuppressWarnings("unchecked")
 public class YamlNode {
     protected final String name;
@@ -40,6 +42,10 @@ public class YamlNode {
 
     public Optional<YamlNode> getChild(final String childName) {
         return children.stream().filter(node -> node.name != null && node.name.equals(childName)).findFirst();
+    }
+
+    public boolean hasParent(final String name){
+        return ofNullable(parent()).map(YamlNode::name).filter(name::equals).isPresent();
     }
 
     public String name() {

@@ -7,16 +7,17 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Supplier;
+import java.util.regex.Pattern;
 
-import static com.github.yunabraska.githubworkflow.completion.GitHubWorkflowUtils.mapToLookupElements;
+import static com.github.yunabraska.githubworkflow.completion.GitHubWorkflowUtils.toLookupElements;
+
 
 public class GitHubWorkflowConfig {
 
     public static final Map<String, Supplier<List<LookupElement>>> DEFAULT_VALUE_MAP = initProcessorMap();
-
     public static final Map<String, GitHubAction> ACTION_CACHE = new ConcurrentHashMap<>();
-
     public static final Map<String, WorkflowFile> WORKFLOW_CACHE = new ConcurrentHashMap<>();
+    public static final Pattern PATTERN_GITHUB_OUTPUT = Pattern.compile("echo\\s+\"(.*?)=(.*?)\"\\s*>>\\s*\"?\\$\\{?GITHUB_OUTPUT\\}?\"?");
     public static final long CACHE_ONE_DAY = 24L * 60 * 60 * 1000;
     public static final long CACHE_TEN_MINUTES = 600000;
     public static final String FIELD_STEPS = "steps";
@@ -30,9 +31,12 @@ public class GitHubWorkflowConfig {
 
     public static Map<String, Supplier<List<LookupElement>>> initProcessorMap() {
         final Map<String, Supplier<List<LookupElement>>> result = new HashMap<>();
-        result.put(FIELD_GITHUB, () -> mapToLookupElements(getGitHubContextEnvs(), 0, false));
-        result.put(FIELD_ENVS, () -> mapToLookupElements(getGitHubEnvs(), 0, false));
-        result.put("${{}}", () -> mapToLookupElements(getCaretBracketItems(), 5, true));
+        result.put(FIELD_GITHUB, () -> toLookupElements(getGitHubContextEnvs(), NodeIcon.ICON_ENV, Character.MIN_VALUE));
+        result.put(FIELD_ENVS, () -> toLookupElements(getGitHubEnvs(), NodeIcon.ICON_ENV, Character.MIN_VALUE));
+        result.put("${{}}", () -> toLookupElements(getCaretBracketItems(), NodeIcon.ICON_NODE, Character.MIN_VALUE));
+//        result.put(FIELD_GITHUB, () -> toLookupElements(getGitHubContextEnvs(), NodeIcon.ICON_ENV, '.'));
+//        result.put(FIELD_ENVS, () -> toLookupElements(getGitHubEnvs(), NodeIcon.ICON_ENV, '.'));
+//        result.put("${{}}", () -> toLookupElements(getCaretBracketItems(), NodeIcon.ICON_NODE, '.'));
         return result;
     }
 
