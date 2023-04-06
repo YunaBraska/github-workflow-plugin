@@ -9,7 +9,8 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Supplier;
 import java.util.regex.Pattern;
 
-import static com.github.yunabraska.githubworkflow.completion.GitHubWorkflowUtils.mapToLookupElements;
+import static com.github.yunabraska.githubworkflow.completion.GitHubWorkflowUtils.toLookupElements;
+
 
 public class GitHubWorkflowConfig {
 
@@ -30,9 +31,12 @@ public class GitHubWorkflowConfig {
 
     public static Map<String, Supplier<List<LookupElement>>> initProcessorMap() {
         final Map<String, Supplier<List<LookupElement>>> result = new HashMap<>();
-        result.put(FIELD_GITHUB, () -> mapToLookupElements(getGitHubContextEnvs(), 0, false));
-        result.put(FIELD_ENVS, () -> mapToLookupElements(getGitHubEnvs(), 0, false));
-        result.put("${{}}", () -> mapToLookupElements(getCaretBracketItems(), 5, true));
+        result.put(FIELD_GITHUB, () -> toLookupElements(getGitHubContextEnvs(), NodeIcon.ICON_ENV, Character.MIN_VALUE));
+        result.put(FIELD_ENVS, () -> toLookupElements(getGitHubEnvs(), NodeIcon.ICON_ENV, Character.MIN_VALUE));
+        result.put("${{}}", () -> toLookupElements(getCaretBracketItems(), NodeIcon.ICON_NODE, Character.MIN_VALUE));
+//        result.put(FIELD_GITHUB, () -> toLookupElements(getGitHubContextEnvs(), NodeIcon.ICON_ENV, '.'));
+//        result.put(FIELD_ENVS, () -> toLookupElements(getGitHubEnvs(), NodeIcon.ICON_ENV, '.'));
+//        result.put("${{}}", () -> toLookupElements(getCaretBracketItems(), NodeIcon.ICON_NODE, '.'));
         return result;
     }
 

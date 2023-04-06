@@ -4,7 +4,6 @@
     <name>Github Workflow</name>
     <vendor url="https://github.com/YunaBraska/github-workflow-plugin">Yuna Morgenstern</vendor>
 
-    <depends>org.jetbrains.plugins.yaml</depends>
     <depends>com.intellij.modules.platform</depends>
 
     <extensions defaultExtensionNs="com.intellij">

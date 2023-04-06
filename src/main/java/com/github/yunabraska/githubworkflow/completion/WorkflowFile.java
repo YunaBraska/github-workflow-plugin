@@ -6,19 +6,20 @@ import org.yaml.snakeyaml.Yaml;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
-import static com.github.yunabraska.githubworkflow.completion.GitHubWorkflowConfig.FIELD_INPUTS;
-import static com.github.yunabraska.githubworkflow.completion.GitHubWorkflowConfig.FIELD_STEPS;
+import static com.github.yunabraska.githubworkflow.completion.GitHubWorkflowConfig.FIELD_JOBS;
 import static com.github.yunabraska.githubworkflow.completion.GitHubWorkflowConfig.WORKFLOW_CACHE;
-import static com.github.yunabraska.githubworkflow.completion.GitHubWorkflowUtils.mapToLookupElements;
+import static com.github.yunabraska.githubworkflow.completion.GitHubWorkflowUtils.toLookupElements;
 import static java.util.Optional.ofNullable;
 
 public class WorkflowFile {
     private final YamlNode yaml;
+    private YamlNode currentNode;
 
     public static WorkflowFile workflowFileOf(final String key, final String text) {
         try {
@@ -38,8 +39,12 @@ public class WorkflowFile {
     }
 
 
-    public List<LookupElement> nodesToLookupElement(final String nodeName, final Predicate<YamlNode> childFilter, final Function<YamlNode, String> key, final Function<YamlNode, String> value) {
-        return mapToLookupElements(nodesToMap(nodeName, childFilter, key, value), 5, true);
+    public List<LookupElement> nodesToLookupElement(final String nodeName, final Predicate<YamlNode> childFilter, final Function<YamlNode, String> key, final Function<YamlNode, String> value, final NodeIcon icon) {
+        return nodesToLookupElement(nodeName, childFilter, key, value, icon, Character.MIN_VALUE);
+    }
+
+    public List<LookupElement> nodesToLookupElement(final String nodeName, final Predicate<YamlNode> childFilter, final Function<YamlNode, String> key, final Function<YamlNode, String> value, final NodeIcon icon, final char suffix) {
+        return toLookupElements(nodesToMap(nodeName, childFilter, key, value), icon == null ? NodeIcon.ICON_NODE : icon, suffix);
     }
 
     public Map<String, String> nodesToMap(final String nodeName, final Predicate<YamlNode> childFilter, final Function<YamlNode, String> key, final Function<YamlNode, String> value) {
@@ -58,17 +63,20 @@ public class WorkflowFile {
     }
 
     public Optional<YamlNode> getStepById(final String stepId) {
-        final Optional<YamlNode> jobs = getParent(getLastChild(yaml()), "jobs");
+        final Optional<YamlNode> jobs = getParent(getLastChild(yaml()), node -> FIELD_JOBS.equals(node.name()));
         return jobs.flatMap(node -> node.getNodes(
                 n -> n.getChild("id")
                         .map(YamlNode::value)
                         .filter(stepId::equals)
                         .isPresent()
         ).stream().findFirst());
-
     }
 
-    public Optional<Map<String, String>> getUses() {
+    public Optional<YamlNode> getJobById(final String jobId) {
+        return getChild(yaml(), jobNode -> jobId.equals(jobNode.name()) && jobNode.hasParent(FIELD_JOBS));
+    }
+
+    public Optional<Map<String, String>> getActionInputs() {
         final YamlNode lastChild = getLastChild(yaml());
         final YamlNode withChild = Optional.of(lastChild).filter(n -> "with".equals(n.name())).orElseGet(() -> Optional.ofNullable(lastChild.parent()).filter(n -> "with".equals(n.name())).orElse(null));
         return ofNullable(withChild)
@@ -84,23 +92,15 @@ public class WorkflowFile {
         return yaml;
     }
 
-    public List<YamlNode> filter(final String... nodePath) {
-        return yaml != null ? filterRecursive(this.yaml, 0, new ArrayList<>(), nodePath) : new ArrayList<>();
+    public Optional<YamlNode> getParent(final Predicate<YamlNode> filter) {
+        return getParent(yaml(), filter);
     }
 
-    private List<YamlNode> filterRecursive(final YamlNode node, final int level, final List<YamlNode> result, final String... nodePath) {
-        if (nodePath[level].equals(node.name)) {
-            if (FIELD_INPUTS.equals(node.name)) {
-                result.addAll(node.children);
-            } else if (FIELD_STEPS.equals(node.name)) {
-                result.addAll(node.children);
-            } else {
-                result.add(node);
-            }
-        } else if (level + 1 != nodePath.length) {
-            node.children.forEach(child -> filterRecursive(child, level + 1, result, nodePath));
+    public YamlNode getCurrentNode() {
+        if (currentNode == null) {
+            currentNode = getLastChild(this.yaml());
         }
-        return result;
+        return currentNode;
     }
 
     private static YamlNode getLastChild(final YamlNode yamlNode) {
@@ -110,11 +110,19 @@ public class WorkflowFile {
         return getLastChild(yamlNode.children().get(yamlNode.children().size() - 1));
     }
 
-    private static Optional<YamlNode> getParent(final YamlNode yamlNode, final String name) {
-        if (name.equals(yamlNode.name())) {
+    private static Optional<YamlNode> getChild(final YamlNode yamlNode, final Predicate<YamlNode> filter) {
+        if (filter.test(yamlNode)) {
+            return Optional.of(yamlNode);
+        } else {
+            return yamlNode.children().stream().map(child -> getChild(child, filter).orElse(null)).filter(Objects::nonNull).findFirst();
+        }
+    }
+
+    private static Optional<YamlNode> getParent(final YamlNode yamlNode, final Predicate<YamlNode> filter) {
+        if (filter.test(yamlNode)) {
             return Optional.of(yamlNode);
         } else if (yamlNode.parent() != null) {
-            return getParent(yamlNode.parent(), name);
+            return getParent(yamlNode.parent(), filter);
         } else {
             return Optional.empty();
         }

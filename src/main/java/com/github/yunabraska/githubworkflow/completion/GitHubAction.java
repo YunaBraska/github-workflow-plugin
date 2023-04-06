@@ -12,6 +12,7 @@ import static com.github.yunabraska.githubworkflow.completion.GitHubWorkflowConf
 import static com.github.yunabraska.githubworkflow.completion.GitHubWorkflowConfig.CACHE_TEN_MINUTES;
 import static com.github.yunabraska.githubworkflow.completion.GitHubWorkflowConfig.FIELD_INPUTS;
 import static com.github.yunabraska.githubworkflow.completion.GitHubWorkflowConfig.FIELD_OUTPUTS;
+import static com.github.yunabraska.githubworkflow.completion.GitHubWorkflowUtils.downloadAction;
 import static com.github.yunabraska.githubworkflow.completion.GitHubWorkflowUtils.downloadContent;
 import static com.github.yunabraska.githubworkflow.completion.GitHubWorkflowUtils.orEmpty;
 import static java.util.Optional.ofNullable;
@@ -107,7 +108,7 @@ public class GitHubAction {
 
     private void setActionParameters(final String downloadUrl, final boolean isAction) {
         try {
-            extractActionParameters(downloadContent(downloadUrl), isAction);
+            extractActionParameters(downloadAction(downloadUrl,  this), isAction);
             expiration.set(System.currentTimeMillis() + CACHE_ONE_DAY);
         } catch (Exception e) {
             expiration.set(System.currentTimeMillis() + CACHE_TEN_MINUTES);
@@ -115,7 +116,7 @@ public class GitHubAction {
     }
 
     private void extractActionParameters(final String content, final boolean isAction) {
-        final WorkflowFile workflowFile = WorkflowFile.workflowFileOf(null, content);
+        final WorkflowFile workflowFile = WorkflowFile.workflowFileOf(actionName() + "_" + ref(), content);
         inputs.putAll(getActionParameters(workflowFile, FIELD_INPUTS, isAction));
         outputs.putAll(getActionParameters(workflowFile, FIELD_OUTPUTS, isAction));
     }

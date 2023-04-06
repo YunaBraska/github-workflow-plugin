@@ -1,13 +1,15 @@
 package com.github.yunabraska.githubworkflow.completion;
 
+import com.intellij.codeInsight.completion.CompletionResultSet;
 import com.intellij.codeInsight.completion.InsertionContext;
 import com.intellij.codeInsight.completion.PrioritizedLookupElement;
+import com.intellij.codeInsight.lookup.AutoCompletionPolicy;
 import com.intellij.codeInsight.lookup.LookupElement;
 import com.intellij.codeInsight.lookup.LookupElementBuilder;
-import com.intellij.icons.AllIcons;
 import com.intellij.json.JsonFileType;
 import com.intellij.openapi.application.ApplicationInfo;
 import com.intellij.openapi.application.ApplicationManager;
+import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.editor.Document;
 import com.intellij.openapi.vfs.VfsUtil;
 import com.intellij.openapi.vfs.VirtualFile;
@@ -18,8 +20,11 @@ import com.intellij.testFramework.LightVirtualFile;
 import com.intellij.util.io.HttpRequests;
 import org.yaml.snakeyaml.Yaml;
 
+import java.io.BufferedReader;
 import java.io.FileReader;
 import java.io.IOException;
+import java.nio.charset.Charset;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Arrays;
@@ -28,13 +33,32 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.function.Supplier;
 import java.util.regex.Matcher;
 import java.util.stream.Collectors;
 
+import static com.github.yunabraska.githubworkflow.completion.GitHubWorkflowConfig.CACHE_ONE_DAY;
 import static com.github.yunabraska.githubworkflow.completion.GitHubWorkflowConfig.PATTERN_GITHUB_OUTPUT;
 import static java.util.Optional.ofNullable;
 
 public class GitHubWorkflowUtils {
+
+    public static final Path TMP_DIR = Paths.get(System.getProperty("java.io.tmpdir"), "ide_github_workflow_plugin");
+    private static final Logger LOG = Logger.getInstance(GitHubWorkflowUtils.class);
+
+    public static Optional<String[]> getCaretBracketItem(final String text, final int caretOffset, final Supplier<YamlNode> currentNode) {
+        final String partString = text.substring(0, caretOffset);
+        final int bracketStart = partString.lastIndexOf("${{");
+        if (isInBrackets(partString, bracketStart) || "if".equals(currentNode.get().name())) {
+            return Optional.of(partString.substring(lastIndexOf(partString, " ", "{", "|", "&", "(", ")") + 1).split("\\."));
+        }
+        return Optional.empty();
+    }
+
+
+    public static boolean isInBrackets(final String partString, final int bracketStart) {
+        return bracketStart != -1 && partString.lastIndexOf("}}") <= bracketStart;
+    }
 
     public static int lastIndexOf(final String input, final String... indexOf) {
         return Arrays.stream(indexOf).mapToInt(input::lastIndexOf).max().orElse(-1);
@@ -69,24 +93,31 @@ public class GitHubWorkflowUtils {
         return variables;
     }
 
-    public static List<LookupElement> mapToLookupElements(final Map<String, String> map, final int prio, final boolean bold) {
-        return mapToLookupElements(map, prio, bold, Character.MIN_VALUE);
+    public static void addLookupElements(final CompletionResultSet resultSet, final Map<String, String> map, final NodeIcon icon) {
+        if (!map.isEmpty()) {
+            resultSet.addAllElements(toLookupElements(map, icon, Character.MIN_VALUE));
+        }
     }
 
-    public static List<LookupElement> mapToLookupElements(final Map<String, String> map, final int prio, final boolean bold, final char suffix) {
-        return map.entrySet().stream().map(item -> PrioritizedLookupElement.withPriority(mapToLookupElementBuilder(item, bold, suffix), prio)).collect(Collectors.toList());
+    public static void addLookupElements(final CompletionResultSet resultSet, final Map<String, String> map, final NodeIcon icon, final char suffix) {
+        if (!map.isEmpty()) {
+            resultSet.addAllElements(toLookupElements(map, icon, suffix));
+        }
     }
 
-    private static LookupElementBuilder mapToLookupElementBuilder(final Map.Entry<String, String> item, final boolean bold, final char suffix) {
-        final LookupElementBuilder lookupElementBuilder = LookupElementBuilder
-                .create(item.getKey())
-                .withIcon(AllIcons.General.Add)
-                .withBoldness(bold)
-                .withTypeText(item.getValue());
-        return suffix != Character.MIN_VALUE ? lookupElementBuilder.withInsertHandler((ctx, i) -> addDoubleDots(ctx, item.getKey(), suffix)) : lookupElementBuilder;
+    public static List<LookupElement> toLookupElements(final Map<String, String> map, final NodeIcon icon, final char suffix) {
+        return map.entrySet().stream().map(item -> {
+            LookupElementBuilder result = LookupElementBuilder
+                    .create(item.getKey())
+                    .withIcon(icon.icon())
+                    .withBoldness(icon != NodeIcon.ICON_ENV)
+                    .withTypeText(item.getValue());
+            result = suffix != Character.MIN_VALUE ? result.withInsertHandler((ctx, i) -> addSuffix(ctx, item.getKey(), suffix)) : result;
+            return PrioritizedLookupElement.withPriority(suffix != Character.MIN_VALUE ? result.withAutoCompletionPolicy(AutoCompletionPolicy.ALWAYS_AUTOCOMPLETE) : result, icon.ordinal() + 5);
+        }).collect(Collectors.toList());
     }
 
-    private static void addDoubleDots(final InsertionContext ctx, final String value, final char suffix) {
+    private static void addSuffix(final InsertionContext ctx, final String value, final char suffix) {
         final int startOffset = ctx.getStartOffset();
         final int tailOffset = ctx.getTailOffset();
         int newOffset = startOffset + value.length();
@@ -119,15 +150,52 @@ public class GitHubWorkflowUtils {
 
     public static VirtualFile downloadSchema(final String url, final String name) {
         try {
-            final VirtualFile newVirtualFile = new LightVirtualFile("github-workflow-plugin-" + name + "-schema.json", JsonFileType.INSTANCE, "");
-            VfsUtil.saveText(newVirtualFile, downloadContent(url));
+            final Path path = TMP_DIR.resolve(name + "_schema.json");
+            final VirtualFile newVirtualFile = new LightVirtualFile("github_workflow_plugin_" + path.getFileName().toString(), JsonFileType.INSTANCE, "");
+            //FIXME: how to use the intellij idea cache?
+            VfsUtil.saveText(newVirtualFile, downloadContent(url, path, CACHE_ONE_DAY * 30));
             return newVirtualFile;
         } catch (Exception ignored) {
             return null;
         }
     }
 
-    public static String downloadContent(final String urlString) {
+    public static String downloadAction(final String url, final GitHubAction gitHubAction) {
+        return downloadContent(url, TMP_DIR.resolve(gitHubAction.actionName() + "_" + gitHubAction.ref() + "_schema.json"), CACHE_ONE_DAY * 14);
+    }
+
+    public static String downloadContent(final String url, final Path path, final long expirationTime) {
+        try {
+            if (Files.exists(path) && (expirationTime < 1 || Files.getLastModifiedTime(path).toMillis() > System.currentTimeMillis() - expirationTime)) {
+                LOG.info("Cache load [" + path + "] expires in [" + (System.currentTimeMillis() - expirationTime) + "ms]");
+                return readFile(path);
+            } else {
+                if (!Files.exists(path.getParent())) {
+                    Files.createDirectories(path.getParent());
+                }
+                final String content = downloadContent(url);
+                Files.write(path, content.getBytes());
+                return content;
+            }
+        } catch (Exception e) {
+            LOG.error("Cache failed for [" + path + "] message [" + (e instanceof NullPointerException ? null : e.getMessage()) + "]");
+            return "";
+        }
+    }
+
+    private static String readFile(final Path path) throws IOException {
+        try (final BufferedReader reader = Files.newBufferedReader(path, Charset.defaultCharset());) {
+            final StringBuilder contentBuilder = new StringBuilder();
+            String line;
+            while ((line = reader.readLine()) != null) {
+                contentBuilder.append(line).append(System.lineSeparator());
+            }
+            return contentBuilder.toString();
+        }
+    }
+
+    private static String downloadContent(final String urlString) {
+        LOG.info("Download [" + urlString + "]");
         try {
             final ApplicationInfo applicationInfo = ApplicationInfo.getInstance();
             return ApplicationManager.getApplication().executeOnPooledThread(() -> HttpRequests
@@ -136,9 +204,8 @@ public class GitHubWorkflowUtils {
                     .readTimeout(5000)
                     .connectTimeout(5000)
                     .userAgent(applicationInfo.getBuild().getProductCode() + "/" + applicationInfo.getFullVersion()).tuner(request -> request.setRequestProperty("Client-Name", "GitHub Workflow Plugin")).readString()).get();
-        } catch (Exception ignored) {
-            System.out.println(ignored.getMessage());
-            //ignored
+        } catch (Exception e) {
+            LOG.error("Download failed for [" + urlString + "] message [" + (e instanceof NullPointerException ? null : e.getMessage()) + "]");
         }
         return "";
     }
@@ -190,5 +257,6 @@ public class GitHubWorkflowUtils {
     }
 
     private GitHubWorkflowUtils() {
+
     }
 }
