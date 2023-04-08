@@ -1,5 +1,7 @@
 package com.github.yunabraska.githubworkflow.completion;
 
+import com.github.yunabraska.githubworkflow.model.DownloadException;
+import com.intellij.codeInsight.completion.CompletionParameters;
 import com.intellij.codeInsight.completion.CompletionResultSet;
 import com.intellij.codeInsight.completion.InsertionContext;
 import com.intellij.codeInsight.completion.PrioritizedLookupElement;
@@ -27,17 +29,17 @@ import java.nio.charset.Charset;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
 import java.util.function.Supplier;
 import java.util.regex.Matcher;
 import java.util.stream.Collectors;
 
 import static com.github.yunabraska.githubworkflow.completion.GitHubWorkflowConfig.CACHE_ONE_DAY;
+import static com.github.yunabraska.githubworkflow.completion.GitHubWorkflowConfig.PATTERN_GITHUB_ENV;
 import static com.github.yunabraska.githubworkflow.completion.GitHubWorkflowConfig.PATTERN_GITHUB_OUTPUT;
 import static java.util.Optional.ofNullable;
 
@@ -46,22 +48,64 @@ public class GitHubWorkflowUtils {
     public static final Path TMP_DIR = Paths.get(System.getProperty("java.io.tmpdir"), "ide_github_workflow_plugin");
     private static final Logger LOG = Logger.getInstance(GitHubWorkflowUtils.class);
 
-    public static Optional<String[]> getCaretBracketItem(final String text, final int caretOffset, final Supplier<YamlNode> currentNode) {
-        final String partString = text.substring(0, caretOffset);
-        final int bracketStart = partString.lastIndexOf("${{");
-        if (isInBrackets(partString, bracketStart) || "if".equals(currentNode.get().name())) {
-            return Optional.of(partString.substring(lastIndexOf(partString, " ", "{", "|", "&", "(", ")") + 1).split("\\."));
+    public static Optional<String[]> getCaretBracketItem(final CompletionParameters parameters, final Supplier<WorkflowFile> part, final String[] prefix) {
+        final String wholeText = parameters.getOriginalFile().getText();
+        final int caretOffset = parameters.getOffset();
+        final String offsetText = wholeText.substring(0, caretOffset);
+        final int bracketStart = offsetText.lastIndexOf("${{");
+        if (caretOffset > 2 && isInBrackets(offsetText, bracketStart) || "if".equals(part.get().getCurrentNode().name())) {
+            final char previousChar = wholeText.charAt(caretOffset - 1);
+            if (caretOffset > 1 && previousChar == '.') {
+                //NEXT ELEMENT
+                final int indexStart = getStartIndex(wholeText, caretOffset - 1);
+                final int indexEnd = getEndIndex(wholeText, caretOffset - 1, wholeText.length());
+                return Optional.of(wholeText.substring(indexStart, indexEnd + 1).split("\\."));
+            } else if (caretOffset > 1 && isNonValidNodeChar(previousChar)) {
+                //START ELEMENT
+                return Optional.of(prefix);
+            } else {
+                //MIDDLE ELEMENT
+                final int indexStart = getStartIndex(wholeText, caretOffset);
+                final String[] prefArray = wholeText.substring(indexStart, caretOffset).split("\\.", -1);
+                prefix[0] = prefArray[prefArray.length - 1];
+                return Optional.of(wholeText.substring(indexStart, caretOffset - prefix[0].length()).split("\\."));
+            }
         }
         return Optional.empty();
+    }
+
+    private static boolean isNonValidNodeChar(final char c) {
+        return !Character.isLetterOrDigit(c) && c != '_' && c != '-';
+    }
+
+    private static int getStartIndex(final CharSequence currentText, final int fromIndex) {
+        int result = fromIndex;
+        while (result > 0) {
+            final char c = currentText.charAt(result);
+            if (!Character.isLetterOrDigit(c) && c != '_' && c != '-' && c != '.') {
+                result = result != fromIndex ? result + 1 : result;
+                break;
+            }
+            result--;
+        }
+        return Math.min(result, fromIndex);
+    }
+
+    private static int getEndIndex(final CharSequence currentText, final int fromIndex, final int toIndex) {
+        int result = fromIndex;
+        final int endIndex = currentText.length();
+        while (result < endIndex && result < toIndex) {
+            if (isNonValidNodeChar(currentText.charAt(result))) {
+                break;
+            }
+            result++;
+        }
+        return result;
     }
 
 
     public static boolean isInBrackets(final String partString, final int bracketStart) {
         return bracketStart != -1 && partString.lastIndexOf("}}") <= bracketStart;
-    }
-
-    public static int lastIndexOf(final String input, final String... indexOf) {
-        return Arrays.stream(indexOf).mapToInt(input::lastIndexOf).max().orElse(-1);
     }
 
     public static String orEmpty(final String text) {
@@ -74,16 +118,10 @@ public class GitHubWorkflowUtils {
                 + n.getChild("description").map(YamlNode::value).orElse("");
     }
 
-    public static Map<String, String> toGithubOutputs(final YamlNode step) {
-        final Map<String, String> result = new HashMap<>();
-        step.children().stream().map(YamlNode::value).filter(Objects::nonNull).forEach(s -> result.putAll(toGithubOutputs(s)));
-        return result;
-    }
-
-    public static Map<String, String> toGithubOutputs(final String s) {
+    public static Map<String, String> toGithubOutputs(final String text) {
         final Map<String, String> variables = new HashMap<>();
-        if (s.contains("$GITHUB_OUTPUT") || s.contains("${GITHUB_OUTPUT}")) {
-            final Matcher matcher = PATTERN_GITHUB_OUTPUT.matcher(s);
+        if (text.contains("$GITHUB_OUTPUT") || text.contains("${GITHUB_OUTPUT}")) {
+            final Matcher matcher = PATTERN_GITHUB_OUTPUT.matcher(text);
             while (matcher.find()) {
                 if (matcher.groupCount() >= 2) {
                     variables.put(matcher.group(1), matcher.group(2));
@@ -93,10 +131,17 @@ public class GitHubWorkflowUtils {
         return variables;
     }
 
-    public static void addLookupElements(final CompletionResultSet resultSet, final Map<String, String> map, final NodeIcon icon) {
-        if (!map.isEmpty()) {
-            resultSet.addAllElements(toLookupElements(map, icon, Character.MIN_VALUE));
+    public static Map<String, String> toGithubEnvs(final String text) {
+        final Map<String, String> variables = new HashMap<>();
+        if (text.contains("GITHUB_ENV") || text.contains("${GITHUB_ENV}")) {
+            final Matcher matcher = PATTERN_GITHUB_ENV.matcher(text);
+            while (matcher.find()) {
+                if (matcher.groupCount() >= 2) {
+                    variables.put(matcher.group(1), matcher.group(2));
+                }
+            }
         }
+        return variables;
     }
 
     public static void addLookupElements(final CompletionResultSet resultSet, final Map<String, String> map, final NodeIcon icon, final char suffix) {
@@ -106,15 +151,18 @@ public class GitHubWorkflowUtils {
     }
 
     public static List<LookupElement> toLookupElements(final Map<String, String> map, final NodeIcon icon, final char suffix) {
-        return map.entrySet().stream().map(item -> {
-            LookupElementBuilder result = LookupElementBuilder
-                    .create(item.getKey())
-                    .withIcon(icon.icon())
-                    .withBoldness(icon != NodeIcon.ICON_ENV)
-                    .withTypeText(item.getValue());
-            result = suffix != Character.MIN_VALUE ? result.withInsertHandler((ctx, i) -> addSuffix(ctx, item.getKey(), suffix)) : result;
-            return PrioritizedLookupElement.withPriority(suffix != Character.MIN_VALUE ? result.withAutoCompletionPolicy(AutoCompletionPolicy.ALWAYS_AUTOCOMPLETE) : result, icon.ordinal() + 5);
-        }).collect(Collectors.toList());
+        return map.entrySet().stream().map(item -> toLookupElement(icon, suffix, item.getKey(), item.getValue())).collect(Collectors.toList());
+    }
+
+    public static LookupElement toLookupElement(final NodeIcon icon, final char suffix, final String key, final String text) {
+        LookupElementBuilder result = LookupElementBuilder
+                .create(key)
+                .withIcon(icon.icon())
+                .withBoldness(icon != NodeIcon.ICON_ENV)
+                .withTypeText(text)
+                .withCaseSensitivity(false);
+        result = suffix != Character.MIN_VALUE ? result.withInsertHandler((ctx, i) -> addSuffix(ctx, key, suffix)) : result;
+        return PrioritizedLookupElement.withPriority(suffix != Character.MIN_VALUE ? result.withAutoCompletionPolicy(AutoCompletionPolicy.ALWAYS_AUTOCOMPLETE) : result, icon.ordinal() + 5d);
     }
 
     private static void addSuffix(final InsertionContext ctx, final String value, final char suffix) {
@@ -141,7 +189,7 @@ public class GitHubWorkflowUtils {
         // Insert the new value
         document.insertString(startOffset, value);
         // Add ': ' after the inserted value
-        final String toInsert = suffix + "";
+        final String toInsert = String.valueOf(suffix);
         document.insertString(startOffset + value.length(), toInsert);
         newOffset += toInsert.length();
         // Update caret position
@@ -166,33 +214,50 @@ public class GitHubWorkflowUtils {
 
     public static String downloadContent(final String url, final Path path, final long expirationTime) {
         try {
-            if (Files.exists(path) && (expirationTime < 1 || Files.getLastModifiedTime(path).toMillis() > System.currentTimeMillis() - expirationTime)) {
-                LOG.info("Cache load [" + path + "] expires in [" + (System.currentTimeMillis() - expirationTime) + "ms]");
-                return readFile(path);
-            } else {
-                if (!Files.exists(path.getParent())) {
-                    Files.createDirectories(path.getParent());
-                }
-                final String content = downloadContent(url);
-                Files.write(path, content.getBytes());
-                return content;
-            }
+            return downloadContentAsync(url, path, expirationTime).get();
         } catch (Exception e) {
-            LOG.error("Cache failed for [" + path + "] message [" + (e instanceof NullPointerException ? null : e.getMessage()) + "]");
-            return "";
+            throw new DownloadException(e);
         }
     }
 
-    private static String readFile(final Path path) throws IOException {
-        try (final BufferedReader reader = Files.newBufferedReader(path, Charset.defaultCharset());) {
-            final StringBuilder contentBuilder = new StringBuilder();
-            String line;
-            while ((line = reader.readLine()) != null) {
-                contentBuilder.append(line).append(System.lineSeparator());
+    private static CompletableFuture<String> downloadContentAsync(final String url, final Path path, final long expirationTime) {
+        return CompletableFuture.supplyAsync(() -> {
+            try {
+                if (Files.exists(path) && (expirationTime < 1 || Files.getLastModifiedTime(path).toMillis() > System.currentTimeMillis() - expirationTime)) {
+                    LOG.info("Cache load [" + path + "] expires in [" + (System.currentTimeMillis() - expirationTime) + "ms]");
+                    return readFileAsync(path).get();
+                } else {
+                    if (!Files.exists(path.getParent())) {
+                        Files.createDirectories(path.getParent());
+                    }
+                    final String content = downloadContent(url);
+                    Files.write(path, content.getBytes());
+                    return content;
+                }
+            } catch (Exception e) {
+                LOG.error("Cache failed for [" + path + "] message [" + (e instanceof NullPointerException ? null : e.getMessage()) + "]");
+                return "";
             }
-            return contentBuilder.toString();
-        }
+        });
     }
+
+
+    public static CompletableFuture<String> readFileAsync(final Path path) {
+        return CompletableFuture.supplyAsync(() -> {
+            try (final BufferedReader reader = Files.newBufferedReader(path, Charset.defaultCharset())) {
+                final StringBuilder contentBuilder = new StringBuilder();
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    contentBuilder.append(line).append(System.lineSeparator());
+                }
+                return contentBuilder.toString();
+            } catch (IOException e) {
+                LOG.error("Failed to read file [" + path + "] message [" + e.getMessage() + "]");
+                return "";
+            }
+        });
+    }
+
 
     private static String downloadContent(final String urlString) {
         LOG.info("Download [" + urlString + "]");
@@ -221,18 +286,20 @@ public class GitHubWorkflowUtils {
                 .filter(GitHubWorkflowUtils::isWorkflowPath);
     }
 
+    @SuppressWarnings("unused")
     public static void yamlOf(final Path path) {
         try (final FileReader fileReader = new FileReader(path.toFile())) {
             processYamlElement(new Yaml().load(fileReader));
         } catch (IOException ignored) {
+            //ignored
         }
     }
 
+    @SuppressWarnings("unchecked")
     public static void processYamlElement(final Object yamlElement) {
         if (yamlElement instanceof Map) {
             final Map<String, Object> yamlMap = (Map<String, Object>) yamlElement;
             for (Map.Entry<String, Object> entry : yamlMap.entrySet()) {
-                System.out.println("Key: " + entry.getKey());
                 processYamlElement(entry.getValue());
             }
         } else if (yamlElement instanceof List) {
@@ -240,8 +307,6 @@ public class GitHubWorkflowUtils {
             for (Object element : yamlList) {
                 processYamlElement(element);
             }
-        } else {
-            System.out.println("Value: " + yamlElement);
         }
     }
 

@@ -13,7 +13,6 @@ import static com.github.yunabraska.githubworkflow.completion.GitHubWorkflowConf
 import static com.github.yunabraska.githubworkflow.completion.GitHubWorkflowConfig.FIELD_INPUTS;
 import static com.github.yunabraska.githubworkflow.completion.GitHubWorkflowConfig.FIELD_OUTPUTS;
 import static com.github.yunabraska.githubworkflow.completion.GitHubWorkflowUtils.downloadAction;
-import static com.github.yunabraska.githubworkflow.completion.GitHubWorkflowUtils.downloadContent;
 import static com.github.yunabraska.githubworkflow.completion.GitHubWorkflowUtils.orEmpty;
 import static java.util.Optional.ofNullable;
 
@@ -108,7 +107,7 @@ public class GitHubAction {
 
     private void setActionParameters(final String downloadUrl, final boolean isAction) {
         try {
-            extractActionParameters(downloadAction(downloadUrl,  this), isAction);
+            extractActionParameters(downloadAction(downloadUrl, this), isAction);
             expiration.set(System.currentTimeMillis() + CACHE_ONE_DAY);
         } catch (Exception e) {
             expiration.set(System.currentTimeMillis() + CACHE_TEN_MINUTES);

@@ -1,42 +1,38 @@
 package com.github.yunabraska.githubworkflow.completion;
 
-import com.intellij.codeInsight.lookup.LookupElement;
-
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Supplier;
 import java.util.regex.Pattern;
 
-import static com.github.yunabraska.githubworkflow.completion.GitHubWorkflowUtils.toLookupElements;
-
-
 public class GitHubWorkflowConfig {
 
-    public static final Map<String, Supplier<List<LookupElement>>> DEFAULT_VALUE_MAP = initProcessorMap();
-    public static final Map<String, GitHubAction> ACTION_CACHE = new ConcurrentHashMap<>();
-    public static final Map<String, WorkflowFile> WORKFLOW_CACHE = new ConcurrentHashMap<>();
     public static final Pattern PATTERN_GITHUB_OUTPUT = Pattern.compile("echo\\s+\"(.*?)=(.*?)\"\\s*>>\\s*\"?\\$\\{?GITHUB_OUTPUT\\}?\"?");
+    public static final Pattern PATTERN_GITHUB_ENV = Pattern.compile("echo\\s+\"(.*?)=(.*?)\"\\s*>>\\s*\"?\\$\\{?GITHUB_ENV\\}?\"?");
     public static final long CACHE_ONE_DAY = 24L * 60 * 60 * 1000;
     public static final long CACHE_TEN_MINUTES = 600000;
-    public static final String FIELD_STEPS = "steps";
-    public static final String FIELD_JOBS = "jobs";
     public static final String FIELD_ENVS = "env";
-    public static final String FIELD_INPUTS = "inputs";
-    public static final String FIELD_SECRETS = "secrets";
-    public static final String FIELD_OUTPUTS = "outputs";
-    public static final String FIELD_GITHUB = "github";
+    public static final String FIELD_RUN = "run";
+    public static final String FIELD_JOBS = "jobs";
     public static final String FIELD_VARS = "vars";
+    public static final String FIELD_USES = "uses";
+    public static final String FIELD_NEEDS = "needs";
+    public static final String FIELD_STEPS = "steps";
+    public static final String FIELD_GITHUB = "github";
+    public static final String FIELD_DEFAULT = "${{}}";
+    public static final String FIELD_INPUTS = "inputs";
+    public static final String FIELD_OUTPUTS = "outputs";
+    public static final String FIELD_SECRETS = "secrets";
+    protected static final Map<String, Supplier<Map<String, String>>> DEFAULT_VALUE_MAP = initProcessorMap();
+    protected static final Map<String, GitHubAction> ACTION_CACHE = new ConcurrentHashMap<>();
+    protected static final Map<String, WorkflowFile> WORKFLOW_CACHE = new ConcurrentHashMap<>();
 
-    public static Map<String, Supplier<List<LookupElement>>> initProcessorMap() {
-        final Map<String, Supplier<List<LookupElement>>> result = new HashMap<>();
-        result.put(FIELD_GITHUB, () -> toLookupElements(getGitHubContextEnvs(), NodeIcon.ICON_ENV, Character.MIN_VALUE));
-        result.put(FIELD_ENVS, () -> toLookupElements(getGitHubEnvs(), NodeIcon.ICON_ENV, Character.MIN_VALUE));
-        result.put("${{}}", () -> toLookupElements(getCaretBracketItems(), NodeIcon.ICON_NODE, Character.MIN_VALUE));
-//        result.put(FIELD_GITHUB, () -> toLookupElements(getGitHubContextEnvs(), NodeIcon.ICON_ENV, '.'));
-//        result.put(FIELD_ENVS, () -> toLookupElements(getGitHubEnvs(), NodeIcon.ICON_ENV, '.'));
-//        result.put("${{}}", () -> toLookupElements(getCaretBracketItems(), NodeIcon.ICON_NODE, '.'));
+    private static Map<String, Supplier<Map<String, String>>> initProcessorMap() {
+        final Map<String, Supplier<Map<String, String>>> result = new HashMap<>();
+        result.put(FIELD_GITHUB, GitHubWorkflowConfig::getGitHubContextEnvs);
+        result.put(FIELD_ENVS, GitHubWorkflowConfig::getGitHubEnvs);
+        result.put(FIELD_DEFAULT, GitHubWorkflowConfig::getCaretBracketItems);
         return result;
     }
 
@@ -48,6 +44,7 @@ public class GitHubWorkflowConfig {
         result.put(FIELD_STEPS, "steps with 'id' of the current job");
         result.put(FIELD_ENVS, "Environment variables from jobs amd steps");
         result.put(FIELD_VARS, "The vars context contains custom configuration variables set at the organization, repository, and environment levels. For more information about defining configuration variables for use in multiple workflows");
+        result.put(FIELD_NEEDS, "Identifies any jobs that must complete successfully before this job will run. It can be a string or array of strings. If a job fails, all jobs that need it are skipped unless the jobs use a conditional statement that causes the job to continue.");
         result.put(FIELD_GITHUB, "Information about the workflow run and the event that triggered the run. You can also read most of the github context data in environment variables. For more information about environment variables");
         return result;
     }

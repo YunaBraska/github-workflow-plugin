@@ -15,17 +15,11 @@ Enjoy lightning-fast autocompletion for
 * secrets
 * jobs
 
-**Phase: Beta**
-
 <!-- Plugin description end -->
 
 #### TODO
 
-- [ ] Add `.` to autocompletion of `steps`, `jobs`, `outputs`, `env`, `github`, `var`
-- [ ] Autocompletion jobs.jobId.outputs should autocomplete all underlying steps
 - [ ] Autocomplete workflow and actions refs e.g. `@main`, `@v1`, ...
-- [ ] Autocomplete env(s) from echo outputs e.g. `run: echo "DYNAMIC_VARIABLE=some value" >> $GITHUB_ENV`
-- [ ] Autocomplete env(s) from current step input e.g. `env: CC_TEST_REPORTER_ID: ${{ secrets.CC_TEST_REPORTER_ID }}`
 - [ ] Add links to Workflows and action files (GitHubUrl && MarketplaceUrl)
   e.g. (https://github.com/cunla/ghactions-manager/blob/master/src/main/kotlin/com/dsoftware/ghmanager/api/Workflows.kt)
 - [ ] Autogenerate `getGitHubContextEnvs`
@@ -44,8 +38,7 @@ Fixes:
 
 - [x] Create a new [IntelliJ Platform Plugin Template][template] project.
 - [x] Get familiar with the [template documentation][template].
-- [x] Adjust the [pluginGroup](./gradle.properties), [plugin ID](./src/main/resources/META-INF/plugin.xml)
-  and [sources package](./src/main/kotlin).
+- [x] Adjust the [pluginGroup](./gradle.properties), [plugin ID](./src/main/resources/META-INF/plugin.xml).
 - [x] Adjust the plugin description in `README` (see [Tips][docs:plugin-description])
 - [x] Review
   the [Legal Agreements](https://plugins.jetbrains.com/docs/marketplace/legal-agreements.html?from=IJPluginTemplate).

@@ -13,7 +13,7 @@ import java.util.concurrent.ConcurrentHashMap;
 
 public class GitHubSchemaProviderFactory implements JsonSchemaProviderFactory {
 
-    public static Map<String, VirtualFile> GITHUB_SCHEMA_CACHE = new ConcurrentHashMap<>();
+    public static final Map<String, VirtualFile> GITHUB_SCHEMA_CACHE = new ConcurrentHashMap<>();
 
     @NotNull
     @Override

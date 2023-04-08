@@ -4,6 +4,14 @@
 
 ## [Unreleased]
 
+## [1.0.0] - 2023-04-00
+
+### Happy Easter
+
+- Stabilised Autocompletion
+- Added new Dark and Light Icon
+- Big refactoring for first Major Version
+
 ## [0.1.0] - 2023-04-06
 
 ### Happy Easter
