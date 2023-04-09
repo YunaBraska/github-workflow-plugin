@@ -65,7 +65,7 @@ public class GitHubWorkflowUtils {
                 return Optional.of(prefix);
             } else {
                 //MIDDLE ELEMENT
-                final int indexStart = getStartIndex(wholeText, caretOffset);
+                final int indexStart = getStartIndex(wholeText, caretOffset - 1);
                 final String[] prefArray = wholeText.substring(indexStart, caretOffset).split("\\.", -1);
                 prefix[0] = prefArray[prefArray.length - 1];
                 return Optional.of(wholeText.substring(indexStart, caretOffset - prefix[0].length()).split("\\."));

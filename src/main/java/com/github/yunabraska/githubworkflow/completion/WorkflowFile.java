@@ -3,13 +3,13 @@ package com.github.yunabraska.githubworkflow.completion;
 import org.yaml.snakeyaml.Yaml;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.function.Function;
 import java.util.function.Predicate;
-import java.util.stream.Collectors;
 
 import static com.github.yunabraska.githubworkflow.completion.GitHubWorkflowConfig.FIELD_JOBS;
 import static com.github.yunabraska.githubworkflow.completion.GitHubWorkflowConfig.FIELD_OUTPUTS;
@@ -42,6 +42,7 @@ public class WorkflowFile {
                 .map(YamlNode::parent)
                 .filter(node -> node.hasParent("on") || node.hasParent("true")).isPresent();
     }
+
     public boolean isOutputJobNode() {
         return getCurrentNode().hasParent(FIELD_OUTPUTS);
     }
@@ -68,10 +69,13 @@ public class WorkflowFile {
     }
 
     public Map<String, String> nodesToMap(final String nodeName, final Predicate<YamlNode> childFilter, final Function<YamlNode, String> key, final Function<YamlNode, String> value) {
-        return this.yaml().getAllChildren(inputs -> nodeName.equals(inputs.name)).stream()
+        //HashMap cause of duplication possibilities
+        final Map<String, String> result = new HashMap<>();
+        this.yaml().getAllChildren(inputs -> nodeName.equals(inputs.name)).stream()
                 .flatMap(inputs -> inputs.children.stream())
                 .filter(childFilter)
-                .collect(Collectors.toMap(key, value));
+                .forEach(node -> result.put(key.apply(node), value.apply(node)));
+        return result;
     }
 
     public Optional<Map<String, String>> getActionOutputs(final String jobId, final String stepId) {

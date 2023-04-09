@@ -20,6 +20,8 @@ Enjoy lightning-fast autocompletion for
 #### TODO
 
 - [ ] Autocomplete workflow and actions refs e.g. `@main`, `@v1`, ...
+- [ ] Try to highlight & sort required parameters (Colors? Icons?)
+- [ ] Fix autocompletion prefixes for nodes e.g. `needs:` && `with`
 - [ ] Add links to Workflows and action files (GitHubUrl && MarketplaceUrl)
   e.g. (https://github.com/cunla/ghactions-manager/blob/master/src/main/kotlin/com/dsoftware/ghmanager/api/Workflows.kt)
 - [ ] Autogenerate `getGitHubContextEnvs`
@@ -27,12 +29,6 @@ Enjoy lightning-fast autocompletion for
 - [ ] Autogenerate `getGitHubEnvs`
   from (https://docs.github.com/en/actions/learn-github-actions/variables#using-the-vars-context-to-access-configuration-variable-values)
 - [ ] Add syntax highlighting
-
-Fixes:
-
-- [ ] Autocomplete env(s) only for the current jobs not for a previous job
-- [ ] Autocomplete steps only for the current jobs not for a previous job
-- [ ] Autocomplete secrets only for the current jobs not for a previous job
 
 ## Learning List
 
