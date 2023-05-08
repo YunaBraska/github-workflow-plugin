@@ -25,6 +25,7 @@ import static com.github.yunabraska.githubworkflow.completion.CompletionItem.*;
 import static com.github.yunabraska.githubworkflow.completion.GitHubWorkflowConfig.*;
 import static com.github.yunabraska.githubworkflow.completion.GitHubWorkflowUtils.addLookupElements;
 import static com.github.yunabraska.githubworkflow.completion.GitHubWorkflowUtils.getCaretBracketItem;
+import static com.github.yunabraska.githubworkflow.completion.GitHubWorkflowUtils.getDefaultPrefix;
 import static com.github.yunabraska.githubworkflow.completion.GitHubWorkflowUtils.getWorkflowFile;
 import static com.github.yunabraska.githubworkflow.completion.NodeIcon.ICON_ENV;
 import static com.github.yunabraska.githubworkflow.completion.NodeIcon.ICON_JOB;
@@ -58,7 +59,6 @@ public class GitHubWorkflowCompletionContributor extends CompletionContributor {
 
                     final String[] prefix = new String[]{""};
                     final Optional<String[]> caretBracketItem = getCaretBracketItem(parameters, partFile, prefix);
-                    final CompletionResultSet resultSetPrefix = resultSet.withPrefixMatcher(new CamelHumpMatcher(prefix[0]));
                     caretBracketItem.ifPresent(cbi -> {
                         final Map<Integer, List<CompletionItem>> completionResultMap = new HashMap<>();
                         for (int i = 0; i < cbi.length; i++) {
@@ -74,17 +74,17 @@ public class GitHubWorkflowCompletionContributor extends CompletionContributor {
                         //ADD LOOKUP ELEMENTS
                         ofNullable(completionResultMap.getOrDefault(cbi.length - 1, null))
                                 .map(GitHubWorkflowCompletionContributor::toLookupItems)
-                                .ifPresent(resultSetPrefix::addAllElements);
+                                .ifPresent(lookupElements -> addElementsWithPrefix(resultSet, prefix[0], lookupElements));
                     });
                     //ACTIONS && WORKFLOWS
                     if (!caretBracketItem.isPresent()) {
                         if (FIELD_NEEDS.equals(partFile.get().getCurrentNode().name())) {
                             Optional.of(listNeeds(partFile, fullFile)).filter(cil -> !cil.isEmpty())
                                     .map(GitHubWorkflowCompletionContributor::toLookupItems)
-                                    .ifPresent(resultSetPrefix::addAllElements);
+                                    .ifPresent(lookupElements -> addElementsWithPrefix(resultSet, getDefaultPrefix(parameters), lookupElements));
                         } else {
-                            //TODO: AutoCompletion middle?
-                            partFile.get().getActionInputs().ifPresent(map -> addLookupElements(resultSet, map, NodeIcon.ICON_INPUT, ':'));
+                            partFile.get().getActionInputs()
+                                    .ifPresent(map -> addLookupElements(resultSet.withPrefixMatcher(getDefaultPrefix(parameters)), map, NodeIcon.ICON_INPUT, ':'));
                         }
                     }
                 });
@@ -111,6 +111,10 @@ public class GitHubWorkflowCompletionContributor extends CompletionContributor {
                 };
             }
         };
+    }
+
+    private static void addElementsWithPrefix(final CompletionResultSet resultSet, final String prefix, final List<LookupElement> lookupElements) {
+        resultSet.withPrefixMatcher(new CamelHumpMatcher(prefix)).addAllElements(lookupElements);
     }
 
     private static void addCompletionItems(final String[] cbi, final int i, final Supplier<WorkflowFile> partFile, final Supplier<WorkflowFile> fullFile, final Map<Integer, List<CompletionItem>> completionItemMap) {

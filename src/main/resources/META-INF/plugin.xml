@@ -5,9 +5,9 @@
     <vendor url="https://github.com/YunaBraska/github-workflow-plugin">Yuna Morgenstern</vendor>
 
     <depends>com.intellij.modules.platform</depends>
+    <depends>org.jetbrains.plugins.github</depends>
 
     <extensions defaultExtensionNs="com.intellij">
-
         <completion.contributor language="any"
                                 implementationClass="com.github.yunabraska.githubworkflow.completion.GitHubWorkflowCompletionContributor"/>
 

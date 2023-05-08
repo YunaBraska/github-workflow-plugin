@@ -3,6 +3,7 @@ package com.github.yunabraska.githubworkflow.completion;
 import com.intellij.codeInsight.lookup.LookupElement;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -130,12 +131,17 @@ public class CompletionItem {
 
     @SuppressWarnings({"java:S1142", "unused"})
     public static List<CompletionItem> listInputs(final Supplier<WorkflowFile> part, final Supplier<WorkflowFile> full) {
-        return completionItemsOf(part.get().nodesToMap(
-                FIELD_INPUTS,
-                input -> input.name() != null,
-                input -> orEmpty(input.name()),
-                GitHubWorkflowUtils::getDescription
-        ), ICON_INPUT);
+        final Map<String, String> result = new HashMap<>();
+        part.get().yaml().getAllChildren(node -> node.hasName(FIELD_INPUTS)).forEach(inputs -> inputs.children().forEach(input -> {
+            if (input.name() != null) {
+                final String description = getDescription(input);
+                final String in = result.computeIfAbsent(input.name(), value -> description);
+                if (in.length() < description.length()) {
+                    result.put(input.name(), description);
+                }
+            }
+        }));
+        return completionItemsOf(result, ICON_INPUT);
     }
 
     public static List<CompletionItem> listSecrets(final Supplier<WorkflowFile> part, final Supplier<WorkflowFile> full) {

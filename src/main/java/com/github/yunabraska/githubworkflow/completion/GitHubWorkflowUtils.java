@@ -3,16 +3,13 @@ package com.github.yunabraska.githubworkflow.completion;
 import com.github.yunabraska.githubworkflow.model.DownloadException;
 import com.intellij.codeInsight.completion.CompletionParameters;
 import com.intellij.codeInsight.completion.CompletionResultSet;
-import com.intellij.codeInsight.completion.InsertionContext;
 import com.intellij.codeInsight.completion.PrioritizedLookupElement;
-import com.intellij.codeInsight.lookup.AutoCompletionPolicy;
 import com.intellij.codeInsight.lookup.LookupElement;
 import com.intellij.codeInsight.lookup.LookupElementBuilder;
 import com.intellij.json.JsonFileType;
 import com.intellij.openapi.application.ApplicationInfo;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.diagnostic.Logger;
-import com.intellij.openapi.editor.Document;
 import com.intellij.openapi.vfs.VfsUtil;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.psi.FileViewProvider;
@@ -38,6 +35,7 @@ import java.util.function.Supplier;
 import java.util.regex.Matcher;
 import java.util.stream.Collectors;
 
+import static com.github.yunabraska.githubworkflow.completion.AutoPopupInsertHandler.addSuffix;
 import static com.github.yunabraska.githubworkflow.completion.GitHubWorkflowConfig.CACHE_ONE_DAY;
 import static com.github.yunabraska.githubworkflow.completion.GitHubWorkflowConfig.PATTERN_GITHUB_ENV;
 import static com.github.yunabraska.githubworkflow.completion.GitHubWorkflowConfig.PATTERN_GITHUB_OUTPUT;
@@ -78,7 +76,7 @@ public class GitHubWorkflowUtils {
         return !Character.isLetterOrDigit(c) && c != '_' && c != '-';
     }
 
-    private static int getStartIndex(final CharSequence currentText, final int fromIndex) {
+    public static int getStartIndex(final CharSequence currentText, final int fromIndex) {
         int result = fromIndex;
         while (result > 0) {
             final char c = currentText.charAt(result);
@@ -91,7 +89,7 @@ public class GitHubWorkflowUtils {
         return Math.min(result, fromIndex);
     }
 
-    private static int getEndIndex(final CharSequence currentText, final int fromIndex, final int toIndex) {
+    public static int getEndIndex(final CharSequence currentText, final int fromIndex, final int toIndex) {
         int result = fromIndex;
         final int endIndex = currentText.length();
         while (result < endIndex && result < toIndex) {
@@ -101,6 +99,14 @@ public class GitHubWorkflowUtils {
             result++;
         }
         return result;
+    }
+
+    public static String getDefaultPrefix(final CompletionParameters parameters) {
+        final String wholeText = parameters.getOriginalFile().getText();
+        final int caretOffset = parameters.getOffset();
+        final int indexStart = getStartIndex(wholeText, caretOffset - 1);
+        final String substring = wholeText.substring(indexStart, caretOffset);
+        return substring;
     }
 
 
@@ -155,45 +161,18 @@ public class GitHubWorkflowUtils {
     }
 
     public static LookupElement toLookupElement(final NodeIcon icon, final char suffix, final String key, final String text) {
-        LookupElementBuilder result = LookupElementBuilder
+        final LookupElementBuilder result = LookupElementBuilder
                 .create(key)
                 .withIcon(icon.icon())
                 .withBoldness(icon != NodeIcon.ICON_ENV)
                 .withTypeText(text)
-                .withCaseSensitivity(false);
-        result = suffix != Character.MIN_VALUE ? result.withInsertHandler((ctx, i) -> addSuffix(ctx, key, suffix)) : result;
-        return PrioritizedLookupElement.withPriority(suffix != Character.MIN_VALUE ? result.withAutoCompletionPolicy(AutoCompletionPolicy.ALWAYS_AUTOCOMPLETE) : result, icon.ordinal() + 5d);
+                .withCaseSensitivity(false)
+                .withInsertHandler((ctx, item) -> addSuffix(ctx, item, suffix));
+        return PrioritizedLookupElement.withPriority(result, icon.ordinal() + 5d);
     }
 
-    private static void addSuffix(final InsertionContext ctx, final String value, final char suffix) {
-        final int startOffset = ctx.getStartOffset();
-        final int tailOffset = ctx.getTailOffset();
-        int newOffset = startOffset + value.length();
-        final Document document = ctx.getDocument();
-
-        // Find the start of the identifier
-        final CharSequence documentChars = document.getCharsSequence();
-        // Find the end of the previous value
-        int valueEnd = tailOffset;
-        if (ctx.getCompletionChar() == '\t') {
-            while (valueEnd < documentChars.length() &&
-                    documentChars.charAt(valueEnd) != suffix &&
-                    documentChars.charAt(valueEnd) != '\n' &&
-                    documentChars.charAt(valueEnd) != '\r') {
-                valueEnd++;
-            }
-            valueEnd++;
-        }
-        // Remove the previous value
-        document.deleteString(startOffset, valueEnd);
-        // Insert the new value
-        document.insertString(startOffset, value);
-        // Add ': ' after the inserted value
-        final String toInsert = String.valueOf(suffix);
-        document.insertString(startOffset + value.length(), toInsert);
-        newOffset += toInsert.length();
-        // Update caret position
-        ctx.getEditor().getCaretModel().moveToOffset(newOffset);
+    public static boolean isLineBreak(final char c) {
+        return c == '\n' || c == '\r';
     }
 
     public static VirtualFile downloadSchema(final String url, final String name) {
@@ -209,7 +188,14 @@ public class GitHubWorkflowUtils {
     }
 
     public static String downloadAction(final String url, final GitHubAction gitHubAction) {
-        return downloadContent(url, TMP_DIR.resolve(gitHubAction.actionName() + "_" + gitHubAction.ref() + "_schema.json"), CACHE_ONE_DAY * 14);
+        return downloadContent(url, TMP_DIR.resolve(
+                gitHubAction.actionName()
+                        + ofNullable(gitHubAction.slug()).map(s -> "_" + s.replace("/", "")).orElse("")
+                        + ofNullable(gitHubAction.sub()).map(s -> "_" + s.replace("/", "")).orElse("")
+                        + ofNullable(gitHubAction.ref()).map(s -> "_" + s.replace("/", "")).orElse("")
+                        + ofNullable(gitHubAction.actionName()).map(s -> "_" + s.replace("/", "")).orElse("")
+                        + "_schema.json"
+        ), CACHE_ONE_DAY * 14);
     }
 
     public static String downloadContent(final String url, final Path path, final long expirationTime) {
@@ -235,7 +221,7 @@ public class GitHubWorkflowUtils {
                     return content;
                 }
             } catch (Exception e) {
-                LOG.error("Cache failed for [" + path + "] message [" + (e instanceof NullPointerException ? null : e.getMessage()) + "]");
+                LOG.warn("Cache failed for [" + path + "] message [" + (e instanceof NullPointerException ? null : e.getMessage()) + "]");
                 return "";
             }
         });
@@ -268,9 +254,11 @@ public class GitHubWorkflowUtils {
                     .gzip(true)
                     .readTimeout(5000)
                     .connectTimeout(5000)
-                    .userAgent(applicationInfo.getBuild().getProductCode() + "/" + applicationInfo.getFullVersion()).tuner(request -> request.setRequestProperty("Client-Name", "GitHub Workflow Plugin")).readString()).get();
+                    .userAgent(applicationInfo.getBuild().getProductCode() + "/" + applicationInfo.getFullVersion())
+                    .tuner(request -> request.setRequestProperty("Client-Name", "GitHub Workflow Plugin"))
+                    .readString()).get();
         } catch (Exception e) {
-            LOG.error("Download failed for [" + urlString + "] message [" + (e instanceof NullPointerException ? null : e.getMessage()) + "]");
+            LOG.warn("Download failed for [" + urlString + "] message [" + (e instanceof NullPointerException ? null : e.getMessage()) + "]");
         }
         return "";
     }

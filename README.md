@@ -20,8 +20,6 @@ Enjoy lightning-fast autocompletion for
 #### TODO
 
 - [ ] Autocomplete workflow and actions refs e.g. `@main`, `@v1`, ...
-- [ ] Try to highlight & sort required parameters (Colors? Icons?)
-- [ ] Fix autocompletion prefixes for nodes e.g. `needs:` && `with`
 - [ ] Add links to Workflows and action files (GitHubUrl && MarketplaceUrl)
   e.g. (https://github.com/cunla/ghactions-manager/blob/master/src/main/kotlin/com/dsoftware/ghmanager/api/Workflows.kt)
 - [ ] Autogenerate `getGitHubContextEnvs`

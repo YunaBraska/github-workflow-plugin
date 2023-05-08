@@ -1,5 +1,17 @@
 package com.github.yunabraska.githubworkflow.completion;
 
+import git4idea.remote.GitRepositoryHostingService;
+import org.jetbrains.plugins.github.api.GHRepositoryPath;
+import org.jetbrains.plugins.github.api.GithubApiRequests;
+import org.jetbrains.plugins.github.util.GHGitRepositoryMapping;
+import org.jetbrains.plugins.github.util.GithubSettings;
+import org.jetbrains.plugins.github.util.GithubUrlUtil;
+import org.jetbrains.plugins.github.authentication.accounts.GithubAccount;
+import org.jetbrains.plugins.github.util.GithubUtil;
+import git4idea.GitRemoteBranch;
+import git4idea.remote.GitRepositoryHostingService;
+
+
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -25,6 +37,7 @@ public class GitHubAction {
     private final List<String> tags = new CopyOnWriteArrayList<>();
     private final AtomicReference<String> ref = new AtomicReference<>(null);
     private final AtomicReference<String> slug = new AtomicReference<>(null);
+    private final AtomicReference<String> sub = new AtomicReference<>(null);
     private final AtomicReference<String> actionName = new AtomicReference<>(null);
 
     public static GitHubAction getGitHubAction(final String uses) {
@@ -68,8 +81,12 @@ public class GitHubAction {
         return actionName.get();
     }
 
+    public String sub() {
+        return sub.get();
+    }
+
     private String toActionYamlUrl() {
-        return (ref.get() != null && slug.get() != null) ? "https://raw.githubusercontent.com/" + slug.get() + "/" + ref.get() + "/action.yml" : null;
+        return (ref.get() != null && slug.get() != null && sub.get() != null) ? "https://raw.githubusercontent.com/" + slug.get() + "/" + ref.get() + sub.get() + "/action.yml" : null;
     }
 
     private String toWorkflowYamlUrl() {
@@ -92,12 +109,12 @@ public class GitHubAction {
 
             if (tagIndex != -1 && userNameIndex < tagIndex) {
                 ref.set(uses.substring(tagIndex + 1));
-                if (repoNameIndex != -1) {
-                    slug.set(uses.substring(0, repoNameIndex));
+                slug.set(uses.substring(0, repoNameIndex > 0 ? repoNameIndex : tagIndex));
+                if (uses.contains(".yaml") || uses.contains(".yml")) {
                     actionName.set(uses.substring(uses.lastIndexOf("/") + 1, tagIndex));
                     setActionParameters(toWorkflowYamlUrl(), false);
                 } else {
-                    slug.set(uses.substring(0, tagIndex));
+                    sub.set(repoNameIndex < tagIndex && repoNameIndex > 0 ? "/" + uses.substring(repoNameIndex + 1, tagIndex) : "");
                     actionName.set(uses.substring(userNameIndex + 1, tagIndex));
                     setActionParameters(toActionYamlUrl(), true);
                 }
@@ -107,6 +124,8 @@ public class GitHubAction {
 
     private void setActionParameters(final String downloadUrl, final boolean isAction) {
         try {
+            //TODO: download file with git credentials
+            final GithubSettings settings = GithubSettings.getInstance();
             extractActionParameters(downloadAction(downloadUrl, this), isAction);
             expiration.set(System.currentTimeMillis() + CACHE_ONE_DAY);
         } catch (Exception e) {
