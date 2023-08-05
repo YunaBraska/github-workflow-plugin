@@ -27,13 +27,12 @@ Add your GitHub account to access private repositories:
 
 - [ ] Autocomplete workflow and actions refs e.g. `@main`, `@v1`, ...
 - [ ] Add links to Workflows and action files (GitHubUrl && MarketplaceUrl)
+- [ ] Add links to Definitions (jobs, steps, needs, secrets, inputs, envs)
   e.g. (https://github.com/cunla/ghactions-manager/blob/master/src/main/kotlin/com/dsoftware/ghmanager/api/Workflows.kt)
 - [ ] Autogenerate `getGitHubContextEnvs`
   from (https://docs.github.com/en/actions/learn-github-actions/contexts#github-context)
 - [ ] Autogenerate `getGitHubEnvs`
   from (https://docs.github.com/en/actions/learn-github-actions/variables#using-the-vars-context-to-access-configuration-variable-values)
-- [ ] Add syntax highlighting
-- [ ] Remove/Exchange snakeyaml dependency
 
 ## Learning List
 
