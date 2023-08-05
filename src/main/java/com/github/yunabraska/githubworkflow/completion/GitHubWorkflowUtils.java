@@ -1,6 +1,7 @@
 package com.github.yunabraska.githubworkflow.completion;
 
 import com.github.yunabraska.githubworkflow.model.DownloadException;
+import com.github.yunabraska.githubworkflow.model.YamlElement;
 import com.intellij.codeInsight.completion.CompletionParameters;
 import com.intellij.codeInsight.completion.CompletionResultSet;
 import com.intellij.codeInsight.completion.PrioritizedLookupElement;
@@ -17,11 +18,18 @@ import com.intellij.psi.PsiElement;
 import com.intellij.psi.PsiFile;
 import com.intellij.testFramework.LightVirtualFile;
 import com.intellij.util.io.HttpRequests;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.plugins.github.api.GithubApiRequest;
+import org.jetbrains.plugins.github.api.GithubApiRequestExecutorManager;
+import org.jetbrains.plugins.github.api.GithubApiResponse;
+import org.jetbrains.plugins.github.authentication.GithubAuthenticationManager;
+import org.jetbrains.plugins.github.authentication.accounts.GithubAccount;
 import org.yaml.snakeyaml.Yaml;
 
 import java.io.BufferedReader;
 import java.io.FileReader;
 import java.io.IOException;
+import java.io.InputStreamReader;
 import java.nio.charset.Charset;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -29,8 +37,10 @@ import java.nio.file.Paths;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Future;
 import java.util.function.Supplier;
 import java.util.regex.Matcher;
 import java.util.stream.Collectors;
@@ -45,6 +55,39 @@ public class GitHubWorkflowUtils {
 
     public static final Path TMP_DIR = Paths.get(System.getProperty("java.io.tmpdir"), "ide_github_workflow_plugin");
     private static final Logger LOG = Logger.getInstance(GitHubWorkflowUtils.class);
+
+    public static Optional<String[]> getCaretBracketItem(final YamlElement element, final int offset, final String[] prefix) {
+        final String wholeText = element.text();
+        if (wholeText == null || offset - element.startIndexAbs() < 1) {
+            return Optional.empty();
+        }
+        final int cursorRel = offset - element.startIndexAbs();
+        final String offsetText = wholeText.substring(0, cursorRel);
+        final int bracketStart = offsetText.lastIndexOf("${{");
+        if (cursorRel > 2 && isInBrackets(offsetText, bracketStart) || ofNullable(element.parent()).filter(parent -> "if".equals(parent.key())).isPresent()) {
+            return getCaretBracketItem(prefix, wholeText, cursorRel);
+        }
+        return Optional.empty();
+    }
+
+    public static Optional<String[]> getCaretBracketItem(final String[] prefix, final String wholeText, final int cursorRel) {
+        final char previousChar = cursorRel == 0 ? ' ' : wholeText.charAt(cursorRel - 1);
+        if (cursorRel > 1 && previousChar == '.') {
+            //NEXT ELEMENT
+            final int indexStart = getStartIndex(wholeText, cursorRel - 1);
+            final int indexEnd = getEndIndex(wholeText, cursorRel - 1, wholeText.length());
+            return Optional.of(wholeText.substring(indexStart, indexEnd + 1).split("\\."));
+        } else if (isNonValidNodeChar(previousChar)) {
+            //START ELEMENT
+            return Optional.of(prefix);
+        } else {
+            //MIDDLE ELEMENT
+            final int indexStart = cursorRel == 0 ? 0 : getStartIndex(wholeText, cursorRel - 1);
+            final String[] prefArray = wholeText.substring(indexStart, cursorRel).split("\\.", -1);
+            prefix[0] = prefArray[prefArray.length - 1];
+            return Optional.of(wholeText.substring(indexStart, cursorRel - prefix[0].length()).split("\\."));
+        }
+    }
 
     public static Optional<String[]> getCaretBracketItem(final CompletionParameters parameters, final Supplier<WorkflowFile> part, final String[] prefix) {
         final String wholeText = parameters.getOriginalFile().getText();
@@ -124,6 +167,12 @@ public class GitHubWorkflowUtils {
                 + n.getChild("description").map(YamlNode::value).orElse("");
     }
 
+    public static String getDescription(final YamlElement n) {
+        return "r[" + n.required() + "]"
+                + ofNullable(n.childDefault()).map(def -> " def[" + def + "]").orElse("")
+                + ofNullable(n.description()).map(desc -> " " + desc).orElse("");
+    }
+
     public static Map<String, String> toGithubOutputs(final String text) {
         final Map<String, String> variables = new HashMap<>();
         if (text.contains("$GITHUB_OUTPUT") || text.contains("${GITHUB_OUTPUT}")) {
@@ -180,7 +229,7 @@ public class GitHubWorkflowUtils {
             final Path path = TMP_DIR.resolve(name + "_schema.json");
             final VirtualFile newVirtualFile = new LightVirtualFile("github_workflow_plugin_" + path.getFileName().toString(), JsonFileType.INSTANCE, "");
             //FIXME: how to use the intellij idea cache?
-            VfsUtil.saveText(newVirtualFile, downloadContent(url, path, CACHE_ONE_DAY * 30));
+            VfsUtil.saveText(newVirtualFile, downloadContent(url, path, CACHE_ONE_DAY * 30, false));
             return newVirtualFile;
         } catch (Exception ignored) {
             return null;
@@ -195,18 +244,50 @@ public class GitHubWorkflowUtils {
                         + ofNullable(gitHubAction.ref()).map(s -> "_" + s.replace("/", "")).orElse("")
                         + ofNullable(gitHubAction.actionName()).map(s -> "_" + s.replace("/", "")).orElse("")
                         + "_schema.json"
-        ), CACHE_ONE_DAY * 14);
+        ), CACHE_ONE_DAY * 14, true);
     }
 
-    public static String downloadContent(final String url, final Path path, final long expirationTime) {
+    public static String downloadFileFromGitHub(final String downloadUrl) {
+        return GithubAuthenticationManager.getInstance().getAccounts().stream().map(account -> {
+            try {
+                return downloadFromGitHub(downloadUrl, account);
+            } catch (Exception ignored) {
+                return null;
+            }
+        }).filter(Objects::nonNull).findFirst().orElse(null);
+    }
+
+    private static String downloadFromGitHub(final String downloadUrl, final GithubAccount account) throws IOException {
+        return GithubApiRequestExecutorManager.getInstance().getExecutor(account).execute(new GithubApiRequest.Get<>(downloadUrl) {
+            @Override
+            public String extractResult(final @NotNull GithubApiResponse response) {
+                try {
+                    return response.handleBody(inputStream -> {
+                        try (final BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(inputStream))) {
+                            final StringBuilder stringBuilder = new StringBuilder();
+                            String line;
+                            while ((line = bufferedReader.readLine()) != null) {
+                                stringBuilder.append(line).append(System.lineSeparator());
+                            }
+                            return stringBuilder.toString();
+                        }
+                    });
+                } catch (IOException ignored) {
+                    return null;
+                }
+            }
+        });
+    }
+
+    public static String downloadContent(final String url, final Path path, final long expirationTime, final boolean usingGithub) {
         try {
-            return downloadContentAsync(url, path, expirationTime).get();
+            return downloadContentAsync(url, path, expirationTime, usingGithub).get();
         } catch (Exception e) {
             throw new DownloadException(e);
         }
     }
 
-    private static CompletableFuture<String> downloadContentAsync(final String url, final Path path, final long expirationTime) {
+    private static CompletableFuture<String> downloadContentAsync(final String url, final Path path, final long expirationTime, final boolean usingGithub) {
         return CompletableFuture.supplyAsync(() -> {
             try {
                 if (Files.exists(path) && (expirationTime < 1 || Files.getLastModifiedTime(path).toMillis() > System.currentTimeMillis() - expirationTime)) {
@@ -216,12 +297,12 @@ public class GitHubWorkflowUtils {
                     if (!Files.exists(path.getParent())) {
                         Files.createDirectories(path.getParent());
                     }
-                    final String content = downloadContent(url);
+                    final String content = Optional.of(usingGithub).filter(withGH -> withGH).map(withGH -> downloadFileFromGitHub(url)).orElseGet(() -> downloadContent(url));
                     Files.write(path, content.getBytes());
                     return content;
                 }
             } catch (Exception e) {
-                LOG.warn("Cache failed for [" + path + "] message [" + (e instanceof NullPointerException ? null : e.getMessage()) + "]");
+                LOG.warn("Cache failed for [" + url + "] message [" + (e instanceof NullPointerException ? null : e.getMessage()) + "]");
                 return "";
             }
         });
@@ -249,16 +330,23 @@ public class GitHubWorkflowUtils {
         LOG.info("Download [" + urlString + "]");
         try {
             final ApplicationInfo applicationInfo = ApplicationInfo.getInstance();
-            return ApplicationManager.getApplication().executeOnPooledThread(() -> HttpRequests
-                    .request(urlString)
-                    .gzip(true)
-                    .readTimeout(5000)
-                    .connectTimeout(5000)
-                    .userAgent(applicationInfo.getBuild().getProductCode() + "/" + applicationInfo.getFullVersion())
-                    .tuner(request -> request.setRequestProperty("Client-Name", "GitHub Workflow Plugin"))
-                    .readString()).get();
+            final Future<String> future = ApplicationManager.getApplication().executeOnPooledThread(() -> {
+                try {
+                    return HttpRequests
+                            .request(urlString)
+                            .gzip(true)
+                            .readTimeout(5000)
+                            .connectTimeout(5000)
+                            .userAgent(applicationInfo.getBuild().getProductCode() + "/" + applicationInfo.getFullVersion())
+                            .tuner(request -> request.setRequestProperty("Client-Name", "GitHub Workflow Plugin"))
+                            .readString();
+                } catch (Exception e) {
+                    return null;
+                }
+            });
+            return future.get();
         } catch (Exception e) {
-            LOG.warn("Download failed for [" + urlString + "] message [" + (e instanceof NullPointerException ? null : e.getMessage()) + "]");
+            LOG.warn("Execution failed for [" + urlString + "] message [" + (e instanceof NullPointerException ? null : e.getMessage()) + "]");
         }
         return "";
     }

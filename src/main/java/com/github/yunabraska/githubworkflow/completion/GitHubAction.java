@@ -1,21 +1,10 @@
 package com.github.yunabraska.githubworkflow.completion;
 
-import git4idea.remote.GitRepositoryHostingService;
-import org.jetbrains.plugins.github.api.GHRepositoryPath;
-import org.jetbrains.plugins.github.api.GithubApiRequests;
-import org.jetbrains.plugins.github.util.GHGitRepositoryMapping;
-import org.jetbrains.plugins.github.util.GithubSettings;
-import org.jetbrains.plugins.github.util.GithubUrlUtil;
-import org.jetbrains.plugins.github.authentication.accounts.GithubAccount;
-import org.jetbrains.plugins.github.util.GithubUtil;
-import git4idea.GitRemoteBranch;
-import git4idea.remote.GitRepositoryHostingService;
-
-
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -26,6 +15,7 @@ import static com.github.yunabraska.githubworkflow.completion.GitHubWorkflowConf
 import static com.github.yunabraska.githubworkflow.completion.GitHubWorkflowConfig.FIELD_OUTPUTS;
 import static com.github.yunabraska.githubworkflow.completion.GitHubWorkflowUtils.downloadAction;
 import static com.github.yunabraska.githubworkflow.completion.GitHubWorkflowUtils.orEmpty;
+import static com.github.yunabraska.githubworkflow.model.YamlElementHelper.hasText;
 import static java.util.Optional.ofNullable;
 
 public class GitHubAction {
@@ -39,6 +29,7 @@ public class GitHubAction {
     private final AtomicReference<String> slug = new AtomicReference<>(null);
     private final AtomicReference<String> sub = new AtomicReference<>(null);
     private final AtomicReference<String> actionName = new AtomicReference<>(null);
+    private final AtomicBoolean isAvailable = new AtomicBoolean(false);
 
     public static GitHubAction getGitHubAction(final String uses) {
         try {
@@ -85,6 +76,11 @@ public class GitHubAction {
         return sub.get();
     }
 
+
+    public boolean isAvailable() {
+        return isAvailable.get();
+    }
+
     private String toActionYamlUrl() {
         return (ref.get() != null && slug.get() != null && sub.get() != null) ? "https://raw.githubusercontent.com/" + slug.get() + "/" + ref.get() + sub.get() + "/action.yml" : null;
     }
@@ -124,16 +120,16 @@ public class GitHubAction {
 
     private void setActionParameters(final String downloadUrl, final boolean isAction) {
         try {
-            //TODO: download file with git credentials
-            final GithubSettings settings = GithubSettings.getInstance();
             extractActionParameters(downloadAction(downloadUrl, this), isAction);
-            expiration.set(System.currentTimeMillis() + CACHE_ONE_DAY);
         } catch (Exception e) {
+            isAvailable.set(false);
             expiration.set(System.currentTimeMillis() + CACHE_TEN_MINUTES);
         }
     }
 
     private void extractActionParameters(final String content, final boolean isAction) {
+        isAvailable.set(hasText(content));
+        expiration.set(System.currentTimeMillis() + (hasText(content) ? CACHE_ONE_DAY : CACHE_TEN_MINUTES));
         final WorkflowFile workflowFile = WorkflowFile.workflowFileOf(actionName() + "_" + ref(), content);
         inputs.putAll(getActionParameters(workflowFile, FIELD_INPUTS, isAction));
         outputs.putAll(getActionParameters(workflowFile, FIELD_OUTPUTS, isAction));

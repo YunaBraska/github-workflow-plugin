@@ -24,7 +24,7 @@ repositories {
 }
 
 dependencies {
-    implementation("org.yaml:snakeyaml:2.0")
+//    implementation("org.yaml:snakeyaml:2.0")
 }
 
 

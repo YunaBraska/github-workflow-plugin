@@ -4,6 +4,16 @@
 
 ## [Unreleased]
 
+## [2.0.0] - 2023-07-05
+
+### Big Refactoring
+
+- Added completion for `Runner`
+- Added support for `private` GitHub repositories using GitHub Account
+- Started visual validations with quick fixes
+- Exchanged YAML Parser to `org.jetbrains.yaml`
+- Fixed few bugs
+
 ## [1.0.1] - 2023-04-09
 
 ### Happy Easter

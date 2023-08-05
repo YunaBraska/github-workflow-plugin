@@ -3,6 +3,7 @@
 ![Build](https://github.com/YunaBraska/github-workflow-plugin/workflows/Build/badge.svg)
 [![Version](https://img.shields.io/jetbrains/plugin/v/21396-github-workflow.svg)](https://plugins.jetbrains.com/plugin/21396-github-workflow)
 [![Downloads](https://img.shields.io/jetbrains/plugin/d/21396-github-workflow.svg)](https://plugins.jetbrains.com/plugin/21396-github-workflow)
+[![](https://img.shields.io/static/v1?label=Sponsor&message=%E2%9D%A4&logo=GitHub&color=%23fe8e86)](https://github.com/sponsors/YunaBraska)
 
 <!-- Plugin description -->
 Autocompletion for GitHub workflows
@@ -14,6 +15,11 @@ Enjoy lightning-fast autocompletion for
 * envs
 * secrets
 * jobs
+
+### GitHub repository access
+
+Add your GitHub account to access private repositories:
+> File | Settings | Version Control | GitHub
 
 <!-- Plugin description end -->
 
@@ -27,6 +33,7 @@ Enjoy lightning-fast autocompletion for
 - [ ] Autogenerate `getGitHubEnvs`
   from (https://docs.github.com/en/actions/learn-github-actions/variables#using-the-vars-context-to-access-configuration-variable-values)
 - [ ] Add syntax highlighting
+- [ ] Remove/Exchange snakeyaml dependency
 
 ## Learning List
 
@@ -36,7 +43,7 @@ Enjoy lightning-fast autocompletion for
 - [x] Adjust the plugin description in `README` (see [Tips][docs:plugin-description])
 - [x] Review
   the [Legal Agreements](https://plugins.jetbrains.com/docs/marketplace/legal-agreements.html?from=IJPluginTemplate).
-- [ ] [Publish a plugin manually](https://plugins.jetbrains.com/docs/intellij/publishing-plugin.html?from=IJPluginTemplate)
+- [x] [Publish a plugin manually](https://plugins.jetbrains.com/docs/intellij/publishing-plugin.html?from=IJPluginTemplate)
   for the first time.
 - [ ] Set the `21396-github-workflow` in the above README badges.
 - [ ] Set the [Plugin Signing](https://plugins.jetbrains.com/docs/intellij/plugin-signing.html?from=IJPluginTemplate)
