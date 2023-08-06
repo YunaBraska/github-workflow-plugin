@@ -23,6 +23,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.function.Consumer;
@@ -30,6 +31,8 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
+import static com.github.yunabraska.githubworkflow.completion.GitHubWorkflowUtils.TMP_DIR;
+import static com.github.yunabraska.githubworkflow.config.GitHubWorkflowConfig.*;
 import static com.github.yunabraska.githubworkflow.model.CompletionItem.listEnvs;
 import static com.github.yunabraska.githubworkflow.model.CompletionItem.listInputs;
 import static com.github.yunabraska.githubworkflow.model.CompletionItem.listJobOutputs;
@@ -37,7 +40,6 @@ import static com.github.yunabraska.githubworkflow.model.CompletionItem.listJobs
 import static com.github.yunabraska.githubworkflow.model.CompletionItem.listSecrets;
 import static com.github.yunabraska.githubworkflow.model.CompletionItem.listStepOutputs;
 import static com.github.yunabraska.githubworkflow.model.CompletionItem.listSteps;
-import static com.github.yunabraska.githubworkflow.config.GitHubWorkflowConfig.*;
 import static com.github.yunabraska.githubworkflow.model.WorkflowContext.WORKFLOW_CONTEXT_MAP;
 import static com.github.yunabraska.githubworkflow.model.YamlElementHelper.getPath;
 import static java.util.Optional.ofNullable;
@@ -50,7 +52,7 @@ public class HighlightAnnotator implements Annotator {
     public void annotate(@NotNull final PsiElement psiElement, @NotNull final AnnotationHolder holder) {
         if (psiElement.getLanguage() instanceof YAMLLanguage) {
             ofNullable(WORKFLOW_CONTEXT_MAP.get(getPath(psiElement))).map(WorkflowContext::root).map(root -> toYamlElement(psiElement, root)).ifPresent(element -> {
-                if(FIELD_USES.equals(element.key())) {
+                if (FIELD_USES.equals(element.key())) {
                     ofNullable(element.childTextNoQuotes()).map(GitHubAction::getGitHubAction).filter(GitHubAction::isAvailable).ifPresent(gitHubAction -> {
                         final List<IntentionAction> quickFixes = gitHubAction.isAction()
                                 ? Arrays.asList(new OpenUrlIntentionAction(gitHubAction.marketplaceUrl(), "Open Marketplace url [" + gitHubAction.slug() + "]"), new OpenUrlIntentionAction(gitHubAction.toUrl(), "Open file url to [" + gitHubAction.slug() + "]"))
@@ -63,6 +65,21 @@ public class HighlightAnnotator implements Annotator {
                                 psiElement.getTextRange(),
                                 "Open file url to [" + gitHubAction.slug() + "]"
                         );
+                    });
+                }
+                //VALIDATE ACTION INPUTS
+                if (element.key() != null && ofNullable(element.parent()).map(YamlElement::key).filter(FIELD_WITH::equals).isPresent()) {
+                    element.findParentStep().map(YamlElement::uses).map(GitHubAction::getGitHubAction).map(GitHubAction::inputs).map(Map::keySet).ifPresent(inputs -> {
+                        if (!inputs.contains(element.key())) {
+                            create(
+                                    holder,
+                                    HighlightSeverity.ERROR,
+                                    ProblemHighlightType.GENERIC_ERROR,
+                                    Arrays.asList(new ReplaceTextIntentionAction(psiElement.getTextRange(), element.key(), true)),
+                                    psiElement.getTextRange(),
+                                    "Invalid [" + element.key() + "] - (Cache folder: " + TMP_DIR + ")"
+                            );
+                        }
                     });
                 }
                 if (element.findParent(FIELD_USES).isPresent() && !ofNullable(ACTION_CACHE.get(element.textOrChildText())).filter(GitHubAction::isAvailable).isPresent()) {

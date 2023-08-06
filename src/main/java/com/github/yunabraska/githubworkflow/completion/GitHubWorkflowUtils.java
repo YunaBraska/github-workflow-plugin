@@ -13,6 +13,8 @@ import com.intellij.json.JsonFileType;
 import com.intellij.openapi.application.ApplicationInfo;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.diagnostic.Logger;
+import com.intellij.openapi.project.Project;
+import com.intellij.openapi.project.ProjectManager;
 import com.intellij.openapi.vfs.VfsUtil;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.psi.FileViewProvider;
@@ -22,10 +24,13 @@ import com.intellij.testFramework.LightVirtualFile;
 import com.intellij.util.io.HttpRequests;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.plugins.github.api.GithubApiRequest;
+import org.jetbrains.plugins.github.api.GithubApiRequestExecutor;
 import org.jetbrains.plugins.github.api.GithubApiRequestExecutorManager;
 import org.jetbrains.plugins.github.api.GithubApiResponse;
+import org.jetbrains.plugins.github.authentication.GHAccountsUtil;
 import org.jetbrains.plugins.github.authentication.GithubAuthenticationManager;
 import org.jetbrains.plugins.github.authentication.accounts.GithubAccount;
+import org.jetbrains.plugins.github.util.GHCompatibilityUtil;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -214,7 +219,7 @@ public class GitHubWorkflowUtils {
     }
 
     public static String downloadFileFromGitHub(final String downloadUrl) {
-        return GithubAuthenticationManager.getInstance().getAccounts().stream().map(account -> {
+        return GHAccountsUtil.getAccounts().stream().map(account -> {
             try {
                 return downloadFromGitHub(downloadUrl, account);
             } catch (Exception ignored) {
@@ -224,7 +229,8 @@ public class GitHubWorkflowUtils {
     }
 
     private static String downloadFromGitHub(final String downloadUrl, final GithubAccount account) throws IOException {
-        return GithubApiRequestExecutorManager.getInstance().getExecutor(account).execute(new GithubApiRequest.Get<>(downloadUrl) {
+        final String token = GHCompatibilityUtil.getOrRequestToken(account, ProjectManager.getInstance().getDefaultProject());
+        return  GithubApiRequestExecutor.Factory.getInstance().create(token).execute(new GithubApiRequest.Get<>(downloadUrl) {
             @Override
             public String extractResult(final @NotNull GithubApiResponse response) {
                 try {
