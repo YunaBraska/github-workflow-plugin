@@ -8,6 +8,7 @@
 
 ### Big Refactoring
 
+- Added links to `uses` fields - press `ALT + RETURN`
 - Added completion for `Runner`
 - Added support for `private` GitHub repositories using GitHub Account
 - Started visual validations with quick fixes

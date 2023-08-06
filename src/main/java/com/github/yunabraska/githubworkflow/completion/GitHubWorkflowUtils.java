@@ -1,6 +1,8 @@
 package com.github.yunabraska.githubworkflow.completion;
 
+import com.github.yunabraska.githubworkflow.config.NodeIcon;
 import com.github.yunabraska.githubworkflow.model.DownloadException;
+import com.github.yunabraska.githubworkflow.model.GitHubAction;
 import com.github.yunabraska.githubworkflow.model.YamlElement;
 import com.intellij.codeInsight.completion.CompletionParameters;
 import com.intellij.codeInsight.completion.CompletionResultSet;
@@ -24,10 +26,8 @@ import org.jetbrains.plugins.github.api.GithubApiRequestExecutorManager;
 import org.jetbrains.plugins.github.api.GithubApiResponse;
 import org.jetbrains.plugins.github.authentication.GithubAuthenticationManager;
 import org.jetbrains.plugins.github.authentication.accounts.GithubAccount;
-import org.yaml.snakeyaml.Yaml;
 
 import java.io.BufferedReader;
-import java.io.FileReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.nio.charset.Charset;
@@ -41,14 +41,13 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Future;
-import java.util.function.Supplier;
 import java.util.regex.Matcher;
 import java.util.stream.Collectors;
 
 import static com.github.yunabraska.githubworkflow.completion.AutoPopupInsertHandler.addSuffix;
-import static com.github.yunabraska.githubworkflow.completion.GitHubWorkflowConfig.CACHE_ONE_DAY;
-import static com.github.yunabraska.githubworkflow.completion.GitHubWorkflowConfig.PATTERN_GITHUB_ENV;
-import static com.github.yunabraska.githubworkflow.completion.GitHubWorkflowConfig.PATTERN_GITHUB_OUTPUT;
+import static com.github.yunabraska.githubworkflow.config.GitHubWorkflowConfig.CACHE_ONE_DAY;
+import static com.github.yunabraska.githubworkflow.config.GitHubWorkflowConfig.PATTERN_GITHUB_ENV;
+import static com.github.yunabraska.githubworkflow.config.GitHubWorkflowConfig.PATTERN_GITHUB_OUTPUT;
 import static java.util.Optional.ofNullable;
 
 public class GitHubWorkflowUtils {
@@ -89,32 +88,6 @@ public class GitHubWorkflowUtils {
         }
     }
 
-    public static Optional<String[]> getCaretBracketItem(final CompletionParameters parameters, final Supplier<WorkflowFile> part, final String[] prefix) {
-        final String wholeText = parameters.getOriginalFile().getText();
-        final int caretOffset = parameters.getOffset();
-        final String offsetText = wholeText.substring(0, caretOffset);
-        final int bracketStart = offsetText.lastIndexOf("${{");
-        if (caretOffset > 2 && isInBrackets(offsetText, bracketStart) || "if".equals(part.get().getCurrentNode().name())) {
-            final char previousChar = wholeText.charAt(caretOffset - 1);
-            if (caretOffset > 1 && previousChar == '.') {
-                //NEXT ELEMENT
-                final int indexStart = getStartIndex(wholeText, caretOffset - 1);
-                final int indexEnd = getEndIndex(wholeText, caretOffset - 1, wholeText.length());
-                return Optional.of(wholeText.substring(indexStart, indexEnd + 1).split("\\."));
-            } else if (caretOffset > 1 && isNonValidNodeChar(previousChar)) {
-                //START ELEMENT
-                return Optional.of(prefix);
-            } else {
-                //MIDDLE ELEMENT
-                final int indexStart = getStartIndex(wholeText, caretOffset - 1);
-                final String[] prefArray = wholeText.substring(indexStart, caretOffset).split("\\.", -1);
-                prefix[0] = prefArray[prefArray.length - 1];
-                return Optional.of(wholeText.substring(indexStart, caretOffset - prefix[0].length()).split("\\."));
-            }
-        }
-        return Optional.empty();
-    }
-
     private static boolean isNonValidNodeChar(final char c) {
         return !Character.isLetterOrDigit(c) && c != '_' && c != '-';
     }
@@ -148,8 +121,7 @@ public class GitHubWorkflowUtils {
         final String wholeText = parameters.getOriginalFile().getText();
         final int caretOffset = parameters.getOffset();
         final int indexStart = getStartIndex(wholeText, caretOffset - 1);
-        final String substring = wholeText.substring(indexStart, caretOffset);
-        return substring;
+        return wholeText.substring(indexStart, caretOffset);
     }
 
 
@@ -159,12 +131,6 @@ public class GitHubWorkflowUtils {
 
     public static String orEmpty(final String text) {
         return ofNullable(text).orElse("");
-    }
-
-    public static String getDescription(final YamlNode n) {
-        return n.getChild("required").map(YamlNode::value).map(required -> "req[" + required + "] ").orElse("")
-                + n.getChild("default").map(YamlNode::value).map(def -> "def[" + def + "] ").orElse("")
-                + n.getChild("description").map(YamlNode::value).orElse("");
     }
 
     public static String getDescription(final YamlElement n) {
@@ -360,30 +326,6 @@ public class GitHubWorkflowUtils {
                 .map(VirtualFile::getPath)
                 .map(Paths::get)
                 .filter(GitHubWorkflowUtils::isWorkflowPath);
-    }
-
-    @SuppressWarnings("unused")
-    public static void yamlOf(final Path path) {
-        try (final FileReader fileReader = new FileReader(path.toFile())) {
-            processYamlElement(new Yaml().load(fileReader));
-        } catch (IOException ignored) {
-            //ignored
-        }
-    }
-
-    @SuppressWarnings("unchecked")
-    public static void processYamlElement(final Object yamlElement) {
-        if (yamlElement instanceof Map) {
-            final Map<String, Object> yamlMap = (Map<String, Object>) yamlElement;
-            for (Map.Entry<String, Object> entry : yamlMap.entrySet()) {
-                processYamlElement(entry.getValue());
-            }
-        } else if (yamlElement instanceof List) {
-            final List<Object> yamlList = (List<Object>) yamlElement;
-            for (Object element : yamlList) {
-                processYamlElement(element);
-            }
-        }
     }
 
     public static boolean isWorkflowPath(final Path path) {

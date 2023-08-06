@@ -10,8 +10,8 @@ assignees: ''
 **What do you want to achieve?**
 A clear and concise description of what you want to achieve.
 
-**What did you tried already?**
-A clear and concise description of what did you already tried out.
+**What did you try already?**
+A clear and concise description of what did you already try out.
 
 **Operating System**
 > N/A

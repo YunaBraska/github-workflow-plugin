@@ -5,10 +5,17 @@ import com.intellij.psi.PsiElement;
 import com.intellij.psi.PsiFile;
 import com.intellij.psi.impl.source.tree.PsiErrorElementImpl;
 import org.jetbrains.yaml.YAMLLanguage;
-import org.jetbrains.yaml.psi.*;
-import org.jetbrains.yaml.psi.impl.YAMLMappingImpl;
+import org.jetbrains.yaml.psi.YAMLCompoundValue;
+import org.jetbrains.yaml.psi.YAMLDocument;
+import org.jetbrains.yaml.psi.YAMLFile;
+import org.jetbrains.yaml.psi.YAMLKeyValue;
+import org.jetbrains.yaml.psi.YAMLMapping;
+import org.jetbrains.yaml.psi.YAMLQuotedText;
+import org.jetbrains.yaml.psi.YAMLScalar;
+import org.jetbrains.yaml.psi.YAMLSequence;
+import org.jetbrains.yaml.psi.YAMLSequenceItem;
+import org.jetbrains.yaml.psi.impl.YAMLBlockScalarImpl;
 import org.jetbrains.yaml.psi.impl.YAMLPlainTextImpl;
-import org.jetbrains.yaml.psi.impl.YAMLScalarListImpl;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -49,24 +56,22 @@ public class YamlElementHelper {
     public static YamlElement yamlOf(final YamlElement parent, final PsiElement element) {
         if (element instanceof YAMLFile || element instanceof YAMLDocument) {
             return element.getFirstChild() == null ? null : yamlOf(null, element.getFirstChild());
-//        } else if (parent == null && element instanceof YAMLMapping) {
-//            return createRootElement(element);
         } else if (parent == null) {
             return createRootElement(element);
         } else if (element instanceof YAMLMapping) {
             return addChildren(parent, element.getChildren());
         } else if (element instanceof YAMLKeyValue) {
             return createElement(parent, (YAMLKeyValue) element);
-        } else if (element instanceof YAMLMappingImpl) {
-            return addChildren(parent, (YAMLMappingImpl) element);
+//        } else if (element instanceof YAMLMappingImpl) {
+//            return addChildren(parent, (YAMLMappingImpl) element);
         } else if (element instanceof YAMLSequenceItem) {
             return addChildren(parent, (YAMLSequenceItem) element);
         } else if (element instanceof YAMLSequence) {
             return addChildren(parent, (YAMLSequence) element);
-        } else if (element instanceof YAMLScalarList) {
-            return addChildren(parent, (YAMLScalarListImpl) element);
         } else if (element instanceof YAMLQuotedText || element instanceof YAMLPlainTextImpl) {
             return createElement(parent, (YAMLScalar) element);
+        } else if (element instanceof YAMLBlockScalarImpl) {
+            return addChildren(parent, (YAMLBlockScalarImpl) element);
         } else if (element instanceof YAMLCompoundValue || element instanceof PsiErrorElementImpl) {
             //IGNORE
             return parent;
@@ -92,11 +97,6 @@ public class YamlElementHelper {
         );
         Arrays.stream(element.getChildren()).map(child -> yamlOf(listItem, child)).forEach(addToParent(listItem));
         addToParent(parent).accept(listItem);
-        return parent;
-    }
-
-    private static YamlElement addChildren(final YamlElement parent, final YAMLMappingImpl element) {
-        Arrays.stream(element.getChildren()).forEach(child -> yamlOf(parent, child));
         return parent;
     }
 
@@ -149,7 +149,7 @@ public class YamlElementHelper {
         return parent;
     }
 
-    private static YamlElement addChildren(final YamlElement parent, final YAMLScalarListImpl element) {
+    private static YamlElement addChildren(final YamlElement parent, final YAMLBlockScalarImpl element) {
         if (parent != null) {
             element.getContentRanges().stream().map(textRange -> new YamlElement(
                     element.getTextRange().getStartOffset() + textRange.getStartOffset(),

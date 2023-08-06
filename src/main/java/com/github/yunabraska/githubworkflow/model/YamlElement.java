@@ -12,17 +12,18 @@ import java.util.Set;
 import java.util.function.Predicate;
 import java.util.stream.Stream;
 
-import static com.github.yunabraska.githubworkflow.completion.GitHubWorkflowConfig.FIELD_JOBS;
-import static com.github.yunabraska.githubworkflow.completion.GitHubWorkflowConfig.FIELD_NEEDS;
-import static com.github.yunabraska.githubworkflow.completion.GitHubWorkflowConfig.FIELD_ON;
-import static com.github.yunabraska.githubworkflow.completion.GitHubWorkflowConfig.FIELD_OUTPUTS;
-import static com.github.yunabraska.githubworkflow.completion.GitHubWorkflowConfig.FIELD_STEPS;
-import static com.github.yunabraska.githubworkflow.completion.GitHubWorkflowConfig.FIELD_USES;
-import static com.github.yunabraska.githubworkflow.completion.GitHubWorkflowConfig.FIELD_WITH;
+import static com.github.yunabraska.githubworkflow.config.GitHubWorkflowConfig.FIELD_JOBS;
+import static com.github.yunabraska.githubworkflow.config.GitHubWorkflowConfig.FIELD_NEEDS;
+import static com.github.yunabraska.githubworkflow.config.GitHubWorkflowConfig.FIELD_ON;
+import static com.github.yunabraska.githubworkflow.config.GitHubWorkflowConfig.FIELD_OUTPUTS;
+import static com.github.yunabraska.githubworkflow.config.GitHubWorkflowConfig.FIELD_STEPS;
+import static com.github.yunabraska.githubworkflow.config.GitHubWorkflowConfig.FIELD_USES;
+import static com.github.yunabraska.githubworkflow.config.GitHubWorkflowConfig.FIELD_WITH;
 import static com.github.yunabraska.githubworkflow.model.YamlElementHelper.filterNodesRecursive;
 import static com.github.yunabraska.githubworkflow.model.YamlElementHelper.removeQuotes;
 import static java.util.Optional.ofNullable;
 
+@SuppressWarnings({"SameReturnValue", "unused"})
 public class YamlElement {
 
     protected final int startIndexAbs;

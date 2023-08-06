@@ -1,4 +1,7 @@
-package com.github.yunabraska.githubworkflow.completion;
+package com.github.yunabraska.githubworkflow.config;
+
+import com.github.yunabraska.githubworkflow.model.GitHubAction;
+import com.github.yunabraska.githubworkflow.model.WorkflowContext;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -29,7 +32,7 @@ public class GitHubWorkflowConfig {
     public static final String FIELD_SECRETS = "secrets";
     public static final Map<String, Supplier<Map<String, String>>> DEFAULT_VALUE_MAP = initProcessorMap();
     public static final Map<String, GitHubAction> ACTION_CACHE = new ConcurrentHashMap<>();
-    protected static final Map<String, WorkflowFile> WORKFLOW_CACHE = new ConcurrentHashMap<>();
+    public static final Map<String, WorkflowContext> WORKFLOW_CACHE = new ConcurrentHashMap<>();
 
     private static Map<String, Supplier<Map<String, String>>> initProcessorMap() {
         final Map<String, Supplier<Map<String, String>>> result = new HashMap<>();

@@ -1,10 +1,11 @@
-package com.github.yunabraska.githubworkflow;
+package com.github.yunabraska.githubworkflow.highlights;
 
-import com.github.yunabraska.githubworkflow.completion.CompletionItem;
-import com.github.yunabraska.githubworkflow.completion.GitHubAction;
+import com.github.yunabraska.githubworkflow.model.CompletionItem;
+import com.github.yunabraska.githubworkflow.model.GitHubAction;
 import com.github.yunabraska.githubworkflow.model.WorkflowContext;
 import com.github.yunabraska.githubworkflow.model.YamlElement;
 import com.github.yunabraska.githubworkflow.quickfixes.OpenSettingsIntentionAction;
+import com.github.yunabraska.githubworkflow.quickfixes.OpenUrlIntentionAction;
 import com.github.yunabraska.githubworkflow.quickfixes.ReplaceTextIntentionAction;
 import com.intellij.codeInsight.intention.IntentionAction;
 import com.intellij.codeInspection.ProblemHighlightType;
@@ -22,37 +23,48 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 import java.util.function.Consumer;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
-import static com.github.yunabraska.githubworkflow.completion.CompletionItem.listEnvs;
-import static com.github.yunabraska.githubworkflow.completion.CompletionItem.listInputs;
-import static com.github.yunabraska.githubworkflow.completion.CompletionItem.listJobOutputs;
-import static com.github.yunabraska.githubworkflow.completion.CompletionItem.listJobs;
-import static com.github.yunabraska.githubworkflow.completion.CompletionItem.listSecrets;
-import static com.github.yunabraska.githubworkflow.completion.CompletionItem.listStepOutputs;
-import static com.github.yunabraska.githubworkflow.completion.CompletionItem.listSteps;
-import static com.github.yunabraska.githubworkflow.completion.GitHubWorkflowConfig.*;
+import static com.github.yunabraska.githubworkflow.model.CompletionItem.listEnvs;
+import static com.github.yunabraska.githubworkflow.model.CompletionItem.listInputs;
+import static com.github.yunabraska.githubworkflow.model.CompletionItem.listJobOutputs;
+import static com.github.yunabraska.githubworkflow.model.CompletionItem.listJobs;
+import static com.github.yunabraska.githubworkflow.model.CompletionItem.listSecrets;
+import static com.github.yunabraska.githubworkflow.model.CompletionItem.listStepOutputs;
+import static com.github.yunabraska.githubworkflow.model.CompletionItem.listSteps;
+import static com.github.yunabraska.githubworkflow.config.GitHubWorkflowConfig.*;
 import static com.github.yunabraska.githubworkflow.model.WorkflowContext.WORKFLOW_CONTEXT_MAP;
 import static com.github.yunabraska.githubworkflow.model.YamlElementHelper.getPath;
 import static java.util.Optional.ofNullable;
 
-public class SimpleAnnotator implements Annotator {
+public class HighlightAnnotator implements Annotator {
 
     public static final Pattern CARET_BRACKET_ITEM_PATTERN = Pattern.compile("\\b(\\w++(?:\\.\\w++)++)\\b");
 
     @Override
     public void annotate(@NotNull final PsiElement psiElement, @NotNull final AnnotationHolder holder) {
-        //TODO: verify if job outputs are used by workflow outputs
-
-        //TODO: validate inputs keys from with: && secrets: which are not having the parent "ON"
-
-        //TODO: get rid of YamlNode & SnakeYaml
         if (psiElement.getLanguage() instanceof YAMLLanguage) {
             ofNullable(WORKFLOW_CONTEXT_MAP.get(getPath(psiElement))).map(WorkflowContext::root).map(root -> toYamlElement(psiElement, root)).ifPresent(element -> {
+                if(FIELD_USES.equals(element.key())) {
+                    ofNullable(element.childTextNoQuotes()).map(GitHubAction::getGitHubAction).filter(GitHubAction::isAvailable).ifPresent(gitHubAction -> {
+                        final List<IntentionAction> quickFixes = gitHubAction.isAction()
+                                ? Arrays.asList(new OpenUrlIntentionAction(gitHubAction.marketplaceUrl(), "Open Marketplace url [" + gitHubAction.slug() + "]"), new OpenUrlIntentionAction(gitHubAction.toUrl(), "Open file url to [" + gitHubAction.slug() + "]"))
+                                : Arrays.asList(new OpenUrlIntentionAction(gitHubAction.toUrl(), "Open file url to [" + gitHubAction.slug() + "]"));
+                        create(
+                                holder,
+                                HighlightSeverity.INFORMATION,
+                                ProblemHighlightType.INFORMATION,
+                                quickFixes,
+                                psiElement.getTextRange(),
+                                "Open file url to [" + gitHubAction.slug() + "]"
+                        );
+                    });
+                }
                 if (element.findParent(FIELD_USES).isPresent() && !ofNullable(ACTION_CACHE.get(element.textOrChildText())).filter(GitHubAction::isAvailable).isPresent()) {
                     create(
                             holder,
@@ -104,6 +116,40 @@ public class SimpleAnnotator implements Annotator {
                                     }
                                 });
                             }
+                        });
+                    });
+                } else if (FIELD_OUTPUTS.equals(element.key())) {
+                    //CHECK FOR UNUSED JOB OUTPUTS
+                    element.findParentJob().map(YamlElement::key).ifPresent(jobId -> {
+                        final List<String> usedOutputs = element.context().outputs().values().stream()
+                                .filter(output -> output.findParentOn().isPresent())
+                                .map(output -> output.child("value").orElse(null))
+                                .filter(Objects::nonNull)
+                                .map(YamlElement::textOrChildText)
+                                .flatMap(value -> {
+                                    final List<String[]> result = new ArrayList<>();
+                                    final Matcher matcher = CARET_BRACKET_ITEM_PATTERN.matcher(value);
+                                    while (matcher.find()) {
+                                        result.add(matcher.group().split("\\."));
+                                    }
+                                    return result.stream();
+                                })
+                                .filter(parts -> parts.length == 4)
+                                .filter(parts -> FIELD_JOBS.equals(parts[0]))
+                                .filter(parts -> jobId.equals(parts[1]))
+                                .filter(parts -> FIELD_OUTPUTS.equals(parts[2]))
+                                .map(parts -> parts[3])
+                                .collect(Collectors.toList());
+                        element.children().stream().filter(output -> output.key() != null).filter(output -> !usedOutputs.contains(output.key())).forEach(unusedOutput -> {
+                            final TextRange range = newRange(psiElement, unusedOutput.startIndexAbs(), unusedOutput.children().stream().mapToInt(YamlElement::endIndexAbs).max().orElseGet(unusedOutput::endIndexAbs));
+                            create(
+                                    holder,
+                                    HighlightSeverity.WEAK_WARNING,
+                                    ProblemHighlightType.LIKE_UNUSED_SYMBOL,
+                                    Arrays.asList(new ReplaceTextIntentionAction(range, unusedOutput.key(), true)),
+                                    range,
+                                    "Unused [" + unusedOutput.key() + "]"
+                            );
                         });
                     });
                 }

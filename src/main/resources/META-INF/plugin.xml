@@ -21,7 +21,7 @@
     <extensions defaultExtensionNs="com.intellij">
         <annotator
                 language="yaml"
-                implementationClass="com.github.yunabraska.githubworkflow.SimpleAnnotator"/>
+                implementationClass="com.github.yunabraska.githubworkflow.highlights.HighlightAnnotator"/>
     </extensions>
     <extensions defaultExtensionNs="JavaScript.JsonSchema">
         <ProviderFactory implementation="com.github.yunabraska.githubworkflow.schema.GitHubSchemaProviderFactory"/>

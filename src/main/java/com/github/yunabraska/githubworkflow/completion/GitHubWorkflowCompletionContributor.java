@@ -1,5 +1,8 @@
 package com.github.yunabraska.githubworkflow.completion;
 
+import com.github.yunabraska.githubworkflow.config.NodeIcon;
+import com.github.yunabraska.githubworkflow.model.CompletionItem;
+import com.github.yunabraska.githubworkflow.model.GitHubAction;
 import com.github.yunabraska.githubworkflow.model.WorkflowContext;
 import com.github.yunabraska.githubworkflow.model.YamlElement;
 import com.intellij.codeInsight.completion.CompletionContributor;
@@ -22,17 +25,17 @@ import java.util.Optional;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
-import static com.github.yunabraska.githubworkflow.completion.CompletionItem.*;
-import static com.github.yunabraska.githubworkflow.completion.GitHubWorkflowConfig.*;
+import static com.github.yunabraska.githubworkflow.model.CompletionItem.*;
+import static com.github.yunabraska.githubworkflow.config.GitHubWorkflowConfig.*;
 import static com.github.yunabraska.githubworkflow.completion.GitHubWorkflowUtils.addLookupElements;
 import static com.github.yunabraska.githubworkflow.completion.GitHubWorkflowUtils.getCaretBracketItem;
 import static com.github.yunabraska.githubworkflow.completion.GitHubWorkflowUtils.getDefaultPrefix;
 import static com.github.yunabraska.githubworkflow.completion.GitHubWorkflowUtils.getWorkflowFile;
-import static com.github.yunabraska.githubworkflow.completion.NodeIcon.ICON_ENV;
-import static com.github.yunabraska.githubworkflow.completion.NodeIcon.ICON_JOB;
-import static com.github.yunabraska.githubworkflow.completion.NodeIcon.ICON_NODE;
-import static com.github.yunabraska.githubworkflow.completion.NodeIcon.ICON_OUTPUT;
-import static com.github.yunabraska.githubworkflow.completion.NodeIcon.ICON_RUNNER;
+import static com.github.yunabraska.githubworkflow.config.NodeIcon.ICON_ENV;
+import static com.github.yunabraska.githubworkflow.config.NodeIcon.ICON_JOB;
+import static com.github.yunabraska.githubworkflow.config.NodeIcon.ICON_NODE;
+import static com.github.yunabraska.githubworkflow.config.NodeIcon.ICON_OUTPUT;
+import static com.github.yunabraska.githubworkflow.config.NodeIcon.ICON_RUNNER;
 import static com.github.yunabraska.githubworkflow.model.WorkflowContext.WORKFLOW_CONTEXT_MAP;
 import static java.util.Collections.singletonList;
 import static java.util.Optional.ofNullable;
@@ -45,7 +48,7 @@ public class GitHubWorkflowCompletionContributor extends CompletionContributor {
 
     @NotNull
     private static CompletionProvider<CompletionParameters> completionProvider() {
-        return new CompletionProvider() {
+        return new CompletionProvider<>() {
             @Override
             public void addCompletions(
                     @NotNull final CompletionParameters parameters,

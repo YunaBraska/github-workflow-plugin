@@ -1,4 +1,4 @@
-package com.github.yunabraska.githubworkflow.completion;
+package com.github.yunabraska.githubworkflow.config;
 
 import com.intellij.icons.AllIcons;
 
@@ -16,7 +16,6 @@ public enum NodeIcon {
     ICON_OUTPUT(AllIcons.Nodes.Variable),
     ICON_INPUT(AllIcons.Nodes.Parameter),
     ICON_SECRET_WORKFLOW(AllIcons.Nodes.Static),
-    ICON_SECRET_JOB(AllIcons.Nodes.Static),
     ICON_ENV_ROOT(AllIcons.Nodes.Constant),
     ICON_ENV_JOB(AllIcons.Nodes.Parameter),
     ICON_ENV_STEP(AllIcons.Nodes.Parameter),

@@ -1,4 +1,9 @@
-package com.github.yunabraska.githubworkflow.completion;
+package com.github.yunabraska.githubworkflow.model;
+
+import com.github.yunabraska.githubworkflow.completion.GitHubWorkflowUtils;
+import com.intellij.openapi.fileTypes.FileTypeManager;
+import com.intellij.openapi.project.ProjectManager;
+import com.intellij.psi.PsiFileFactory;
 
 import java.util.List;
 import java.util.Map;
@@ -7,17 +12,21 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.stream.Collectors;
 
-import static com.github.yunabraska.githubworkflow.completion.GitHubWorkflowConfig.ACTION_CACHE;
-import static com.github.yunabraska.githubworkflow.completion.GitHubWorkflowConfig.CACHE_ONE_DAY;
-import static com.github.yunabraska.githubworkflow.completion.GitHubWorkflowConfig.CACHE_TEN_MINUTES;
-import static com.github.yunabraska.githubworkflow.completion.GitHubWorkflowConfig.FIELD_INPUTS;
-import static com.github.yunabraska.githubworkflow.completion.GitHubWorkflowConfig.FIELD_OUTPUTS;
 import static com.github.yunabraska.githubworkflow.completion.GitHubWorkflowUtils.downloadAction;
-import static com.github.yunabraska.githubworkflow.completion.GitHubWorkflowUtils.orEmpty;
+import static com.github.yunabraska.githubworkflow.config.GitHubWorkflowConfig.ACTION_CACHE;
+import static com.github.yunabraska.githubworkflow.config.GitHubWorkflowConfig.CACHE_ONE_DAY;
+import static com.github.yunabraska.githubworkflow.config.GitHubWorkflowConfig.CACHE_TEN_MINUTES;
+import static com.github.yunabraska.githubworkflow.config.GitHubWorkflowConfig.FIELD_INPUTS;
+import static com.github.yunabraska.githubworkflow.config.GitHubWorkflowConfig.FIELD_ON;
+import static com.github.yunabraska.githubworkflow.config.GitHubWorkflowConfig.FIELD_OUTPUTS;
+import static com.github.yunabraska.githubworkflow.config.GitHubWorkflowConfig.WORKFLOW_CACHE;
 import static com.github.yunabraska.githubworkflow.model.YamlElementHelper.hasText;
+import static com.github.yunabraska.githubworkflow.model.YamlElementHelper.yamlOf;
 import static java.util.Optional.ofNullable;
 
+@SuppressWarnings("unused")
 public class GitHubAction {
 
     private final Map<String, String> inputs = new ConcurrentHashMap<>();
@@ -30,6 +39,7 @@ public class GitHubAction {
     private final AtomicReference<String> sub = new AtomicReference<>(null);
     private final AtomicReference<String> actionName = new AtomicReference<>(null);
     private final AtomicBoolean isAvailable = new AtomicBoolean(false);
+    private final AtomicBoolean isAction = new AtomicBoolean(false);
 
     public static GitHubAction getGitHubAction(final String uses) {
         try {
@@ -76,9 +86,20 @@ public class GitHubAction {
         return sub.get();
     }
 
-
     public boolean isAvailable() {
         return isAvailable.get();
+    }
+
+    public boolean isAction() {
+        return isAction.get();
+    }
+
+    public String toUrl() {
+        return isAction.get() ? toActionYamlUrl() : toWorkflowYamlUrl();
+    }
+
+    public String marketplaceUrl() {
+        return ("https://github.com/marketplace/" + slug.get());
     }
 
     private String toActionYamlUrl() {
@@ -87,10 +108,6 @@ public class GitHubAction {
 
     private String toWorkflowYamlUrl() {
         return (ref.get() != null && slug.get() != null) ? "https://raw.githubusercontent.com/" + slug.get() + "/" + ref.get() + "/.github/workflows/" + actionName : null;
-    }
-
-    private String toMarketplaceUrl() {
-        return (actionName.get() != null && ref.get() != null) ? "https://github.com/marketplace/actions/" + actionName.get() + "/" + ref.get() + "/action.yml" : null;
     }
 
     private String toGitHubUrl() {
@@ -107,40 +124,56 @@ public class GitHubAction {
                 ref.set(uses.substring(tagIndex + 1));
                 slug.set(uses.substring(0, repoNameIndex > 0 ? repoNameIndex : tagIndex));
                 if (uses.contains(".yaml") || uses.contains(".yml")) {
+                    isAction.set(false);
                     actionName.set(uses.substring(uses.lastIndexOf("/") + 1, tagIndex));
-                    setActionParameters(toWorkflowYamlUrl(), false);
+                    setActionParameters(toWorkflowYamlUrl());
                 } else {
+                    isAction.set(true);
                     sub.set(repoNameIndex < tagIndex && repoNameIndex > 0 ? "/" + uses.substring(repoNameIndex + 1, tagIndex) : "");
                     actionName.set(uses.substring(userNameIndex + 1, tagIndex));
-                    setActionParameters(toActionYamlUrl(), true);
+                    setActionParameters(toActionYamlUrl());
                 }
             }
         }
     }
 
-    private void setActionParameters(final String downloadUrl, final boolean isAction) {
+    private void setActionParameters(final String downloadUrl) {
         try {
-            extractActionParameters(downloadAction(downloadUrl, this), isAction);
+            extractActionParameters(downloadAction(downloadUrl, this));
         } catch (Exception e) {
             isAvailable.set(false);
             expiration.set(System.currentTimeMillis() + CACHE_TEN_MINUTES);
         }
     }
 
-    private void extractActionParameters(final String content, final boolean isAction) {
+    private void extractActionParameters(final String content) {
         isAvailable.set(hasText(content));
         expiration.set(System.currentTimeMillis() + (hasText(content) ? CACHE_ONE_DAY : CACHE_TEN_MINUTES));
-        final WorkflowFile workflowFile = WorkflowFile.workflowFileOf(actionName() + "_" + ref(), content);
-        inputs.putAll(getActionParameters(workflowFile, FIELD_INPUTS, isAction));
-        outputs.putAll(getActionParameters(workflowFile, FIELD_OUTPUTS, isAction));
+        final WorkflowContext context = contextOf(actionName() + "_" + ref(), content);
+        inputs.putAll(getActionParameters(context, FIELD_INPUTS, isAction.get()));
+        outputs.putAll(getActionParameters(context, FIELD_OUTPUTS, isAction.get()));
     }
 
 
-    private Map<String, String> getActionParameters(final WorkflowFile workflowFile, final String node, final boolean action) {
-        return workflowFile.nodesToMap(
-                node, n -> action || (ofNullable(n.parent()).map(YamlNode::parent).map(YamlNode::parent).filter(parent -> "on".equals(parent.name) || "true".equals(parent.name)).isPresent()),
-                n -> orEmpty(n.name()),
-                GitHubWorkflowUtils::getDescription
-        );
+    private Map<String, String> getActionParameters(final WorkflowContext context, final String node, final boolean action) {
+        return context.root()
+                .findChildNodes(child ->
+                        (ofNullable(child.parent()).filter(parent -> node.equals(parent.key())).isPresent())
+                                && (action || ofNullable(child.parent()).map(YamlElement::parent).map(YamlElement::parent).filter(parent -> FIELD_ON.equals(parent.key())).isPresent())
+                )
+                .stream()
+                .filter(child -> hasText(child.keyOrIdOrName()))
+                .collect(Collectors.toMap(YamlElement::keyOrIdOrName, GitHubWorkflowUtils::getDescription));
+    }
+
+    private static WorkflowContext contextOf(final String key, final String text) {
+        try {
+            final WorkflowContext context = yamlOf(PsiFileFactory.getInstance(ProjectManager.getInstance().getDefaultProject()).createFileFromText(key, FileTypeManager.getInstance().getFileTypeByExtension("yaml"), text)).context().init();
+            WORKFLOW_CACHE.put(key, context);
+            return context;
+        } catch (Exception e) {
+            final WorkflowContext defaultValue = new YamlElement(-1, -1, null, null, null, null, null).context().init();
+            return key == null ? defaultValue : WORKFLOW_CACHE.getOrDefault(key, defaultValue);
+        }
     }
 }

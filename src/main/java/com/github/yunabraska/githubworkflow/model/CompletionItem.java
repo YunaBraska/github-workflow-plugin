@@ -1,7 +1,7 @@
-package com.github.yunabraska.githubworkflow.completion;
+package com.github.yunabraska.githubworkflow.model;
 
-import com.github.yunabraska.githubworkflow.model.YamlElement;
-import com.github.yunabraska.githubworkflow.model.YamlElementHelper;
+import com.github.yunabraska.githubworkflow.completion.GitHubWorkflowUtils;
+import com.github.yunabraska.githubworkflow.config.NodeIcon;
 import com.intellij.codeInsight.lookup.LookupElement;
 
 import java.util.ArrayList;
@@ -17,17 +17,17 @@ import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-import static com.github.yunabraska.githubworkflow.completion.GitHubWorkflowConfig.DEFAULT_VALUE_MAP;
-import static com.github.yunabraska.githubworkflow.completion.GitHubWorkflowConfig.FIELD_ENVS;
-import static com.github.yunabraska.githubworkflow.completion.GitHubWorkflowConfig.FIELD_NEEDS;
-import static com.github.yunabraska.githubworkflow.completion.GitHubWorkflowConfig.FIELD_ON;
-import static com.github.yunabraska.githubworkflow.completion.GitHubWorkflowConfig.FIELD_OUTPUTS;
-import static com.github.yunabraska.githubworkflow.completion.GitHubWorkflowConfig.FIELD_SECRETS;
-import static com.github.yunabraska.githubworkflow.completion.GitHubWorkflowConfig.FIELD_STEPS;
-import static com.github.yunabraska.githubworkflow.completion.GitHubWorkflowConfig.FIELD_USES;
+import static com.github.yunabraska.githubworkflow.config.GitHubWorkflowConfig.DEFAULT_VALUE_MAP;
+import static com.github.yunabraska.githubworkflow.config.GitHubWorkflowConfig.FIELD_ENVS;
+import static com.github.yunabraska.githubworkflow.config.GitHubWorkflowConfig.FIELD_NEEDS;
+import static com.github.yunabraska.githubworkflow.config.GitHubWorkflowConfig.FIELD_ON;
+import static com.github.yunabraska.githubworkflow.config.GitHubWorkflowConfig.FIELD_OUTPUTS;
+import static com.github.yunabraska.githubworkflow.config.GitHubWorkflowConfig.FIELD_SECRETS;
+import static com.github.yunabraska.githubworkflow.config.GitHubWorkflowConfig.FIELD_STEPS;
+import static com.github.yunabraska.githubworkflow.config.GitHubWorkflowConfig.FIELD_USES;
 import static com.github.yunabraska.githubworkflow.completion.GitHubWorkflowUtils.getDescription;
 import static com.github.yunabraska.githubworkflow.completion.GitHubWorkflowUtils.orEmpty;
-import static com.github.yunabraska.githubworkflow.completion.NodeIcon.*;
+import static com.github.yunabraska.githubworkflow.config.NodeIcon.*;
 import static com.github.yunabraska.githubworkflow.model.YamlElementHelper.hasText;
 import static java.util.Collections.emptyList;
 import static java.util.Optional.ofNullable;
@@ -181,9 +181,8 @@ public class CompletionItem {
 
     public static List<CompletionItem> listEnvs(final YamlElement position, final int cursorAbs) {
         //CURRENT STEP TEXT ENVS [jobs.job_id.steps.step_id.run:key=value]
-        final int cursorIndex = cursorAbs;
         final List<CompletionItem> result = new ArrayList<>(completionItemsOf(position.context().runEnvs().values().stream()
-                        .filter(env -> env.startIndexAbs() < cursorIndex && env.endIndexAbs() < cursorIndex)
+                        .filter(env -> env.startIndexAbs() < cursorAbs && env.endIndexAbs() < cursorAbs)
                         .collect(Collectors.toMap(YamlElement::key, YamlElement::textOrChildTextNoQuotes, (existing, replacement) -> existing))
                 , ICON_TEXT_VARIABLE));
 
