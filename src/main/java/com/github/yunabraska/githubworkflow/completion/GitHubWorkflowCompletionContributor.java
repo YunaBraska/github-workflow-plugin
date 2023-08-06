@@ -77,7 +77,7 @@ public class GitHubWorkflowCompletionContributor extends CompletionContributor {
                                 .ifPresent(lookupElements -> addElementsWithPrefix(resultSet, prefix[0], lookupElements));
                     });
                     //ACTIONS && WORKFLOWS
-                    if (!caretBracketItem.isPresent()) {
+                    if (caretBracketItem.isEmpty()) {
                         if (context.position().findParent(FIELD_NEEDS).isPresent()) {
                             //[jobs.job_name.needs] list previous jobs
                             Optional.of(listNeeds(context.position())).filter(cil -> !cil.isEmpty())

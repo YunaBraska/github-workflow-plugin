@@ -55,15 +55,15 @@ public class HighlightAnnotator implements Annotator {
                 if (FIELD_USES.equals(element.key())) {
                     ofNullable(element.childTextNoQuotes()).map(GitHubAction::getGitHubAction).filter(GitHubAction::isAvailable).ifPresent(gitHubAction -> {
                         final List<IntentionAction> quickFixes = gitHubAction.isAction()
-                                ? Arrays.asList(new OpenUrlIntentionAction(gitHubAction.marketplaceUrl(), "Open Marketplace url [" + gitHubAction.slug() + "]"), new OpenUrlIntentionAction(gitHubAction.toUrl(), "Open file url to [" + gitHubAction.slug() + "]"))
-                                : Arrays.asList(new OpenUrlIntentionAction(gitHubAction.toUrl(), "Open file url to [" + gitHubAction.slug() + "]"));
+                                ? Arrays.asList(new OpenUrlIntentionAction(gitHubAction.marketplaceUrl(), "Open Marketplace [" + gitHubAction.marketplaceUrl() + "]"), new OpenUrlIntentionAction(gitHubAction.toUrl(), "Open file in Browser [" + gitHubAction.toUrl() + "]"))
+                                : Arrays.asList(new OpenUrlIntentionAction(gitHubAction.toUrl(), "Open File [" + gitHubAction.toUrl() + "]"));
                         create(
                                 holder,
                                 HighlightSeverity.INFORMATION,
                                 ProblemHighlightType.INFORMATION,
                                 quickFixes,
                                 psiElement.getTextRange(),
-                                "Open file url to [" + gitHubAction.slug() + "]"
+                                "Open Action in Browser [" + gitHubAction.slug() + "]"
                         );
                     });
                 }

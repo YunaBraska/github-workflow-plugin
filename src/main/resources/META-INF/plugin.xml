@@ -14,20 +14,17 @@
     <depends>com.intellij.java</depends>
 
     <extensions defaultExtensionNs="com.intellij">
+        <!-- Auto Completion -->
         <completion.contributor language="yaml"
                                 implementationClass="com.github.yunabraska.githubworkflow.completion.GitHubWorkflowCompletionContributor"/>
+        <!-- Syntax Highlighting -->
+        <annotator language="yaml"
+                   implementationClass="com.github.yunabraska.githubworkflow.highlights.HighlightAnnotator"/>
+        <!-- Register Events -->
+        <postStartupActivity implementation="com.github.yunabraska.githubworkflow.listeners.ApplicationListeners"/>
+    </extensions>
 
-    </extensions>
-    <extensions defaultExtensionNs="com.intellij">
-        <annotator
-                language="yaml"
-                implementationClass="com.github.yunabraska.githubworkflow.highlights.HighlightAnnotator"/>
-    </extensions>
     <extensions defaultExtensionNs="JavaScript.JsonSchema">
         <ProviderFactory implementation="com.github.yunabraska.githubworkflow.schema.GitHubSchemaProviderFactory"/>
     </extensions>
-
-    <applicationListeners>
-        <listener class="com.github.yunabraska.githubworkflow.ApplicationListeners" topic="com.intellij.openapi.project.ProjectManagerListener"/>
-    </applicationListeners>
 </idea-plugin>

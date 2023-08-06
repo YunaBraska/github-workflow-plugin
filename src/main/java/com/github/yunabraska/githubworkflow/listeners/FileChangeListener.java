@@ -1,15 +1,9 @@
-package com.github.yunabraska.githubworkflow;
+package com.github.yunabraska.githubworkflow.listeners;
 
-import com.github.yunabraska.githubworkflow.model.WorkflowContext;
-import com.github.yunabraska.githubworkflow.model.YamlElement;
-import com.github.yunabraska.githubworkflow.model.YamlElementHelper;
 import com.intellij.openapi.editor.event.DocumentEvent;
 import com.intellij.openapi.editor.event.DocumentListener;
 import com.intellij.openapi.fileEditor.FileDocumentManager;
 import com.intellij.openapi.project.Project;
-import com.intellij.openapi.vfs.VirtualFile;
-import com.intellij.psi.PsiElement;
-import com.intellij.psi.PsiManager;
 import com.intellij.util.Alarm;
 import org.jetbrains.annotations.NotNull;
 
@@ -17,6 +11,7 @@ import java.nio.file.Paths;
 import java.util.Optional;
 
 import static com.github.yunabraska.githubworkflow.completion.GitHubWorkflowUtils.isWorkflowPath;
+import static com.github.yunabraska.githubworkflow.listeners.ApplicationListeners.asyncInitWorkflowFile;
 
 public class FileChangeListener implements DocumentListener {
 
@@ -32,25 +27,15 @@ public class FileChangeListener implements DocumentListener {
     public void documentChanged(@NotNull final DocumentEvent event) {
         Optional.of(event.getDocument())
                 .map(document -> FileDocumentManager.getInstance().getFile(document))
-                .ifPresent(file -> {
-                    if (isWorkflowPath(Paths.get(file.getPath()))) {
+                .ifPresent(virtualFile -> {
+                    if (isWorkflowPath(Paths.get(virtualFile.getPath()))) {
                         alarm.cancelAllRequests();
                         alarm.addRequest(() -> {
                             if (!project.isDisposed()) {
-                                processChange(file);
+                                asyncInitWorkflowFile(project, virtualFile);
                             }
                         }, DEBOUNCE_DELAY_MS);
                     }
                 });
-    }
-
-    private void processChange(final VirtualFile file) {
-        Optional.of(PsiManager.getInstance(project))
-                .map(psiManager -> psiManager.findFile(file))
-                .map(PsiElement::getChildren)
-                .map(children -> children.length > 0 ? children[0] : null)
-                .map(YamlElementHelper::yamlOf)
-                .map(YamlElement::context)
-                .ifPresent(WorkflowContext::init);
     }
 }
