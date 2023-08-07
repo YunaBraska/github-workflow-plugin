@@ -106,35 +106,21 @@ public class GitHubWorkflowCompletionContributor extends CompletionContributor {
     private static void addCompletionItems(final String[] cbi, final int i, final WorkflowContext context, final Map<Integer, List<CompletionItem>> completionItemMap) {
         if (i == 0) {
             switch (cbi[0]) {
-                case FIELD_STEPS:
-                    completionItemMap.put(i, listSteps(context.position()));
-                    break;
-                case FIELD_JOBS:
-                    completionItemMap.put(i, listJobs(context.position()));
-                    break;
-                case FIELD_ENVS:
-                    completionItemMap.put(i, listEnvs(context.position(), context.cursorAbs()));
-                    break;
-                case FIELD_GITHUB:
-                    completionItemMap.put(i, completionItemsOf(DEFAULT_VALUE_MAP.get(FIELD_GITHUB).get(), ICON_ENV));
-                    break;
-                case FIELD_RUNNER:
-                    completionItemMap.put(i, completionItemsOf(DEFAULT_VALUE_MAP.get(FIELD_RUNNER).get(), ICON_RUNNER));
-                    break;
-                case FIELD_INPUTS:
-                    completionItemMap.put(i, listInputs(context.position()));
-                    break;
-                case FIELD_SECRETS:
-                    completionItemMap.put(i, listSecrets(context.position()));
-                    break;
-                case FIELD_NEEDS:
-                    completionItemMap.put(i, listJobNeeds(context.position()));
-                    break;
-                default:
+                case FIELD_STEPS -> completionItemMap.put(i, listSteps(context.position()));
+                case FIELD_JOBS -> completionItemMap.put(i, listJobs(context.position()));
+                case FIELD_ENVS -> completionItemMap.put(i, listEnvs(context.position(), context.cursorAbs()));
+                case FIELD_GITHUB ->
+                        completionItemMap.put(i, completionItemsOf(DEFAULT_VALUE_MAP.get(FIELD_GITHUB).get(), ICON_ENV));
+                case FIELD_RUNNER ->
+                        completionItemMap.put(i, completionItemsOf(DEFAULT_VALUE_MAP.get(FIELD_RUNNER).get(), ICON_RUNNER));
+                case FIELD_INPUTS -> completionItemMap.put(i, listInputs(context.position()));
+                case FIELD_SECRETS -> completionItemMap.put(i, listSecrets(context.position()));
+                case FIELD_NEEDS -> completionItemMap.put(i, listJobNeeds(context.position()));
+                default -> {
                     //SHOW ONLY JOBS [on.workflow_call.outputs.key.value:xxx]
                     if (context.position().findParentOutput().map(YamlElement::findParentOn).isPresent()) {
                         completionItemMap.put(i, singletonList(completionItemOf(FIELD_JOBS, DEFAULT_VALUE_MAP.get(FIELD_DEFAULT).get().get(FIELD_JOBS), ICON_JOB)));
-                    } else if (!context.position().findParent("runs-on").isPresent() && !context.position().findParent("os").isPresent()) {
+                    } else if (context.position().findParent("runs-on").isEmpty() && context.position().findParent("os").isEmpty()) {
                         //DEFAULT
                         ofNullable(DEFAULT_VALUE_MAP.getOrDefault(FIELD_DEFAULT, null))
                                 .map(Supplier::get)
@@ -143,7 +129,7 @@ public class GitHubWorkflowCompletionContributor extends CompletionContributor {
                                     //'JOBS' HAS ONLY ONE PLACE
                                     copyMap.remove(FIELD_JOBS);
                                     //IF NO 'NEEDS' IS DEFINED
-                                    if (!context.position().findParentJob().map(job -> job.child(FIELD_NEEDS)).isPresent()) {
+                                    if (context.position().findParentJob().map(job -> job.child(FIELD_NEEDS)).isEmpty()) {
                                         copyMap.remove(FIELD_NEEDS);
                                     }
                                     return copyMap;
@@ -151,29 +137,22 @@ public class GitHubWorkflowCompletionContributor extends CompletionContributor {
                                 .map(map -> completionItemsOf(map, ICON_NODE))
                                 .ifPresent(items -> completionItemMap.put(i, items));
                     }
-                    break;
+                }
             }
         } else if (i == 1) {
             switch (cbi[0]) {
-                case FIELD_JOBS:
-                case FIELD_NEEDS:
-                case FIELD_STEPS:
-                    completionItemMap.put(i, singletonList(completionItemOf(FIELD_OUTPUTS, "", ICON_OUTPUT)));
-                    break;
-                default:
-                    break;
+                case FIELD_JOBS, FIELD_NEEDS, FIELD_STEPS ->
+                        completionItemMap.put(i, singletonList(completionItemOf(FIELD_OUTPUTS, "", ICON_OUTPUT)));
+                default -> {
+                }
             }
         } else if (i == 2) {
             switch (cbi[0]) {
-                case FIELD_JOBS:
-                case FIELD_NEEDS:
-                    completionItemMap.put(i, listJobOutputs(context.position(), cbi[1]));
-                    break;
-                case FIELD_STEPS:
-                    completionItemMap.put(i, listStepOutputs(context.position(), context.cursorAbs(), cbi[1]));
-                    break;
-                default:
-                    break;
+                case FIELD_JOBS, FIELD_NEEDS -> completionItemMap.put(i, listJobOutputs(context.position(), cbi[1]));
+                case FIELD_STEPS ->
+                        completionItemMap.put(i, listStepOutputs(context.position(), context.cursorAbs(), cbi[1]));
+                default -> {
+                }
             }
         }
     }

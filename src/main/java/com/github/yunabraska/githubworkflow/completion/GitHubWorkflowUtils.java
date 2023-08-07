@@ -13,7 +13,6 @@ import com.intellij.json.JsonFileType;
 import com.intellij.openapi.application.ApplicationInfo;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.diagnostic.Logger;
-import com.intellij.openapi.project.Project;
 import com.intellij.openapi.project.ProjectManager;
 import com.intellij.openapi.vfs.VfsUtil;
 import com.intellij.openapi.vfs.VirtualFile;
@@ -25,10 +24,8 @@ import com.intellij.util.io.HttpRequests;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.plugins.github.api.GithubApiRequest;
 import org.jetbrains.plugins.github.api.GithubApiRequestExecutor;
-import org.jetbrains.plugins.github.api.GithubApiRequestExecutorManager;
 import org.jetbrains.plugins.github.api.GithubApiResponse;
 import org.jetbrains.plugins.github.authentication.GHAccountsUtil;
-import org.jetbrains.plugins.github.authentication.GithubAuthenticationManager;
 import org.jetbrains.plugins.github.authentication.accounts.GithubAccount;
 import org.jetbrains.plugins.github.util.GHCompatibilityUtil;
 
@@ -191,6 +188,7 @@ public class GitHubWorkflowUtils {
         return PrioritizedLookupElement.withPriority(result, icon.ordinal() + 5d);
     }
 
+    @SuppressWarnings("BooleanMethodIsAlwaysInverted")
     public static boolean isLineBreak(final char c) {
         return c == '\n' || c == '\r';
     }
@@ -202,7 +200,7 @@ public class GitHubWorkflowUtils {
             //FIXME: how to use the intellij idea cache?
             VfsUtil.saveText(newVirtualFile, downloadContent(url, path, CACHE_ONE_DAY * 30, false));
             return newVirtualFile;
-        } catch (Exception ignored) {
+        } catch (final Exception ignored) {
             return null;
         }
     }
@@ -222,12 +220,13 @@ public class GitHubWorkflowUtils {
         return GHAccountsUtil.getAccounts().stream().map(account -> {
             try {
                 return downloadFromGitHub(downloadUrl, account);
-            } catch (Exception ignored) {
+            } catch (final Exception ignored) {
                 return null;
             }
         }).filter(Objects::nonNull).findFirst().orElse(null);
     }
 
+    @SuppressWarnings("DataFlowIssue")
     private static String downloadFromGitHub(final String downloadUrl, final GithubAccount account) throws IOException {
         final String token = GHCompatibilityUtil.getOrRequestToken(account, ProjectManager.getInstance().getDefaultProject());
         return  GithubApiRequestExecutor.Factory.getInstance().create(token).execute(new GithubApiRequest.Get<>(downloadUrl) {
@@ -244,7 +243,7 @@ public class GitHubWorkflowUtils {
                             return stringBuilder.toString();
                         }
                     });
-                } catch (IOException ignored) {
+                } catch (final IOException ignored) {
                     return null;
                 }
             }
@@ -254,11 +253,12 @@ public class GitHubWorkflowUtils {
     public static String downloadContent(final String url, final Path path, final long expirationTime, final boolean usingGithub) {
         try {
             return downloadContentAsync(url, path, expirationTime, usingGithub).get();
-        } catch (Exception e) {
+        } catch (final Exception e) {
             throw new DownloadException(e);
         }
     }
 
+    //TODO: remove async, the process is running async in background anyway
     private static CompletableFuture<String> downloadContentAsync(final String url, final Path path, final long expirationTime, final boolean usingGithub) {
         return CompletableFuture.supplyAsync(() -> {
             try {
@@ -273,7 +273,7 @@ public class GitHubWorkflowUtils {
                     Files.write(path, content.getBytes());
                     return content;
                 }
-            } catch (Exception e) {
+            } catch (final Exception e) {
                 LOG.warn("Cache failed for [" + url + "] message [" + (e instanceof NullPointerException ? null : e.getMessage()) + "]");
                 return "";
             }
@@ -290,7 +290,7 @@ public class GitHubWorkflowUtils {
                     contentBuilder.append(line).append(System.lineSeparator());
                 }
                 return contentBuilder.toString();
-            } catch (IOException e) {
+            } catch (final IOException e) {
                 LOG.error("Failed to read file [" + path + "] message [" + e.getMessage() + "]");
                 return "";
             }
@@ -312,12 +312,12 @@ public class GitHubWorkflowUtils {
                             .userAgent(applicationInfo.getBuild().getProductCode() + "/" + applicationInfo.getFullVersion())
                             .tuner(request -> request.setRequestProperty("Client-Name", "GitHub Workflow Plugin"))
                             .readString();
-                } catch (Exception e) {
+                } catch (final Exception e) {
                     return null;
                 }
             });
             return future.get();
-        } catch (Exception e) {
+        } catch (final Exception e) {
             LOG.warn("Execution failed for [" + urlString + "] message [" + (e instanceof NullPointerException ? null : e.getMessage()) + "]");
         }
         return "";

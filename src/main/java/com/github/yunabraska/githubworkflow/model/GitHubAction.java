@@ -49,7 +49,7 @@ public class GitHubAction {
                 ACTION_CACHE.put(uses, gitHubAction);
             }
             return gitHubAction;
-        } catch (Exception e) {
+        } catch (final Exception e) {
             return new GitHubAction(null);
         }
     }
@@ -140,7 +140,7 @@ public class GitHubAction {
     private void setActionParameters(final String downloadUrl) {
         try {
             extractActionParameters(downloadAction(downloadUrl, this));
-        } catch (Exception e) {
+        } catch (final Exception e) {
             isAvailable.set(false);
             expiration.set(System.currentTimeMillis() + CACHE_TEN_MINUTES);
         }
@@ -171,7 +171,7 @@ public class GitHubAction {
             final WorkflowContext context = yamlOf(PsiFileFactory.getInstance(ProjectManager.getInstance().getDefaultProject()).createFileFromText(key, FileTypeManager.getInstance().getFileTypeByExtension("yaml"), text)).context().init();
             WORKFLOW_CACHE.put(key, context);
             return context;
-        } catch (Exception e) {
+        } catch (final Exception e) {
             final WorkflowContext defaultValue = new YamlElement(-1, -1, null, null, null, null, null).context().init();
             return key == null ? defaultValue : WORKFLOW_CACHE.getOrDefault(key, defaultValue);
         }

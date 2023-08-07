@@ -132,7 +132,7 @@ public class CompletionItem {
                 .filter(hasKey())
                 .filter(job -> job.startIndexAbs() < positionJob)
                 .map(YamlElement::key)
-                .collect(Collectors.toList());
+                .toList();
 
         return position.findParentJob()
                 .flatMap(job -> job.child(FIELD_NEEDS))

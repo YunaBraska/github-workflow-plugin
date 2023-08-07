@@ -56,7 +56,7 @@ public class HighlightAnnotator implements Annotator {
                     ofNullable(element.childTextNoQuotes()).map(GitHubAction::getGitHubAction).filter(GitHubAction::isAvailable).ifPresent(gitHubAction -> {
                         final List<IntentionAction> quickFixes = gitHubAction.isAction()
                                 ? Arrays.asList(new OpenUrlIntentionAction(gitHubAction.marketplaceUrl(), "Open Marketplace [" + gitHubAction.marketplaceUrl() + "]"), new OpenUrlIntentionAction(gitHubAction.toUrl(), "Open file in Browser [" + gitHubAction.toUrl() + "]"))
-                                : Arrays.asList(new OpenUrlIntentionAction(gitHubAction.toUrl(), "Open File [" + gitHubAction.toUrl() + "]"));
+                                : List.of(new OpenUrlIntentionAction(gitHubAction.toUrl(), "Open File [" + gitHubAction.toUrl() + "]"));
                         create(
                                 holder,
                                 HighlightSeverity.INFORMATION,
@@ -75,19 +75,19 @@ public class HighlightAnnotator implements Annotator {
                                     holder,
                                     HighlightSeverity.ERROR,
                                     ProblemHighlightType.GENERIC_ERROR,
-                                    Arrays.asList(new ReplaceTextIntentionAction(psiElement.getTextRange(), element.key(), true)),
+                                    List.of(new ReplaceTextIntentionAction(psiElement.getTextRange(), element.key(), true)),
                                     psiElement.getTextRange(),
                                     "Invalid [" + element.key() + "] - (Cache folder: " + TMP_DIR + ")"
                             );
                         }
                     });
                 }
-                if (element.findParent(FIELD_USES).isPresent() && !ofNullable(ACTION_CACHE.get(element.textOrChildText())).filter(GitHubAction::isAvailable).isPresent()) {
+                if (element.findParent(FIELD_USES).isPresent() && ofNullable(ACTION_CACHE.get(element.textOrChildText())).filter(GitHubAction::isAvailable).isEmpty()) {
                     create(
                             holder,
                             HighlightSeverity.WEAK_WARNING,
                             ProblemHighlightType.WEAK_WARNING,
-                            Arrays.asList(new OpenSettingsIntentionAction()),
+                            List.of(new OpenSettingsIntentionAction()),
                             element.node().getTextRange(),
                             "Unresolved [" + element.textOrChildTextNoQuotes() + "]."
                     );
@@ -104,7 +104,7 @@ public class HighlightAnnotator implements Annotator {
                     processBracketItems(psiElement, holder, element);
                 } else if (FIELD_NEEDS.equals(element.key())) {
                     element.findParentJob().ifPresent(job -> {
-                        final List<String> jobs = element.context().jobs().values().stream().filter(j -> j.startIndexAbs() < job.startIndexAbs()).map(YamlElement::key).collect(Collectors.toList());
+                        final List<String> jobs = element.context().jobs().values().stream().filter(j -> j.startIndexAbs() < job.startIndexAbs()).map(YamlElement::key).toList();
                         element.children().forEach(jobChild -> {
                             final String jobId = jobChild.textOrChildTextNoQuotes().trim();
                             final TextRange range = newRange(psiElement, jobChild.startIndexAbs(), jobChild.startIndexAbs() + jobId.length());
@@ -126,7 +126,7 @@ public class HighlightAnnotator implements Annotator {
                                                 holder,
                                                 HighlightSeverity.WEAK_WARNING,
                                                 ProblemHighlightType.LIKE_UNUSED_SYMBOL,
-                                                Arrays.asList(new ReplaceTextIntentionAction(range, jobId, true)),
+                                                List.of(new ReplaceTextIntentionAction(range, jobId, true)),
                                                 range,
                                                 "Unused [" + jobId + "]"
                                         );
@@ -156,14 +156,14 @@ public class HighlightAnnotator implements Annotator {
                                 .filter(parts -> jobId.equals(parts[1]))
                                 .filter(parts -> FIELD_OUTPUTS.equals(parts[2]))
                                 .map(parts -> parts[3])
-                                .collect(Collectors.toList());
+                                .toList();
                         element.children().stream().filter(output -> output.key() != null).filter(output -> !usedOutputs.contains(output.key())).forEach(unusedOutput -> {
                             final TextRange range = newRange(psiElement, unusedOutput.startIndexAbs(), unusedOutput.children().stream().mapToInt(YamlElement::endIndexAbs).max().orElseGet(unusedOutput::endIndexAbs));
                             create(
                                     holder,
                                     HighlightSeverity.WEAK_WARNING,
                                     ProblemHighlightType.LIKE_UNUSED_SYMBOL,
-                                    Arrays.asList(new ReplaceTextIntentionAction(range, unusedOutput.key(), true)),
+                                    List.of(new ReplaceTextIntentionAction(range, unusedOutput.key(), true)),
                                     range,
                                     "Unused [" + unusedOutput.key() + "]"
                             );
@@ -180,69 +180,62 @@ public class HighlightAnnotator implements Annotator {
             final String[] parts = matcher.group().split("\\.");
             final String scope = parts[0];
             switch (scope) {
-                case FIELD_INPUTS:
-                    ifEnoughItems(holder, psiElement, parts, 2, 2, inputId -> isDefinedItem0(psiElement, holder, matcher, inputId, listInputs(element).stream().map(CompletionItem::key).collect(Collectors.toList())));
-                    break;
-                case FIELD_SECRETS:
-                    ifEnoughItems(holder, psiElement, parts, 2, 2, secretId -> {
-                        final List<String> secrets = listSecrets(element).stream().map(CompletionItem::key).collect(Collectors.toList());
-                        if (!secrets.contains(secretId)) {
-                            final TextRange textRange = simpleTextRange(psiElement, matcher, secretId);
-                            create(
-                                    holder,
-                                    HighlightSeverity.WEAK_WARNING,
-                                    ProblemHighlightType.WEAK_WARNING,
-                                    secrets.stream().map(output -> new ReplaceTextIntentionAction(textRange, output, false)).collect(Collectors.toList()),
-                                    textRange,
-                                    "Undefined [" + secretId + "] - it might be provided at runtime"
-                            );
-                        }
-                    });
-                    break;
-                case FIELD_ENVS:
-                    ifEnoughItems(holder, psiElement, parts, 2, -1, envId -> isDefinedItem0(psiElement, holder, matcher, envId, listEnvs(element, element.startIndexAbs()).stream().map(CompletionItem::key).collect(Collectors.toList())));
-                    break;
-                case FIELD_GITHUB:
-                    ifEnoughItems(holder, psiElement, parts, 2, -1, envId -> isDefinedItem0(psiElement, holder, matcher, envId, new ArrayList<>(DEFAULT_VALUE_MAP.get(FIELD_GITHUB).get().keySet())));
-                    break;
-                case FIELD_RUNNER:
-                    ifEnoughItems(holder, psiElement, parts, 2, 2, runnerId -> isDefinedItem0(psiElement, holder, matcher, runnerId, new ArrayList<>(DEFAULT_VALUE_MAP.get(FIELD_RUNNER).get().keySet())));
-                    break;
-                case FIELD_STEPS:
-                    ifEnoughItems(holder, psiElement, parts, 4, 4, stepId -> {
-                        final List<String> steps = listSteps(element).stream().map(CompletionItem::key).collect(Collectors.toList());
-                        if (isDefinedItem0(psiElement, holder, matcher, stepId, steps) && (!isField2Valid(psiElement, holder, matcher, parts[2]))) {
-                            final List<String> outputs = listStepOutputs(element, element.startIndexAbs(), stepId).stream().map(CompletionItem::key).collect(Collectors.toList());
-                            isValidItem3(psiElement, holder, matcher, parts[3], outputs);
+                case FIELD_INPUTS ->
+                        ifEnoughItems(holder, psiElement, parts, 2, 2, inputId -> isDefinedItem0(psiElement, holder, matcher, inputId, listInputs(element).stream().map(CompletionItem::key).collect(Collectors.toList())));
+                case FIELD_SECRETS -> ifEnoughItems(holder, psiElement, parts, 2, 2, secretId -> {
+                    final List<String> secrets = listSecrets(element).stream().map(CompletionItem::key).toList();
+                    if (!secrets.contains(secretId)) {
+                        final TextRange textRange = simpleTextRange(psiElement, matcher, secretId);
+                        create(
+                                holder,
+                                HighlightSeverity.WEAK_WARNING,
+                                ProblemHighlightType.WEAK_WARNING,
+                                secrets.stream().map(output -> new ReplaceTextIntentionAction(textRange, output, false)).collect(Collectors.toList()),
+                                textRange,
+                                "Undefined [" + secretId + "] - it might be provided at runtime"
+                        );
+                    }
+                });
+                case FIELD_ENVS ->
+                        ifEnoughItems(holder, psiElement, parts, 2, -1, envId -> isDefinedItem0(psiElement, holder, matcher, envId, listEnvs(element, element.startIndexAbs()).stream().map(CompletionItem::key).collect(Collectors.toList())));
+                case FIELD_GITHUB ->
+                        ifEnoughItems(holder, psiElement, parts, 2, -1, envId -> isDefinedItem0(psiElement, holder, matcher, envId, new ArrayList<>(DEFAULT_VALUE_MAP.get(FIELD_GITHUB).get().keySet())));
+                case FIELD_RUNNER ->
+                        ifEnoughItems(holder, psiElement, parts, 2, 2, runnerId -> isDefinedItem0(psiElement, holder, matcher, runnerId, new ArrayList<>(DEFAULT_VALUE_MAP.get(FIELD_RUNNER).get().keySet())));
+                case FIELD_STEPS -> ifEnoughItems(holder, psiElement, parts, 4, 4, stepId -> {
+                    final List<String> steps = listSteps(element).stream().map(CompletionItem::key).collect(Collectors.toList());
+                    if (isDefinedItem0(psiElement, holder, matcher, stepId, steps) && (!isField2Valid(psiElement, holder, matcher, parts[2]))) {
+                        final List<String> outputs = listStepOutputs(element, element.startIndexAbs(), stepId).stream().map(CompletionItem::key).collect(Collectors.toList());
+                        isValidItem3(psiElement, holder, matcher, parts[3], outputs);
 
-                        }
-                    });
-                    break;
-                case FIELD_JOBS:
+                    }
+                });
+                case FIELD_JOBS ->
                     //TODO: CHECK OUTPUTS FOR JOBS && NEEDS && STEPS e.g. [ if (!FIELD_OUTPUTS.equals(parts[2])) ]
-                    ifEnoughItems(holder, psiElement, parts, 4, 4, jobId -> {
-                        final List<String> jobs = listJobs(element).stream().map(CompletionItem::key).collect(Collectors.toList());
-                        if (isDefinedItem0(psiElement, holder, matcher, jobId, jobs) && (!isField2Valid(psiElement, holder, matcher, parts[2]))) {
-                            final List<String> outputs = listJobOutputs(element, jobId).stream().map(CompletionItem::key).collect(Collectors.toList());
-                            isValidItem3(psiElement, holder, matcher, parts[3], outputs);
-                        }
-                    });
-                    break;
-                case FIELD_NEEDS:
-                    ifEnoughItems(holder, psiElement, parts, 4, 4, jobId -> element.findParentJob().flatMap(job -> job.child(FIELD_NEEDS)).ifPresent(needElement -> {
-                        final Set<String> needs = needElement.needItems();
-                        if (isDefinedItem0(psiElement, holder, matcher, jobId, needs) && (!isField2Valid(psiElement, holder, matcher, parts[2]))) {
-                            final List<String> outputs = listJobOutputs(element, jobId).stream().map(CompletionItem::key).collect(Collectors.toList());
-                            isValidItem3(psiElement, holder, matcher, parts[3], outputs);
-                        }
-                    }));
-                    break;
-                default:
-                    break;
+                        ifEnoughItems(holder, psiElement, parts, 4, 4, jobId -> {
+                            final List<String> jobs = listJobs(element).stream().map(CompletionItem::key).collect(Collectors.toList());
+                            //noinspection DuplicatedCode
+                            if (isDefinedItem0(psiElement, holder, matcher, jobId, jobs) && (!isField2Valid(psiElement, holder, matcher, parts[2]))) {
+                                final List<String> outputs = listJobOutputs(element, jobId).stream().map(CompletionItem::key).collect(Collectors.toList());
+                                isValidItem3(psiElement, holder, matcher, parts[3], outputs);
+                            }
+                        });
+                case FIELD_NEEDS ->
+                        ifEnoughItems(holder, psiElement, parts, 4, 4, jobId -> element.findParentJob().flatMap(job -> job.child(FIELD_NEEDS)).ifPresent(needElement -> {
+                            final Set<String> needs = needElement.needItems();
+                            //noinspection DuplicatedCode
+                            if (isDefinedItem0(psiElement, holder, matcher, jobId, needs) && (!isField2Valid(psiElement, holder, matcher, parts[2]))) {
+                                final List<String> outputs = listJobOutputs(element, jobId).stream().map(CompletionItem::key).collect(Collectors.toList());
+                                isValidItem3(psiElement, holder, matcher, parts[3], outputs);
+                            }
+                        }));
+                default -> {
+                }
             }
         }
     }
 
+    @SuppressWarnings("BooleanMethodIsAlwaysInverted")
     private static boolean isField2Valid(@NotNull final PsiElement psiElement, @NotNull final AnnotationHolder holder, final Matcher matcher, final String itemId) {
         if (!FIELD_OUTPUTS.equals(itemId)) {
             final TextRange textRange = simpleTextRange(psiElement, matcher, itemId);
@@ -250,7 +243,7 @@ public class HighlightAnnotator implements Annotator {
                     holder,
                     HighlightSeverity.ERROR,
                     ProblemHighlightType.GENERIC_ERROR,
-                    Arrays.asList(new ReplaceTextIntentionAction(textRange, FIELD_OUTPUTS, false)),
+                    List.of(new ReplaceTextIntentionAction(textRange, FIELD_OUTPUTS, false)),
                     textRange,
                     "Invalid [" + itemId + "]"
             );
@@ -335,7 +328,7 @@ public class HighlightAnnotator implements Annotator {
                     holder,
                     HighlightSeverity.ERROR,
                     ProblemHighlightType.GENERIC_ERROR,
-                    Arrays.asList(new ReplaceTextIntentionAction(textRange, longPart, true)),
+                    List.of(new ReplaceTextIntentionAction(textRange, longPart, true)),
                     textRange,
                     "Not valid here [" + longPart + "]"
             );
@@ -344,6 +337,7 @@ public class HighlightAnnotator implements Annotator {
         }
     }
 
+    @SuppressWarnings({"DataFlowIssue", "ResultOfMethodCallIgnored"})
     public static void create(final AnnotationHolder holder, final HighlightSeverity level, final ProblemHighlightType type, final Collection<IntentionAction> quickFixes, final TextRange range, final String message) {
         if (range != null) {
             final AnnotationBuilder annotation = holder.newAnnotation(level, message);

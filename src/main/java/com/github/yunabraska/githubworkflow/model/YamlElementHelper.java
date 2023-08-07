@@ -24,7 +24,6 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.function.Consumer;
 import java.util.function.Predicate;
-import java.util.stream.Collectors;
 
 import static java.util.Optional.ofNullable;
 
@@ -144,7 +143,7 @@ public class YamlElementHelper {
                     .map(child -> yamlOf(parent, child))
                     .filter(Objects::nonNull)
                     .filter(e -> !e.equals(parent))
-                    .collect(Collectors.toList()));
+                    .toList());
         }
         return parent;
     }
@@ -168,7 +167,7 @@ public class YamlElementHelper {
         if (filter.test(currentNode)) {
             resultNodes.add(currentNode);
         }
-        for (YamlElement child : currentNode.children) {
+        for (final YamlElement child : currentNode.children) {
             filterNodesRecursive(child, filter, resultNodes);
         }
         return resultNodes;
@@ -202,7 +201,7 @@ public class YamlElementHelper {
 
     public static String removeBrackets(final String text, final char... chars) {
         if (text != null && text.length() > 1) {
-            for (char c : chars) {
+            for (final char c : chars) {
                 if (text.charAt(0) == c && text.charAt(text.length() - 1) == (c == '[' ? ']' : c == '(' ? ')' : c)) {
                     return text.substring(1, text.length() - 1);
                 }

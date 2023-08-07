@@ -139,46 +139,36 @@ public class WorkflowContext {
         if (top != null) {
             Optional.of(top).ifPresent(r -> r.allElements().filter(Objects::nonNull).forEach(e -> {
                 switch (ofNullable(e.key()).orElse("#")) {
-                    case FIELD_ENVS:
-                        e.children().forEach(item -> envs.put(item.path(), item));
-                        break;
-                    case FIELD_STEPS:
-                        e.children().forEach(item -> steps.put(item.path(), item));
-                        break;
-                    case FIELD_JOBS:
+                    case FIELD_ENVS -> e.children().forEach(item -> envs.put(item.path(), item));
+                    case FIELD_STEPS -> e.children().forEach(item -> steps.put(item.path(), item));
+                    case FIELD_JOBS ->
                         //if position is trigger node "ON" list all jobs
                         //if position is needs
                         //list job only when it has an output OR
-                        e.children().stream().filter(item -> item.key() != null).forEach(item -> jobs.put(item.path(), item));
-                        break;
-                    case FIELD_INPUTS:
-                        e.children().stream().filter(child -> child.key() != null).forEach(child -> inputs.put(child.path(), child));
-                        break;
-                    case FIELD_OUTPUTS:
-                        e.children().stream().filter(child -> child.key() != null).forEach(child -> outputs.put(child.path(), child));
-                        break;
-                    case FIELD_SECRETS:
-                        e.children().stream().filter(child -> child.key() != null).forEach(child -> secrets.put(child.path(), child));
-                        break;
-                    case FIELD_NEEDS:
+                            e.children().stream().filter(item -> item.key() != null).forEach(item -> jobs.put(item.path(), item));
+                    case FIELD_INPUTS ->
+                            e.children().stream().filter(child -> child.key() != null).forEach(child -> inputs.put(child.path(), child));
+                    case FIELD_OUTPUTS ->
+                            e.children().stream().filter(child -> child.key() != null).forEach(child -> outputs.put(child.path(), child));
+                    case FIELD_SECRETS ->
+                            e.children().stream().filter(child -> child.key() != null).forEach(child -> secrets.put(child.path(), child));
+                    case FIELD_NEEDS -> {
                         //String
                         ofNullable(e.childTextNoQuotes()).ifPresent(n -> needs.put(e.path() + "/" + e.childTextNoQuotes(), e));
                         //Array[String]
                         e.children().forEach(n -> needs.put(e.path() + "/" + n.childTextNoQuotes(), n));
-                        break;
-                    case FIELD_RUN:
-                        e.findParentStep().ifPresent(step -> e.children().forEach(line -> {
-                            parseEnvs(step, line);
-                            parseOutputs(step, line);
-                        }));
-                        break;
-                    case FIELD_USES:
+                    }
+                    case FIELD_RUN -> e.findParentStep().ifPresent(step -> e.children().forEach(line -> {
+                        parseEnvs(step, line);
+                        parseOutputs(step, line);
+                    }));
+                    case FIELD_USES -> {
                         final String uses = e.childTextNoQuotes();
                         //TODO: resolve TAGS & Branches
                         actions.put(e.path() + "/" + uses, GitHubAction.getGitHubAction(uses));
-                        break;
-                    default:
-                        break;
+                    }
+                    default -> {
+                    }
                 }
             }));
         }

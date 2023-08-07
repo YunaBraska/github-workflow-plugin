@@ -40,7 +40,7 @@ public class ApplicationListeners implements ProjectActivity {
 
         // AFTER STARTUP
         final FileEditorManager fileEditorManager = FileEditorManager.getInstance(project);
-        for (VirtualFile openedFile : fileEditorManager.getOpenFiles()) {
+        for (final VirtualFile openedFile : fileEditorManager.getOpenFiles()) {
             asyncInitWorkflowFile(project, openedFile);
         }
         return null;
