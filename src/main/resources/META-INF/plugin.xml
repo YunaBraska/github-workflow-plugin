@@ -4,14 +4,26 @@
     <name>Github Workflow</name>
     <vendor url="https://github.com/YunaBraska/github-workflow-plugin">Yuna Morgenstern</vendor>
 
+    <!-- Default -->
     <depends>com.intellij.modules.platform</depends>
+    <!-- Access to private workflows & actions -->
+    <depends>org.jetbrains.plugins.github</depends>
+    <!-- Parsing YAML Elements -->
+    <depends>org.jetbrains.plugins.yaml</depends>
+    <!-- Syntax Highlighting -->
+<!--    <depends>com.intellij.java</depends>-->
 
     <extensions defaultExtensionNs="com.intellij">
-
-        <completion.contributor language="any"
+        <!-- Auto Completion -->
+        <completion.contributor language="yaml"
                                 implementationClass="com.github.yunabraska.githubworkflow.completion.GitHubWorkflowCompletionContributor"/>
-
+        <!-- Syntax Highlighting -->
+        <annotator language="yaml"
+                   implementationClass="com.github.yunabraska.githubworkflow.highlights.HighlightAnnotator"/>
+        <!-- Register Events -->
+        <postStartupActivity implementation="com.github.yunabraska.githubworkflow.listeners.ApplicationListeners"/>
     </extensions>
+
     <extensions defaultExtensionNs="JavaScript.JsonSchema">
         <ProviderFactory implementation="com.github.yunabraska.githubworkflow.schema.GitHubSchemaProviderFactory"/>
     </extensions>

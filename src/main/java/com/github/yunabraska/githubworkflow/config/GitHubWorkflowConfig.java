@@ -1,4 +1,7 @@
-package com.github.yunabraska.githubworkflow.completion;
+package com.github.yunabraska.githubworkflow.config;
+
+import com.github.yunabraska.githubworkflow.model.GitHubAction;
+import com.github.yunabraska.githubworkflow.model.WorkflowContext;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -12,27 +15,42 @@ public class GitHubWorkflowConfig {
     public static final Pattern PATTERN_GITHUB_ENV = Pattern.compile("echo\\s+\"(.*?)=(.*?)\"\\s*>>\\s*\"?\\$\\{?GITHUB_ENV\\}?\"?");
     public static final long CACHE_ONE_DAY = 24L * 60 * 60 * 1000;
     public static final long CACHE_TEN_MINUTES = 600000;
+    public static final String FIELD_ON = "on";
     public static final String FIELD_ENVS = "env";
     public static final String FIELD_RUN = "run";
     public static final String FIELD_JOBS = "jobs";
     public static final String FIELD_VARS = "vars";
+    public static final String FIELD_WITH = "with";
     public static final String FIELD_USES = "uses";
     public static final String FIELD_NEEDS = "needs";
     public static final String FIELD_STEPS = "steps";
+    public static final String FIELD_RUNNER = "runner";
     public static final String FIELD_GITHUB = "github";
     public static final String FIELD_DEFAULT = "${{}}";
     public static final String FIELD_INPUTS = "inputs";
     public static final String FIELD_OUTPUTS = "outputs";
     public static final String FIELD_SECRETS = "secrets";
-    protected static final Map<String, Supplier<Map<String, String>>> DEFAULT_VALUE_MAP = initProcessorMap();
-    protected static final Map<String, GitHubAction> ACTION_CACHE = new ConcurrentHashMap<>();
-    protected static final Map<String, WorkflowFile> WORKFLOW_CACHE = new ConcurrentHashMap<>();
+    public static final Map<String, Supplier<Map<String, String>>> DEFAULT_VALUE_MAP = initProcessorMap();
+    public static final Map<String, GitHubAction> ACTION_CACHE = new ConcurrentHashMap<>();
+    public static final Map<String, WorkflowContext> WORKFLOW_CACHE = new ConcurrentHashMap<>();
 
     private static Map<String, Supplier<Map<String, String>>> initProcessorMap() {
         final Map<String, Supplier<Map<String, String>>> result = new HashMap<>();
         result.put(FIELD_GITHUB, GitHubWorkflowConfig::getGitHubContextEnvs);
         result.put(FIELD_ENVS, GitHubWorkflowConfig::getGitHubEnvs);
+        result.put(FIELD_RUNNER, GitHubWorkflowConfig::getRunnerItems);
         result.put(FIELD_DEFAULT, GitHubWorkflowConfig::getCaretBracketItems);
+        return result;
+    }
+
+    private static HashMap<String, String> getRunnerItems() {
+        final HashMap<String, String> result = new HashMap<>();
+        result.put("name", "The name of the runner executing the job.");
+        result.put("os", "The operating system of the runner executing the job. Possible values are Linux, Windows, or macOS.");
+        result.put("arch", "The architecture of the runner executing the job. Possible values are X86, X64, ARM, or ARM64.");
+        result.put("temp", "The path to a temporary directory on the runner. This directory is emptied at the beginning and end of each job. Note that files will not be removed if the runner's user account does not have permission to delete them.");
+        result.put("tool_cache", "he path to the directory containing preinstalled tools for GitHub-hosted runners. For more information, see \"About GitHub-hosted runners\".");
+        result.put("debug", "The path to the directory containing preinstalled tools for GitHub-hosted runners. For more information, see \"About GitHub-hosted runners\".");
         return result;
     }
 
