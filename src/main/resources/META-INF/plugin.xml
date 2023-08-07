@@ -11,7 +11,7 @@
     <!-- Parsing YAML Elements -->
     <depends>org.jetbrains.plugins.yaml</depends>
     <!-- Syntax Highlighting -->
-    <depends>com.intellij.java</depends>
+<!--    <depends>com.intellij.java</depends>-->
 
     <extensions defaultExtensionNs="com.intellij">
         <!-- Auto Completion -->
