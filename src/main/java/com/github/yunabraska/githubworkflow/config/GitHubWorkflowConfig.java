@@ -9,6 +9,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Supplier;
 import java.util.regex.Pattern;
 
+@SuppressWarnings("java:S2386")
 public class GitHubWorkflowConfig {
 
     public static final Pattern PATTERN_GITHUB_OUTPUT = Pattern.compile("echo\\s+\"(.*?)=(.*?)\"\\s*>>\\s*\"?\\$\\{?GITHUB_OUTPUT\\}?\"?");

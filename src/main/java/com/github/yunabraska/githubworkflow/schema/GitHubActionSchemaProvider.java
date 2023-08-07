@@ -21,9 +21,6 @@ public class GitHubActionSchemaProvider implements JsonSchemaFileProvider {
     private static final String NAME = "action";
     private static final String SCHEMA_URL = "https://json.schemastore.org/github-" + NAME;
 
-    public GitHubActionSchemaProvider() {
-    }
-
     @Override
     public boolean isAvailable(@NotNull final VirtualFile file) {
         return Optional.of(file)

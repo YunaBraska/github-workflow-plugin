@@ -23,19 +23,18 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.function.Supplier;
-import java.util.stream.Collectors;
 
-import static com.github.yunabraska.githubworkflow.model.CompletionItem.*;
-import static com.github.yunabraska.githubworkflow.config.GitHubWorkflowConfig.*;
 import static com.github.yunabraska.githubworkflow.completion.GitHubWorkflowUtils.addLookupElements;
 import static com.github.yunabraska.githubworkflow.completion.GitHubWorkflowUtils.getCaretBracketItem;
 import static com.github.yunabraska.githubworkflow.completion.GitHubWorkflowUtils.getDefaultPrefix;
 import static com.github.yunabraska.githubworkflow.completion.GitHubWorkflowUtils.getWorkflowFile;
+import static com.github.yunabraska.githubworkflow.config.GitHubWorkflowConfig.*;
 import static com.github.yunabraska.githubworkflow.config.NodeIcon.ICON_ENV;
 import static com.github.yunabraska.githubworkflow.config.NodeIcon.ICON_JOB;
 import static com.github.yunabraska.githubworkflow.config.NodeIcon.ICON_NODE;
 import static com.github.yunabraska.githubworkflow.config.NodeIcon.ICON_OUTPUT;
 import static com.github.yunabraska.githubworkflow.config.NodeIcon.ICON_RUNNER;
+import static com.github.yunabraska.githubworkflow.model.CompletionItem.*;
 import static com.github.yunabraska.githubworkflow.model.WorkflowContext.WORKFLOW_CONTEXT_MAP;
 import static java.util.Collections.singletonList;
 import static java.util.Optional.ofNullable;
@@ -56,9 +55,9 @@ public class GitHubWorkflowCompletionContributor extends CompletionContributor {
                     @NotNull final CompletionResultSet resultSet
             ) {
                 getWorkflowFile(parameters.getPosition()).map(Path::toString).map(WORKFLOW_CONTEXT_MAP::get).ifPresent(context -> {
-                    context.position(parameters.getOffset());
+                    final YamlElement position = context.getClosestElement(parameters.getOffset()).orElse(context.position());
                     final String[] prefix = new String[]{""};
-                    final Optional<String[]> caretBracketItem = ofNullable(context.position()).map(pos -> getCaretBracketItem(pos, parameters.getOffset(), prefix)).orElseGet(() -> Optional.of(prefix));
+                    final Optional<String[]> caretBracketItem = ofNullable(position).map(pos -> getCaretBracketItem(pos, parameters.getOffset(), prefix)).orElseGet(() -> Optional.of(prefix));
                     caretBracketItem.ifPresent(cbi -> {
                         final Map<Integer, List<CompletionItem>> completionResultMap = new HashMap<>();
                         for (int i = 0; i < cbi.length; i++) {
@@ -68,7 +67,7 @@ public class GitHubWorkflowCompletionContributor extends CompletionContributor {
                             if (i != 0 && (previousCompletions.isEmpty() || previousCompletions.stream().noneMatch(item -> item.key().equals(cbi[index])))) {
                                 return;
                             } else {
-                                addCompletionItems(cbi, i, context, completionResultMap);
+                                addCompletionItems(cbi, i, context, position, completionResultMap);
                             }
                         }
                         //ADD LOOKUP ELEMENTS
@@ -78,15 +77,15 @@ public class GitHubWorkflowCompletionContributor extends CompletionContributor {
                     });
                     //ACTIONS && WORKFLOWS
                     if (caretBracketItem.isEmpty()) {
-                        if (context.position().findParent(FIELD_NEEDS).isPresent()) {
+                        if (position.findParent(FIELD_NEEDS).isPresent()) {
                             //[jobs.job_name.needs] list previous jobs
-                            Optional.of(listNeeds(context.position())).filter(cil -> !cil.isEmpty())
+                            Optional.of(listNeeds(position)).filter(cil -> !cil.isEmpty())
                                     .map(GitHubWorkflowCompletionContributor::toLookupItems)
                                     .ifPresent(lookupElements -> addElementsWithPrefix(resultSet, getDefaultPrefix(parameters), lookupElements));
                         } else {
-                            //[jobs.job_id.steps.step_id:with]
-                            final Optional<Map<String, String>> withCompletion = context.position().findParentWith()
-                                    .flatMap(YamlElement::findParentStep)
+                            //USES COMPLETION [jobs.job_id.steps.step_id:with]
+                            final Optional<Map<String, String>> withCompletion = position.findParentWith()
+                                    .map(YamlElement::parent)
                                     .flatMap(step -> step.child(FIELD_USES))
                                     .map(YamlElement::textOrChildTextNoQuotes)
                                     .map(GitHubAction::getGitHubAction)
@@ -103,55 +102,68 @@ public class GitHubWorkflowCompletionContributor extends CompletionContributor {
         resultSet.withPrefixMatcher(new CamelHumpMatcher(prefix)).addAllElements(lookupElements);
     }
 
-    private static void addCompletionItems(final String[] cbi, final int i, final WorkflowContext context, final Map<Integer, List<CompletionItem>> completionItemMap) {
+    private static void addCompletionItems(final String[] cbi, final int i, final WorkflowContext context, final YamlElement position, final Map<Integer, List<CompletionItem>> completionItemMap) {
         if (i == 0) {
-            switch (cbi[0]) {
-                case FIELD_STEPS -> completionItemMap.put(i, listSteps(context.position()));
-                case FIELD_JOBS -> completionItemMap.put(i, listJobs(context.position()));
-                case FIELD_ENVS -> completionItemMap.put(i, listEnvs(context.position(), context.cursorAbs()));
-                case FIELD_GITHUB ->
-                        completionItemMap.put(i, completionItemsOf(DEFAULT_VALUE_MAP.get(FIELD_GITHUB).get(), ICON_ENV));
-                case FIELD_RUNNER ->
-                        completionItemMap.put(i, completionItemsOf(DEFAULT_VALUE_MAP.get(FIELD_RUNNER).get(), ICON_RUNNER));
-                case FIELD_INPUTS -> completionItemMap.put(i, listInputs(context.position()));
-                case FIELD_SECRETS -> completionItemMap.put(i, listSecrets(context.position()));
-                case FIELD_NEEDS -> completionItemMap.put(i, listJobNeeds(context.position()));
-                default -> {
-                    //SHOW ONLY JOBS [on.workflow_call.outputs.key.value:xxx]
-                    if (context.position().findParentOutput().map(YamlElement::findParentOn).isPresent()) {
-                        completionItemMap.put(i, singletonList(completionItemOf(FIELD_JOBS, DEFAULT_VALUE_MAP.get(FIELD_DEFAULT).get().get(FIELD_JOBS), ICON_JOB)));
-                    } else if (context.position().findParent("runs-on").isEmpty() && context.position().findParent("os").isEmpty()) {
-                        //DEFAULT
-                        ofNullable(DEFAULT_VALUE_MAP.getOrDefault(FIELD_DEFAULT, null))
-                                .map(Supplier::get)
-                                .map(map -> {
-                                    final Map<String, String> copyMap = new HashMap<>(map);
-                                    //'JOBS' HAS ONLY ONE PLACE
-                                    copyMap.remove(FIELD_JOBS);
-                                    //IF NO 'NEEDS' IS DEFINED
-                                    if (context.position().findParentJob().map(job -> job.child(FIELD_NEEDS)).isEmpty()) {
-                                        copyMap.remove(FIELD_NEEDS);
-                                    }
-                                    return copyMap;
-                                })
-                                .map(map -> completionItemsOf(map, ICON_NODE))
-                                .ifPresent(items -> completionItemMap.put(i, items));
-                    }
-                }
-            }
+            handleFirstItem(cbi, i, context, position, completionItemMap);
         } else if (i == 1) {
-            switch (cbi[0]) {
-                case FIELD_JOBS, FIELD_NEEDS, FIELD_STEPS ->
-                        completionItemMap.put(i, singletonList(completionItemOf(FIELD_OUTPUTS, "", ICON_OUTPUT)));
-                default -> {
-                }
-            }
+            handleSecondItem(cbi, i, completionItemMap);
         } else if (i == 2) {
-            switch (cbi[0]) {
-                case FIELD_JOBS, FIELD_NEEDS -> completionItemMap.put(i, listJobOutputs(context.position(), cbi[1]));
-                case FIELD_STEPS ->
-                        completionItemMap.put(i, listStepOutputs(context.position(), context.cursorAbs(), cbi[1]));
-                default -> {
+            handleThirdItem(cbi, i, context, position, completionItemMap);
+        }
+    }
+
+    private static void handleThirdItem(final String[] cbi, final int i, final WorkflowContext context, final YamlElement position, final Map<Integer, List<CompletionItem>> completionItemMap) {
+        switch (cbi[0]) {
+            case FIELD_JOBS, FIELD_NEEDS -> completionItemMap.put(i, listJobOutputs(position, cbi[1]));
+            case FIELD_STEPS -> completionItemMap.put(i, listStepOutputs(position, context.cursorAbs(), cbi[1]));
+            default -> {
+                // ignored
+            }
+        }
+    }
+
+    private static void handleSecondItem(final String[] cbi, final int i, final Map<Integer, List<CompletionItem>> completionItemMap) {
+        switch (cbi[0]) {
+            case FIELD_JOBS, FIELD_NEEDS, FIELD_STEPS ->
+                    completionItemMap.put(i, singletonList(completionItemOf(FIELD_OUTPUTS, "", ICON_OUTPUT)));
+            default -> {
+                // ignored
+            }
+        }
+    }
+
+    private static void handleFirstItem(final String[] cbi, final int i, final WorkflowContext context, final YamlElement position, final Map<Integer, List<CompletionItem>> completionItemMap) {
+        switch (cbi[0]) {
+            case FIELD_STEPS -> completionItemMap.put(i, listSteps(position));
+            case FIELD_JOBS -> completionItemMap.put(i, listJobs(position));
+            case FIELD_ENVS -> completionItemMap.put(i, listEnvs(position, context.cursorAbs()));
+            case FIELD_GITHUB ->
+                    completionItemMap.put(i, completionItemsOf(DEFAULT_VALUE_MAP.get(FIELD_GITHUB).get(), ICON_ENV));
+            case FIELD_RUNNER ->
+                    completionItemMap.put(i, completionItemsOf(DEFAULT_VALUE_MAP.get(FIELD_RUNNER).get(), ICON_RUNNER));
+            case FIELD_INPUTS -> completionItemMap.put(i, listInputs(position));
+            case FIELD_SECRETS -> completionItemMap.put(i, listSecrets(position));
+            case FIELD_NEEDS -> completionItemMap.put(i, listJobNeeds(position));
+            default -> {
+                //SHOW ONLY JOBS [on.workflow_call.outputs.key.value:xxx]
+                if (position.findParentOutput().map(YamlElement::findParentOn).isPresent()) {
+                    completionItemMap.put(i, singletonList(completionItemOf(FIELD_JOBS, DEFAULT_VALUE_MAP.get(FIELD_DEFAULT).get().get(FIELD_JOBS), ICON_JOB)));
+                } else if (position.findParent("runs-on").isEmpty() && position.findParent("os").isEmpty()) {
+                    //DEFAULT
+                    ofNullable(DEFAULT_VALUE_MAP.getOrDefault(FIELD_DEFAULT, null))
+                            .map(Supplier::get)
+                            .map(map -> {
+                                final Map<String, String> copyMap = new HashMap<>(map);
+                                //'JOBS' HAS ONLY ONE PLACE
+                                copyMap.remove(FIELD_JOBS);
+                                //IF NO 'NEEDS' IS DEFINED
+                                if (position.findParentJob().map(job -> job.child(FIELD_NEEDS)).isEmpty()) {
+                                    copyMap.remove(FIELD_NEEDS);
+                                }
+                                return copyMap;
+                            })
+                            .map(map -> completionItemsOf(map, ICON_NODE))
+                            .ifPresent(items -> completionItemMap.put(i, items));
                 }
             }
         }
@@ -159,6 +171,6 @@ public class GitHubWorkflowCompletionContributor extends CompletionContributor {
 
     @NotNull
     private static List<LookupElement> toLookupItems(final List<CompletionItem> items) {
-        return items.stream().map(CompletionItem::toLookupElement).collect(Collectors.toList());
+        return items.stream().map(CompletionItem::toLookupElement).toList();
     }
 }

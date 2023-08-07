@@ -29,7 +29,6 @@ import java.util.Set;
 import java.util.function.Consumer;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import java.util.stream.Collectors;
 
 import static com.github.yunabraska.githubworkflow.completion.GitHubWorkflowUtils.TMP_DIR;
 import static com.github.yunabraska.githubworkflow.config.GitHubWorkflowConfig.*;
@@ -114,7 +113,7 @@ public class HighlightAnnotator implements Annotator {
                                         holder,
                                         HighlightSeverity.ERROR,
                                         ProblemHighlightType.GENERIC_ERROR,
-                                        jobs.stream().map(need -> new ReplaceTextIntentionAction(range, need, false)).collect(Collectors.toList()),
+                                        jobs.stream().map(need -> new ReplaceTextIntentionAction(range, need, false)).map(ia -> (IntentionAction) ia).toList(),
                                         range,
                                         "Invalid [" + jobId + "] - needs to be a valid jobId from previous jobs"
                                 );
@@ -181,7 +180,7 @@ public class HighlightAnnotator implements Annotator {
             final String scope = parts[0];
             switch (scope) {
                 case FIELD_INPUTS ->
-                        ifEnoughItems(holder, psiElement, parts, 2, 2, inputId -> isDefinedItem0(psiElement, holder, matcher, inputId, listInputs(element).stream().map(CompletionItem::key).collect(Collectors.toList())));
+                        ifEnoughItems(holder, psiElement, parts, 2, 2, inputId -> isDefinedItem0(psiElement, holder, matcher, inputId, listInputs(element).stream().map(CompletionItem::key).toList()));
                 case FIELD_SECRETS -> ifEnoughItems(holder, psiElement, parts, 2, 2, secretId -> {
                     final List<String> secrets = listSecrets(element).stream().map(CompletionItem::key).toList();
                     if (!secrets.contains(secretId)) {
@@ -190,33 +189,33 @@ public class HighlightAnnotator implements Annotator {
                                 holder,
                                 HighlightSeverity.WEAK_WARNING,
                                 ProblemHighlightType.WEAK_WARNING,
-                                secrets.stream().map(output -> new ReplaceTextIntentionAction(textRange, output, false)).collect(Collectors.toList()),
+                                secrets.stream().map(output -> new ReplaceTextIntentionAction(textRange, output, false)).map(ia -> (IntentionAction) ia).toList(),
                                 textRange,
                                 "Undefined [" + secretId + "] - it might be provided at runtime"
                         );
                     }
                 });
                 case FIELD_ENVS ->
-                        ifEnoughItems(holder, psiElement, parts, 2, -1, envId -> isDefinedItem0(psiElement, holder, matcher, envId, listEnvs(element, element.startIndexAbs()).stream().map(CompletionItem::key).collect(Collectors.toList())));
+                        ifEnoughItems(holder, psiElement, parts, 2, -1, envId -> isDefinedItem0(psiElement, holder, matcher, envId, listEnvs(element, element.startIndexAbs()).stream().map(CompletionItem::key).toList()));
                 case FIELD_GITHUB ->
                         ifEnoughItems(holder, psiElement, parts, 2, -1, envId -> isDefinedItem0(psiElement, holder, matcher, envId, new ArrayList<>(DEFAULT_VALUE_MAP.get(FIELD_GITHUB).get().keySet())));
                 case FIELD_RUNNER ->
                         ifEnoughItems(holder, psiElement, parts, 2, 2, runnerId -> isDefinedItem0(psiElement, holder, matcher, runnerId, new ArrayList<>(DEFAULT_VALUE_MAP.get(FIELD_RUNNER).get().keySet())));
                 case FIELD_STEPS -> ifEnoughItems(holder, psiElement, parts, 4, 4, stepId -> {
-                    final List<String> steps = listSteps(element).stream().map(CompletionItem::key).collect(Collectors.toList());
+                    final List<String> steps = listSteps(element).stream().map(CompletionItem::key).toList();
                     if (isDefinedItem0(psiElement, holder, matcher, stepId, steps) && (!isField2Valid(psiElement, holder, matcher, parts[2]))) {
-                        final List<String> outputs = listStepOutputs(element, element.startIndexAbs(), stepId).stream().map(CompletionItem::key).collect(Collectors.toList());
+                        final List<String> outputs = listStepOutputs(element, element.startIndexAbs(), stepId).stream().map(CompletionItem::key).toList();
                         isValidItem3(psiElement, holder, matcher, parts[3], outputs);
 
                     }
                 });
                 case FIELD_JOBS ->
-                    //TODO: CHECK OUTPUTS FOR JOBS && NEEDS && STEPS e.g. [ if (!FIELD_OUTPUTS.equals(parts[2])) ]
+                    // TODO: CHECK OUTPUTS FOR JOBS && NEEDS && STEPS e.g. [ if (!FIELD_OUTPUTS.equals(parts[2])) ]
                         ifEnoughItems(holder, psiElement, parts, 4, 4, jobId -> {
-                            final List<String> jobs = listJobs(element).stream().map(CompletionItem::key).collect(Collectors.toList());
+                            final List<String> jobs = listJobs(element).stream().map(CompletionItem::key).toList();
                             //noinspection DuplicatedCode
                             if (isDefinedItem0(psiElement, holder, matcher, jobId, jobs) && (!isField2Valid(psiElement, holder, matcher, parts[2]))) {
-                                final List<String> outputs = listJobOutputs(element, jobId).stream().map(CompletionItem::key).collect(Collectors.toList());
+                                final List<String> outputs = listJobOutputs(element, jobId).stream().map(CompletionItem::key).toList();
                                 isValidItem3(psiElement, holder, matcher, parts[3], outputs);
                             }
                         });
@@ -225,11 +224,12 @@ public class HighlightAnnotator implements Annotator {
                             final Set<String> needs = needElement.needItems();
                             //noinspection DuplicatedCode
                             if (isDefinedItem0(psiElement, holder, matcher, jobId, needs) && (!isField2Valid(psiElement, holder, matcher, parts[2]))) {
-                                final List<String> outputs = listJobOutputs(element, jobId).stream().map(CompletionItem::key).collect(Collectors.toList());
+                                final List<String> outputs = listJobOutputs(element, jobId).stream().map(CompletionItem::key).toList();
                                 isValidItem3(psiElement, holder, matcher, parts[3], outputs);
                             }
                         }));
                 default -> {
+                    // ignored
                 }
             }
         }
@@ -259,7 +259,7 @@ public class HighlightAnnotator implements Annotator {
                     holder,
                     HighlightSeverity.ERROR,
                     ProblemHighlightType.GENERIC_ERROR,
-                    outputs.stream().map(output -> new ReplaceTextIntentionAction(textRange, output, false)).collect(Collectors.toList()),
+                    outputs.stream().map(output -> new ReplaceTextIntentionAction(textRange, output, false)).map(ia -> (IntentionAction) ia).toList(),
                     textRange,
                     "Undefined [" + itemId + "]"
             );
@@ -273,7 +273,7 @@ public class HighlightAnnotator implements Annotator {
                     holder,
                     HighlightSeverity.ERROR,
                     ProblemHighlightType.GENERIC_ERROR,
-                    items.stream().map(output -> new ReplaceTextIntentionAction(textRange, output, false)).collect(Collectors.toList()),
+                    items.stream().map(output -> new ReplaceTextIntentionAction(textRange, output, false)).map(ia -> (IntentionAction) ia).toList(),
                     textRange,
                     "Undefined [" + itemId + "]"
             );
@@ -348,7 +348,6 @@ public class HighlightAnnotator implements Annotator {
             ofNullable(quickFixes).ifPresent(q -> q.forEach(annotation::withFix));
 
             ofNullable(range).ifPresent(silentAnnotation::range);
-//        ofNullable(message).ifPresent(silentAnnotation::tooltip);
             ofNullable(quickFixes).ifPresent(q -> q.forEach(silentAnnotation::withFix));
 
             annotation.create();

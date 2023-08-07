@@ -122,7 +122,7 @@ public class CompletionItem {
                 .filter(hasKey())
                 .filter(job -> job.startIndexAbs() < positionJob)
                 .map(job -> completionItemOf(job.key(), ofNullable(job.usesOrName()).orElse("job_" + job.childIndex()), ICON_NEEDS))
-                .collect(Collectors.toList());
+                .toList();
     }
 
     public static List<CompletionItem> listJobNeeds(final YamlElement position) {
@@ -141,7 +141,7 @@ public class CompletionItem {
                         .filter(YamlElementHelper::hasText)
                         .filter(validJobs::contains)
                         .map(need -> completionItemOf(need, "", ICON_NEEDS))
-                        .collect(Collectors.toList())
+                        .toList()
                 )
                 .orElse(emptyList());
     }
@@ -237,7 +237,7 @@ public class CompletionItem {
         return map == null ? new ArrayList<>() : map.entrySet().stream()
                 .map(item -> completionItemOf(item.getKey(), item.getValue(), icon))
                 .filter(Objects::nonNull)
-                .collect(Collectors.toList());
+                .toList();
     }
 
     public static CompletionItem completionItemOf(final String key, final String text, final NodeIcon icon) {

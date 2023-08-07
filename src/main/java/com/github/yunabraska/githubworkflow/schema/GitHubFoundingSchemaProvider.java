@@ -21,9 +21,6 @@ public class GitHubFoundingSchemaProvider implements JsonSchemaFileProvider {
     public static final String NAME = "funding";
     private static final String SCHEMA_URL = "https://json.schemastore.org/github-" + NAME;
 
-    public GitHubFoundingSchemaProvider() {
-    }
-
     @Override
     public boolean isAvailable(@NotNull final VirtualFile file) {
         return Optional.of(file)

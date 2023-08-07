@@ -22,9 +22,6 @@ public class GitHubIssueFormsSchemaProvider implements JsonSchemaFileProvider {
     private static final String NAME = "issue-forms";
     private static final String SCHEMA_URL = "https://json.schemastore.org/github-" + NAME;
 
-    public GitHubIssueFormsSchemaProvider() {
-    }
-
     @Override
     public boolean isAvailable(@NotNull final VirtualFile file) {
         return Optional.of(file)

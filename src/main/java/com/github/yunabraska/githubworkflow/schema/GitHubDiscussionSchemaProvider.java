@@ -22,9 +22,6 @@ public class GitHubDiscussionSchemaProvider implements JsonSchemaFileProvider {
     private static final String NAME = "discussion";
     private static final String SCHEMA_URL = "https://json.schemastore.org/github-" + NAME;
 
-    public GitHubDiscussionSchemaProvider() {
-    }
-
     @Override
     public boolean isAvailable(@NotNull final VirtualFile file) {
         return Optional.of(file)

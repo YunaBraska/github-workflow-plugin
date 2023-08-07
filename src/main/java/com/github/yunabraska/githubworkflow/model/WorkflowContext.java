@@ -4,6 +4,7 @@ import com.github.yunabraska.githubworkflow.completion.GitHubWorkflowUtils;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.psi.PsiFile;
 
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
@@ -25,7 +26,7 @@ import static com.github.yunabraska.githubworkflow.model.YamlElement.CURSOR_STRI
 import static java.util.Comparator.comparingInt;
 import static java.util.Optional.ofNullable;
 
-@SuppressWarnings("unused")
+@SuppressWarnings({"unused", "java:S2386"})
 public class WorkflowContext {
 
     public static final Map<String, WorkflowContext> WORKFLOW_CONTEXT_MAP = new ConcurrentHashMap<>();
@@ -75,8 +76,18 @@ public class WorkflowContext {
                 .filter(o -> o != -1)
                 .flatMap(cursorIndexAbs -> root().allElements()
                         .filter(element -> element.startIndexAbs() <= offset && element.endIndexAbs() >= offset)
-                        .min(comparingInt(element -> getDistanceToIndex(element, offset))));
+                        .min(comparingInt(element -> getDistanceToIndex(element, offset))))
+                .or(() -> getLastElement(offset));
     }
+
+    public Optional<YamlElement> getLastElement(final int offset) {
+        return Optional.of(offset)
+                .filter(o -> o != -1)
+                .flatMap(o -> root().allElements()
+                        .filter(element -> element.startIndexAbs() >= offset)
+                        .min(Comparator.comparingInt(YamlElement::startIndexAbs)));
+    }
+
 
     public int cursorAbs() {
         return cursorAbs.get();
@@ -168,12 +179,13 @@ public class WorkflowContext {
                         actions.put(e.path() + "/" + uses, GitHubAction.getGitHubAction(uses));
                     }
                     default -> {
+                        // ignored
                     }
                 }
             }));
         }
         position.set(new YamlElement(-1, -1, null, null, null, null, null));
-        ofNullable(path.get()).ifPresent(path -> WORKFLOW_CONTEXT_MAP.put(path, this));
+        ofNullable(path.get()).ifPresent(p -> WORKFLOW_CONTEXT_MAP.put(p, this));
         return this;
     }
 

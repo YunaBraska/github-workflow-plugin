@@ -22,9 +22,6 @@ public class GitHubWorkflowTemplateSchemaProvider implements JsonSchemaFileProvi
     private static final String NAME = "workflow-template-properties";
     private static final String SCHEMA_URL = "https://json.schemastore.org/github-" + NAME;
 
-    public GitHubWorkflowTemplateSchemaProvider() {
-    }
-
     @Override
     public boolean isAvailable(@NotNull final VirtualFile file) {
         return Optional.of(file)

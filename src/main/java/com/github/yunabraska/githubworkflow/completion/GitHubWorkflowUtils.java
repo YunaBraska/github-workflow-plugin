@@ -1,7 +1,6 @@
 package com.github.yunabraska.githubworkflow.completion;
 
 import com.github.yunabraska.githubworkflow.config.NodeIcon;
-import com.github.yunabraska.githubworkflow.model.DownloadException;
 import com.github.yunabraska.githubworkflow.model.GitHubAction;
 import com.github.yunabraska.githubworkflow.model.YamlElement;
 import com.intellij.codeInsight.completion.CompletionParameters;
@@ -41,10 +40,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Future;
 import java.util.regex.Matcher;
-import java.util.stream.Collectors;
 
 import static com.github.yunabraska.githubworkflow.completion.AutoPopupInsertHandler.addSuffix;
 import static com.github.yunabraska.githubworkflow.config.GitHubWorkflowConfig.CACHE_ONE_DAY;
@@ -174,7 +171,7 @@ public class GitHubWorkflowUtils {
     }
 
     public static List<LookupElement> toLookupElements(final Map<String, String> map, final NodeIcon icon, final char suffix) {
-        return map.entrySet().stream().map(item -> toLookupElement(icon, suffix, item.getKey(), item.getValue())).collect(Collectors.toList());
+        return map.entrySet().stream().map(item -> toLookupElement(icon, suffix, item.getKey(), item.getValue())).toList();
     }
 
     public static LookupElement toLookupElement(final NodeIcon icon, final char suffix, final String key, final String text) {
@@ -229,7 +226,7 @@ public class GitHubWorkflowUtils {
     @SuppressWarnings("DataFlowIssue")
     private static String downloadFromGitHub(final String downloadUrl, final GithubAccount account) throws IOException {
         final String token = GHCompatibilityUtil.getOrRequestToken(account, ProjectManager.getInstance().getDefaultProject());
-        return  GithubApiRequestExecutor.Factory.getInstance().create(token).execute(new GithubApiRequest.Get<>(downloadUrl) {
+        return GithubApiRequestExecutor.Factory.getInstance().create(token).execute(new GithubApiRequest.Get<>(downloadUrl) {
             @Override
             public String extractResult(final @NotNull GithubApiResponse response) {
                 try {
@@ -250,54 +247,42 @@ public class GitHubWorkflowUtils {
         });
     }
 
-    public static String downloadContent(final String url, final Path path, final long expirationTime, final boolean usingGithub) {
+    private static String downloadContent(final String url, final Path path, final long expirationTime, final boolean usingGithub) {
         try {
-            return downloadContentAsync(url, path, expirationTime, usingGithub).get();
+            if (Files.exists(path) && (expirationTime < 1 || Files.getLastModifiedTime(path).toMillis() > System.currentTimeMillis() - expirationTime)) {
+                LOG.info("Cache load [" + path + "] expires in [" + (System.currentTimeMillis() - expirationTime) + "ms]");
+                return readFileAsync(path);
+            } else {
+                if (!Files.exists(path.getParent())) {
+                    Files.createDirectories(path.getParent());
+                }
+                final String content = Optional.of(usingGithub).filter(withGH -> withGH).map(withGH -> downloadFileFromGitHub(url)).orElseGet(() -> downloadContent(url));
+                Files.write(path, content.getBytes());
+                return content;
+            }
         } catch (final Exception e) {
-            throw new DownloadException(e);
+            LOG.warn("Cache failed for [" + url + "] message [" + (e instanceof NullPointerException ? null : e.getMessage()) + "]");
+            return "";
         }
     }
 
-    //TODO: remove async, the process is running async in background anyway
-    private static CompletableFuture<String> downloadContentAsync(final String url, final Path path, final long expirationTime, final boolean usingGithub) {
-        return CompletableFuture.supplyAsync(() -> {
-            try {
-                if (Files.exists(path) && (expirationTime < 1 || Files.getLastModifiedTime(path).toMillis() > System.currentTimeMillis() - expirationTime)) {
-                    LOG.info("Cache load [" + path + "] expires in [" + (System.currentTimeMillis() - expirationTime) + "ms]");
-                    return readFileAsync(path).get();
-                } else {
-                    if (!Files.exists(path.getParent())) {
-                        Files.createDirectories(path.getParent());
-                    }
-                    final String content = Optional.of(usingGithub).filter(withGH -> withGH).map(withGH -> downloadFileFromGitHub(url)).orElseGet(() -> downloadContent(url));
-                    Files.write(path, content.getBytes());
-                    return content;
-                }
-            } catch (final Exception e) {
-                LOG.warn("Cache failed for [" + url + "] message [" + (e instanceof NullPointerException ? null : e.getMessage()) + "]");
-                return "";
+
+    public static String readFileAsync(final Path path) {
+        try (final BufferedReader reader = Files.newBufferedReader(path, Charset.defaultCharset())) {
+            final StringBuilder contentBuilder = new StringBuilder();
+            String line;
+            while ((line = reader.readLine()) != null) {
+                contentBuilder.append(line).append(System.lineSeparator());
             }
-        });
+            return contentBuilder.toString();
+        } catch (final IOException e) {
+            LOG.error("Failed to read file [" + path + "] message [" + e.getMessage() + "]");
+            return "";
+        }
     }
 
 
-    public static CompletableFuture<String> readFileAsync(final Path path) {
-        return CompletableFuture.supplyAsync(() -> {
-            try (final BufferedReader reader = Files.newBufferedReader(path, Charset.defaultCharset())) {
-                final StringBuilder contentBuilder = new StringBuilder();
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    contentBuilder.append(line).append(System.lineSeparator());
-                }
-                return contentBuilder.toString();
-            } catch (final IOException e) {
-                LOG.error("Failed to read file [" + path + "] message [" + e.getMessage() + "]");
-                return "";
-            }
-        });
-    }
-
-
+    @SuppressWarnings("java:S2142")
     private static String downloadContent(final String urlString) {
         LOG.info("Download [" + urlString + "]");
         try {

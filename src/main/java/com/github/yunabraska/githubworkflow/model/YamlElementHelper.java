@@ -45,7 +45,13 @@ public class YamlElementHelper {
     }
 
     public static YAMLFile getPsiFile(final PsiElement element) {
-        return element != null && element.getParent() != null && !(element instanceof YAMLFile) ? getPsiFile(element.getParent()) : (YAMLFile) element;
+        if (element == null) {
+            return null;
+        } else if (element instanceof final YAMLFile yamlFile) {
+            return yamlFile;
+        } else {
+            return getPsiFile(element.getParent());
+        }
     }
 
     public static YamlElement yamlOf(final PsiElement element) {
@@ -59,18 +65,16 @@ public class YamlElementHelper {
             return createRootElement(element);
         } else if (element instanceof YAMLMapping) {
             return addChildren(parent, element.getChildren());
-        } else if (element instanceof YAMLKeyValue) {
-            return createElement(parent, (YAMLKeyValue) element);
-//        } else if (element instanceof YAMLMappingImpl) {
-//            return addChildren(parent, (YAMLMappingImpl) element);
-        } else if (element instanceof YAMLSequenceItem) {
-            return addChildren(parent, (YAMLSequenceItem) element);
-        } else if (element instanceof YAMLSequence) {
-            return addChildren(parent, (YAMLSequence) element);
+        } else if (element instanceof final YAMLKeyValue yamlKeyValue) {
+            return createElement(parent, yamlKeyValue);
+        } else if (element instanceof final YAMLSequenceItem yamlSequenceItem) {
+            return addChildren(parent, yamlSequenceItem);
+        } else if (element instanceof final YAMLSequence yamlSequence) {
+            return addChildren(parent, yamlSequence);
         } else if (element instanceof YAMLQuotedText || element instanceof YAMLPlainTextImpl) {
             return createElement(parent, (YAMLScalar) element);
-        } else if (element instanceof YAMLBlockScalarImpl) {
-            return addChildren(parent, (YAMLBlockScalarImpl) element);
+        } else if (element instanceof final YAMLBlockScalarImpl yamlBlockScalarImpl) {
+            return addChildren(parent, yamlBlockScalarImpl);
         } else if (element instanceof YAMLCompoundValue || element instanceof PsiErrorElementImpl) {
             //IGNORE
             return parent;
@@ -202,11 +206,15 @@ public class YamlElementHelper {
     public static String removeBrackets(final String text, final char... chars) {
         if (text != null && text.length() > 1) {
             for (final char c : chars) {
-                if (text.charAt(0) == c && text.charAt(text.length() - 1) == (c == '[' ? ']' : c == '(' ? ')' : c)) {
+                if (text.charAt(0) == c && text.charAt(text.length() - 1) == (c == '[' ? ']' : validateRoundBracket(c))) {
                     return text.substring(1, text.length() - 1);
                 }
             }
         }
         return text;
+    }
+
+    private static char validateRoundBracket(final char c) {
+        return c == '(' ? ')' : c;
     }
 }
