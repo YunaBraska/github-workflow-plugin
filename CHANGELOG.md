@@ -4,6 +4,13 @@
 
 ## [Unreleased]
 
+## [2.0.3] - 2023-08-10
+
+### Continue Renovations
+
+- Fixed EDT Error
+- Fixed false positives at Syntax Highlighting
+
 ## [2.0.0] - 2023-07-05
 
 ### Big Refactoring

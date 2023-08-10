@@ -45,7 +45,8 @@ import static java.util.Optional.ofNullable;
 
 public class HighlightAnnotator implements Annotator {
 
-    public static final Pattern CARET_BRACKET_ITEM_PATTERN = Pattern.compile("\\b(\\w++(?:\\.\\w++)++)\\b");
+    //    public static final Pattern CARET_BRACKET_ITEM_PATTERN = Pattern.compile("\\b(\\w++(?:\\.\\w++)++)\\b");
+    public static final Pattern CARET_BRACKET_ITEM_PATTERN = Pattern.compile("[\\s|\\t^{]\\b(\\w++(?:\\.\\w++)++)[\\s|\\t$}]");
 
     @Override
     public void annotate(@NotNull final PsiElement psiElement, @NotNull final AnnotationHolder holder) {
@@ -53,16 +54,18 @@ public class HighlightAnnotator implements Annotator {
             ofNullable(WORKFLOW_CONTEXT_MAP.get(getPath(psiElement))).map(WorkflowContext::root).map(root -> toYamlElement(psiElement, root)).ifPresent(element -> {
                 if (FIELD_USES.equals(element.key())) {
                     ofNullable(element.childTextNoQuotes()).map(GitHubAction::getGitHubAction).filter(GitHubAction::isAvailable).ifPresent(gitHubAction -> {
+                        final String browserText = "Open in Browser [" + gitHubAction.slug() + "]";
+                        final String marketplaceText = "Open in Marketplace [" + gitHubAction.slug() + "]";
                         final List<IntentionAction> quickFixes = gitHubAction.isAction()
-                                ? Arrays.asList(new OpenUrlIntentionAction(gitHubAction.marketplaceUrl(), "Open Marketplace [" + gitHubAction.marketplaceUrl() + "]"), new OpenUrlIntentionAction(gitHubAction.toUrl(), "Open file in Browser [" + gitHubAction.toUrl() + "]"))
-                                : List.of(new OpenUrlIntentionAction(gitHubAction.toUrl(), "Open File [" + gitHubAction.toUrl() + "]"));
+                                ? Arrays.asList(new OpenUrlIntentionAction(gitHubAction.marketplaceUrl(), marketplaceText), new OpenUrlIntentionAction(gitHubAction.toUrl(), browserText))
+                                : List.of(new OpenUrlIntentionAction(gitHubAction.toUrl(), browserText));
                         create(
                                 holder,
                                 HighlightSeverity.INFORMATION,
                                 ProblemHighlightType.INFORMATION,
                                 quickFixes,
                                 psiElement.getTextRange(),
-                                "Open Action in Browser [" + gitHubAction.slug() + "]"
+                                browserText
                         );
                     });
                 }
@@ -70,6 +73,7 @@ public class HighlightAnnotator implements Annotator {
                 if (element.key() != null && ofNullable(element.parent()).map(YamlElement::key).filter(FIELD_WITH::equals).isPresent()) {
                     element.findParentStep().map(YamlElement::uses).map(GitHubAction::getGitHubAction).map(GitHubAction::inputs).map(Map::keySet).ifPresent(inputs -> {
                         if (!inputs.contains(element.key())) {
+                            //TODO: refresh delete cache
                             create(
                                     holder,
                                     HighlightSeverity.ERROR,
@@ -123,8 +127,8 @@ public class HighlightAnnotator implements Annotator {
                                     if (!jobText.contains(FIELD_NEEDS + "." + jobId + ".")) {
                                         create(
                                                 holder,
-                                                HighlightSeverity.WEAK_WARNING,
-                                                ProblemHighlightType.LIKE_UNUSED_SYMBOL,
+                                                HighlightSeverity.INFORMATION,
+                                                ProblemHighlightType.INFORMATION,
                                                 List.of(new ReplaceTextIntentionAction(range, jobId, true)),
                                                 range,
                                                 "Unused [" + jobId + "]"
@@ -176,7 +180,11 @@ public class HighlightAnnotator implements Annotator {
     private static void processBracketItems(@NotNull final PsiElement psiElement, @NotNull final AnnotationHolder holder, final YamlElement element) {
         final Matcher matcher = CARET_BRACKET_ITEM_PATTERN.matcher(psiElement.getText());
         while (matcher.find()) {
-            final String[] parts = matcher.group().split("\\.");
+            final String[] parts = Arrays.stream(matcher.group().split("\\."))
+                    .map(s -> s.replace("{", ""))
+                    .map(s -> s.replace("}", ""))
+                    .map(String::trim)
+                    .toArray(String[]::new);
             final String scope = parts[0];
             switch (scope) {
                 case FIELD_INPUTS ->
@@ -223,7 +231,7 @@ public class HighlightAnnotator implements Annotator {
                         ifEnoughItems(holder, psiElement, parts, 4, 4, jobId -> element.findParentJob().flatMap(job -> job.child(FIELD_NEEDS)).ifPresent(needElement -> {
                             final Set<String> needs = needElement.needItems();
                             //noinspection DuplicatedCode
-                            if (isDefinedItem0(psiElement, holder, matcher, jobId, needs) && (!isField2Valid(psiElement, holder, matcher, parts[2]))) {
+                            if (isDefinedItem0(psiElement, holder, matcher, jobId, needs) && isField2Valid(psiElement, holder, matcher, parts[2])) {
                                 final List<String> outputs = listJobOutputs(element, jobId).stream().map(CompletionItem::key).toList();
                                 isValidItem3(psiElement, holder, matcher, parts[3], outputs);
                             }

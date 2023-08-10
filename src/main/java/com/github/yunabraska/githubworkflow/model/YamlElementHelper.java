@@ -3,6 +3,7 @@ package com.github.yunabraska.githubworkflow.model;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.psi.PsiElement;
 import com.intellij.psi.PsiFile;
+import com.intellij.psi.impl.source.tree.LeafPsiElement;
 import com.intellij.psi.impl.source.tree.PsiErrorElementImpl;
 import org.jetbrains.yaml.YAMLLanguage;
 import org.jetbrains.yaml.psi.YAMLCompoundValue;
@@ -33,7 +34,11 @@ public class YamlElementHelper {
     }
 
     public static PsiElement getYamlRoot(final PsiElement element) {
-        return element != null && element.getParent() != null && !(element instanceof YAMLDocument) ? getYamlRoot(element.getParent()) : element;
+        if (element == null || element instanceof YAMLDocument || element.getParent() == null) {
+            return element;
+        } else {
+            return getYamlRoot(element.getParent());
+        }
     }
 
     public static String getPath(final PsiElement element) {
@@ -55,14 +60,12 @@ public class YamlElementHelper {
     }
 
     public static YamlElement yamlOf(final PsiElement element) {
-        return yamlOf(null, getYamlRoot(element));
+        return yamlOf(createRootElement(element), getYamlRoot(element));
     }
 
     public static YamlElement yamlOf(final YamlElement parent, final PsiElement element) {
         if (element instanceof YAMLFile || element instanceof YAMLDocument) {
-            return element.getFirstChild() == null ? null : yamlOf(null, element.getFirstChild());
-        } else if (parent == null) {
-            return createRootElement(element);
+            return addChildren(parent, element.getChildren());
         } else if (element instanceof YAMLMapping) {
             return addChildren(parent, element.getChildren());
         } else if (element instanceof final YAMLKeyValue yamlKeyValue) {
@@ -75,7 +78,10 @@ public class YamlElementHelper {
             return createElement(parent, (YAMLScalar) element);
         } else if (element instanceof final YAMLBlockScalarImpl yamlBlockScalarImpl) {
             return addChildren(parent, yamlBlockScalarImpl);
-        } else if (element instanceof YAMLCompoundValue || element instanceof PsiErrorElementImpl) {
+        } else if (element instanceof YAMLCompoundValue
+                || element instanceof PsiErrorElementImpl
+                || element instanceof LeafPsiElement
+        ) {
             //IGNORE
             return parent;
         } else {

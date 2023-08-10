@@ -1,6 +1,7 @@
 package com.github.yunabraska.githubworkflow.model;
 
 import com.github.yunabraska.githubworkflow.completion.GitHubWorkflowUtils;
+import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.fileTypes.FileTypeManager;
 import com.intellij.openapi.project.ProjectManager;
 import com.intellij.psi.PsiFileFactory;
@@ -38,6 +39,7 @@ public class GitHubAction {
     private final AtomicReference<String> slug = new AtomicReference<>(null);
     private final AtomicReference<String> sub = new AtomicReference<>(null);
     private final AtomicReference<String> actionName = new AtomicReference<>(null);
+    private final AtomicReference<String> downloadUrl = new AtomicReference<>(null);
     private final AtomicBoolean isAvailable = new AtomicBoolean(false);
     private final AtomicBoolean isAction = new AtomicBoolean(false);
 
@@ -107,7 +109,8 @@ public class GitHubAction {
     }
 
     private String toWorkflowYamlUrl() {
-        return (ref.get() != null && slug.get() != null) ? "https://raw.githubusercontent.com/" + slug.get() + "/" + ref.get() + "/.github/workflows/" + actionName : null;
+//        return (ref.get() != null && slug.get() != null) ? "https://raw.githubusercontent.com/" + slug.get() + "/" + ref.get() + "/.github/workflows/" + actionName : null;
+        return (ref.get() != null && slug.get() != null) ? "https://github.com/" + slug.get() + "/blob/" + ref.get() + "/.github/workflows/" + actionName : null;
     }
 
     private String toGitHubUrl() {
@@ -126,20 +129,30 @@ public class GitHubAction {
                 if (uses.contains(".yaml") || uses.contains(".yml")) {
                     isAction.set(false);
                     actionName.set(uses.substring(uses.lastIndexOf("/") + 1, tagIndex));
-                    setActionParameters(toWorkflowYamlUrl());
+                    downloadUrl.set(toWorkflowYamlUrl());
+//                    setActionParameters(toWorkflowYamlUrl());
                 } else {
                     isAction.set(true);
                     sub.set(repoNameIndex < tagIndex && repoNameIndex > 0 ? "/" + uses.substring(repoNameIndex + 1, tagIndex) : "");
                     actionName.set(uses.substring(userNameIndex + 1, tagIndex));
-                    setActionParameters(toActionYamlUrl());
+                    downloadUrl.set(toActionYamlUrl());
+//                    setActionParameters(toActionYamlUrl());
                 }
             }
         }
     }
 
+    public void resolve() {
+        if (downloadUrl.get() != null) {
+            setActionParameters(downloadUrl.get());
+            downloadUrl.set(null);
+        }
+    }
+
     private void setActionParameters(final String downloadUrl) {
         try {
-            extractActionParameters(downloadAction(downloadUrl, this));
+            final GitHubAction action = this;
+            extractActionParameters(downloadAction(downloadUrl, action));
         } catch (final Exception e) {
             isAvailable.set(false);
             expiration.set(System.currentTimeMillis() + CACHE_TEN_MINUTES);
@@ -155,25 +168,36 @@ public class GitHubAction {
     }
 
 
-    private Map<String, String> getActionParameters(final WorkflowContext context, final String node, final boolean action) {
+    private Map<String, String> getActionParameters(final WorkflowContext context, final String nodeKey, final boolean action) {
         return context.root()
                 .findChildNodes(child ->
-                        (ofNullable(child.parent()).filter(parent -> node.equals(parent.key())).isPresent())
+                        (ofNullable(child.parent()).filter(parent -> nodeKey.equals(parent.key())).isPresent())
                                 && (action || ofNullable(child.parent()).map(YamlElement::parent).map(YamlElement::parent).filter(parent -> FIELD_ON.equals(parent.key())).isPresent())
                 )
                 .stream()
                 .filter(child -> hasText(child.keyOrIdOrName()))
-                .collect(Collectors.toMap(YamlElement::keyOrIdOrName, GitHubWorkflowUtils::getDescription));
+                .collect(Collectors.toMap(YamlElement::keyOrIdOrName, GitHubWorkflowUtils::getDescription, (existing, replacement) -> existing));
     }
 
-    private static WorkflowContext contextOf(final String key, final String text) {
-        try {
-            final WorkflowContext context = yamlOf(PsiFileFactory.getInstance(ProjectManager.getInstance().getDefaultProject()).createFileFromText(key, FileTypeManager.getInstance().getFileTypeByExtension("yaml"), text)).context().init();
+    private WorkflowContext contextOf(final String key, final String text) {
+        // READ CONTEXT
+        final AtomicReference<WorkflowContext> contextRef = new AtomicReference<>();
+        ApplicationManager.getApplication().runReadAction(() -> {
+            try {
+                final WorkflowContext context = yamlOf(PsiFileFactory.getInstance(ProjectManager.getInstance().getDefaultProject()).createFileFromText(key, FileTypeManager.getInstance().getFileTypeByExtension("yaml"), text)).context().init();
+                contextRef.set(context);
+            } catch (final Exception e) {
+                final WorkflowContext defaultValue = new YamlElement(-1, -1, null, null, null, null, null).context().init();
+                contextRef.set(key == null ? defaultValue : WORKFLOW_CACHE.getOrDefault(key, defaultValue));
+            }
+        });
+
+        final WorkflowContext context = contextRef.get();
+        if (context != null && key != null) {
             WORKFLOW_CACHE.put(key, context);
-            return context;
-        } catch (final Exception e) {
-            final WorkflowContext defaultValue = new YamlElement(-1, -1, null, null, null, null, null).context().init();
-            return key == null ? defaultValue : WORKFLOW_CACHE.getOrDefault(key, defaultValue);
         }
+
+        return context;
     }
+
 }
