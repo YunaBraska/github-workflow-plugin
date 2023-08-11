@@ -4,6 +4,7 @@ import com.github.yunabraska.githubworkflow.model.CompletionItem;
 import com.github.yunabraska.githubworkflow.model.GitHubAction;
 import com.github.yunabraska.githubworkflow.model.WorkflowContext;
 import com.github.yunabraska.githubworkflow.model.YamlElement;
+import com.github.yunabraska.githubworkflow.quickfixes.ClearWorkflowCacheAction;
 import com.github.yunabraska.githubworkflow.quickfixes.OpenSettingsIntentionAction;
 import com.github.yunabraska.githubworkflow.quickfixes.OpenUrlIntentionAction;
 import com.github.yunabraska.githubworkflow.quickfixes.ReplaceTextIntentionAction;
@@ -73,27 +74,26 @@ public class HighlightAnnotator implements Annotator {
                 if (element.key() != null && ofNullable(element.parent()).map(YamlElement::key).filter(FIELD_WITH::equals).isPresent()) {
                     element.findParentStep().map(YamlElement::uses).map(GitHubAction::getGitHubAction).map(GitHubAction::inputs).map(Map::keySet).ifPresent(inputs -> {
                         if (!inputs.contains(element.key())) {
-                            //TODO: refresh delete cache
                             create(
                                     holder,
                                     HighlightSeverity.ERROR,
                                     ProblemHighlightType.GENERIC_ERROR,
                                     List.of(new ReplaceTextIntentionAction(psiElement.getTextRange(), element.key(), true)),
                                     psiElement.getTextRange(),
-                                    "Invalid [" + element.key() + "] - (Cache folder: " + TMP_DIR + ")"
+                                    "Invalid [" + element.key() + "]"
                             );
                         }
                     });
                 }
-                if (element.findParent(FIELD_USES).isPresent() && ofNullable(ACTION_CACHE.get(element.textOrChildText())).filter(GitHubAction::isAvailable).isEmpty()) {
-                    create(
+                if (element.findParent(FIELD_USES).isPresent()) {
+                    ofNullable(ACTION_CACHE.get(element.textOrChildText())).ifPresent(action -> create(
                             holder,
-                            HighlightSeverity.WEAK_WARNING,
-                            ProblemHighlightType.WEAK_WARNING,
-                            List.of(new OpenSettingsIntentionAction()),
+                            action.isAvailable() ? HighlightSeverity.INFORMATION : HighlightSeverity.WEAK_WARNING,
+                            action.isAvailable() ? ProblemHighlightType.INFORMATION : ProblemHighlightType.WEAK_WARNING,
+                            List.of(action.isAvailable() ? new ClearWorkflowCacheAction(action) : new OpenSettingsIntentionAction(project -> action.deleteCache())),
                             element.node().getTextRange(),
-                            "Unresolved [" + element.textOrChildTextNoQuotes() + "]."
-                    );
+                            action.isAvailable() ? "Clear item cache [" + action.slug() + "]" : "Unresolved [" + action.slug() + "]"
+                    ));
                 } else if (element.parent() != null && (FIELD_RUN.equals(element.parent().key())
                         || "if".equals(element.parent().key())
                         || "name".equals(element.parent().key())
@@ -211,7 +211,7 @@ public class HighlightAnnotator implements Annotator {
                         ifEnoughItems(holder, psiElement, parts, 2, 2, runnerId -> isDefinedItem0(psiElement, holder, matcher, runnerId, new ArrayList<>(DEFAULT_VALUE_MAP.get(FIELD_RUNNER).get().keySet())));
                 case FIELD_STEPS -> ifEnoughItems(holder, psiElement, parts, 4, 4, stepId -> {
                     final List<String> steps = listSteps(element).stream().map(CompletionItem::key).toList();
-                    if (isDefinedItem0(psiElement, holder, matcher, stepId, steps) && (!isField2Valid(psiElement, holder, matcher, parts[2]))) {
+                    if (isDefinedItem0(psiElement, holder, matcher, stepId, steps) && isField2Valid(psiElement, holder, matcher, parts[2])) {
                         final List<String> outputs = listStepOutputs(element, element.startIndexAbs(), stepId).stream().map(CompletionItem::key).toList();
                         isValidItem3(psiElement, holder, matcher, parts[3], outputs);
 
@@ -222,7 +222,7 @@ public class HighlightAnnotator implements Annotator {
                         ifEnoughItems(holder, psiElement, parts, 4, 4, jobId -> {
                             final List<String> jobs = listJobs(element).stream().map(CompletionItem::key).toList();
                             //noinspection DuplicatedCode
-                            if (isDefinedItem0(psiElement, holder, matcher, jobId, jobs) && (!isField2Valid(psiElement, holder, matcher, parts[2]))) {
+                            if (isDefinedItem0(psiElement, holder, matcher, jobId, jobs) && isField2Valid(psiElement, holder, matcher, parts[2])) {
                                 final List<String> outputs = listJobOutputs(element, jobId).stream().map(CompletionItem::key).toList();
                                 isValidItem3(psiElement, holder, matcher, parts[3], outputs);
                             }

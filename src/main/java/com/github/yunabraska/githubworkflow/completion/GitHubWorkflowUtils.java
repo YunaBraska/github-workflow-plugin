@@ -203,14 +203,19 @@ public class GitHubWorkflowUtils {
     }
 
     public static String downloadAction(final String url, final GitHubAction gitHubAction) {
-        return downloadContent(url, TMP_DIR.resolve(
+        return downloadContent(url, cachePath(gitHubAction), CACHE_ONE_DAY * 14, true);
+    }
+
+    @NotNull
+    public static Path cachePath(final GitHubAction gitHubAction) {
+        return TMP_DIR.resolve(
                 gitHubAction.actionName()
                         + ofNullable(gitHubAction.slug()).map(s -> "_" + s.replace("/", "")).orElse("")
                         + ofNullable(gitHubAction.sub()).map(s -> "_" + s.replace("/", "")).orElse("")
                         + ofNullable(gitHubAction.ref()).map(s -> "_" + s.replace("/", "")).orElse("")
                         + ofNullable(gitHubAction.actionName()).map(s -> "_" + s.replace("/", "")).orElse("")
                         + "_schema.json"
-        ), CACHE_ONE_DAY * 14, true);
+        );
     }
 
     public static String downloadFileFromGitHub(final String downloadUrl) {

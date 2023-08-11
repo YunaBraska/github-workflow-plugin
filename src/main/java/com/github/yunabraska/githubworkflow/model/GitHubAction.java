@@ -2,12 +2,16 @@ package com.github.yunabraska.githubworkflow.model;
 
 import com.github.yunabraska.githubworkflow.completion.GitHubWorkflowUtils;
 import com.intellij.openapi.application.ApplicationManager;
+import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.fileTypes.FileTypeManager;
 import com.intellij.openapi.project.ProjectManager;
 import com.intellij.psi.PsiFileFactory;
 
+import java.io.IOException;
+import java.nio.file.Files;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -15,6 +19,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 
+import static com.github.yunabraska.githubworkflow.completion.GitHubWorkflowUtils.cachePath;
 import static com.github.yunabraska.githubworkflow.completion.GitHubWorkflowUtils.downloadAction;
 import static com.github.yunabraska.githubworkflow.config.GitHubWorkflowConfig.ACTION_CACHE;
 import static com.github.yunabraska.githubworkflow.config.GitHubWorkflowConfig.CACHE_ONE_DAY;
@@ -40,8 +45,10 @@ public class GitHubAction {
     private final AtomicReference<String> sub = new AtomicReference<>(null);
     private final AtomicReference<String> actionName = new AtomicReference<>(null);
     private final AtomicReference<String> downloadUrl = new AtomicReference<>(null);
+    private final AtomicReference<String> uses = new AtomicReference<>(null);
     private final AtomicBoolean isAvailable = new AtomicBoolean(false);
     private final AtomicBoolean isAction = new AtomicBoolean(false);
+    private static final Logger LOG = Logger.getInstance(GitHubAction.class);
 
     public static GitHubAction getGitHubAction(final String uses) {
         try {
@@ -105,12 +112,19 @@ public class GitHubAction {
     }
 
     private String toActionYamlUrl() {
+        return (ref.get() != null && slug.get() != null && sub.get() != null) ? "https://github.com/" + slug.get() + "/blob/" + ref.get() + sub.get() + "/action.yml" : null;
+    }
+
+    private String toRawActionYamlUrl() {
         return (ref.get() != null && slug.get() != null && sub.get() != null) ? "https://raw.githubusercontent.com/" + slug.get() + "/" + ref.get() + sub.get() + "/action.yml" : null;
     }
 
     private String toWorkflowYamlUrl() {
-//        return (ref.get() != null && slug.get() != null) ? "https://raw.githubusercontent.com/" + slug.get() + "/" + ref.get() + "/.github/workflows/" + actionName : null;
         return (ref.get() != null && slug.get() != null) ? "https://github.com/" + slug.get() + "/blob/" + ref.get() + "/.github/workflows/" + actionName : null;
+    }
+
+    private String toRawWorkflowYamlUrl() {
+        return (ref.get() != null && slug.get() != null) ? "https://raw.githubusercontent.com/" + slug.get() + "/" + ref.get() + "/.github/workflows/" + actionName : null;
     }
 
     private String toGitHubUrl() {
@@ -123,19 +137,20 @@ public class GitHubAction {
             final int userNameIndex = uses.indexOf("/");
             final int repoNameIndex = uses.indexOf("/", userNameIndex + 1);
 
+            this.uses.set(uses);
             if (tagIndex != -1 && userNameIndex < tagIndex) {
                 ref.set(uses.substring(tagIndex + 1));
                 slug.set(uses.substring(0, repoNameIndex > 0 ? repoNameIndex : tagIndex));
                 if (uses.contains(".yaml") || uses.contains(".yml")) {
                     isAction.set(false);
                     actionName.set(uses.substring(uses.lastIndexOf("/") + 1, tagIndex));
-                    downloadUrl.set(toWorkflowYamlUrl());
-//                    setActionParameters(toWorkflowYamlUrl());
+                    downloadUrl.set(toRawWorkflowYamlUrl());
+//                    setActionParameters(toRawWorkflowYamlUrl());
                 } else {
                     isAction.set(true);
                     sub.set(repoNameIndex < tagIndex && repoNameIndex > 0 ? "/" + uses.substring(repoNameIndex + 1, tagIndex) : "");
                     actionName.set(uses.substring(userNameIndex + 1, tagIndex));
-                    downloadUrl.set(toActionYamlUrl());
+                    downloadUrl.set(toRawActionYamlUrl());
 //                    setActionParameters(toActionYamlUrl());
                 }
             }
@@ -143,10 +158,21 @@ public class GitHubAction {
     }
 
     public void resolve() {
-        if (downloadUrl.get() != null) {
+        if (!isAvailable.get()) {
             setActionParameters(downloadUrl.get());
-            downloadUrl.set(null);
         }
+    }
+
+    public void deleteCache() {
+        isAvailable.set(false);
+        WORKFLOW_CACHE.remove(workFlowCacheId());
+        Optional.of(cachePath(this)).filter(Files::exists).ifPresent(path -> {
+            try {
+                Files.deleteIfExists(path);
+            } catch (final IOException ignored) {
+                // ignored
+            }
+        });
     }
 
     private void setActionParameters(final String downloadUrl) {
@@ -154,6 +180,7 @@ public class GitHubAction {
             final GitHubAction action = this;
             extractActionParameters(downloadAction(downloadUrl, action));
         } catch (final Exception e) {
+            LOG.warn("Failed to set parameters [" + this.uses.get() + "]", e);
             isAvailable.set(false);
             expiration.set(System.currentTimeMillis() + CACHE_TEN_MINUTES);
         }
@@ -162,11 +189,14 @@ public class GitHubAction {
     private void extractActionParameters(final String content) {
         isAvailable.set(hasText(content));
         expiration.set(System.currentTimeMillis() + (hasText(content) ? CACHE_ONE_DAY : CACHE_TEN_MINUTES));
-        final WorkflowContext context = contextOf(actionName() + "_" + ref(), content);
+        final WorkflowContext context = contextOf(workFlowCacheId(), content);
         inputs.putAll(getActionParameters(context, FIELD_INPUTS, isAction.get()));
         outputs.putAll(getActionParameters(context, FIELD_OUTPUTS, isAction.get()));
     }
 
+    private String workFlowCacheId() {
+        return actionName() + "_" + ref();
+    }
 
     private Map<String, String> getActionParameters(final WorkflowContext context, final String nodeKey, final boolean action) {
         return context.root()

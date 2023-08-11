@@ -1,5 +1,6 @@
 package com.github.yunabraska.githubworkflow.quickfixes;
 
+import com.github.yunabraska.githubworkflow.model.GitHubAction;
 import com.intellij.codeInsight.intention.IntentionAction;
 import com.intellij.openapi.editor.Editor;
 import com.intellij.openapi.options.ShowSettingsUtil;
@@ -12,24 +13,24 @@ import java.util.function.Consumer;
 
 import static java.util.Optional.ofNullable;
 
-public class OpenSettingsIntentionAction implements IntentionAction {
+public class ClearWorkflowCacheAction implements IntentionAction {
 
-    private final Consumer<Project> execute;
+    private final GitHubAction action;
 
-    public OpenSettingsIntentionAction(final Consumer<Project> execute) {
-        this.execute = execute;
+    public ClearWorkflowCacheAction(final GitHubAction action) {
+        this.action = action;
     }
 
     @NotNull
     @Override
     public String getText() {
-        return "Add gitHub account";
+        return "Clear item cache [" + action.slug() + "]";
     }
 
     @NotNull
     @Override
     public String getFamilyName() {
-        return "AddGitHubAccount";
+        return "ClearGhaCacheItem";
     }
 
     @Override
@@ -39,8 +40,7 @@ public class OpenSettingsIntentionAction implements IntentionAction {
 
     @Override
     public void invoke(@NotNull final Project project, final Editor editor, final PsiFile file) throws IncorrectOperationException {
-        ShowSettingsUtil.getInstance().showSettingsDialog(project, "GitHub");
-        ofNullable(execute).ifPresent(projectConsumer -> projectConsumer.accept(project));
+        action.deleteCache();
     }
 
     @Override

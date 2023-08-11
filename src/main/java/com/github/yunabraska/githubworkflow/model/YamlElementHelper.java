@@ -34,7 +34,7 @@ public class YamlElementHelper {
     }
 
     public static PsiElement getYamlRoot(final PsiElement element) {
-        if (element == null || element instanceof YAMLDocument || element.getParent() == null) {
+        if (element == null || element instanceof YAMLDocument || element instanceof YAMLFile || element.getParent() == null) {
             return element;
         } else {
             return getYamlRoot(element.getParent());

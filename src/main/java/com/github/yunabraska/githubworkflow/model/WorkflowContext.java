@@ -22,7 +22,6 @@ import static com.github.yunabraska.githubworkflow.config.GitHubWorkflowConfig.F
 import static com.github.yunabraska.githubworkflow.config.GitHubWorkflowConfig.FIELD_SECRETS;
 import static com.github.yunabraska.githubworkflow.config.GitHubWorkflowConfig.FIELD_STEPS;
 import static com.github.yunabraska.githubworkflow.config.GitHubWorkflowConfig.FIELD_USES;
-import static com.github.yunabraska.githubworkflow.model.YamlElement.CURSOR_STRING;
 import static java.util.Comparator.comparingInt;
 import static java.util.Optional.ofNullable;
 
@@ -30,8 +29,6 @@ import static java.util.Optional.ofNullable;
 public class WorkflowContext {
 
     public static final Map<String, WorkflowContext> WORKFLOW_CONTEXT_MAP = new ConcurrentHashMap<>();
-
-    protected final AtomicReference<YamlElement> position = new AtomicReference<>(null);
     protected final AtomicInteger cursorAbs = new AtomicInteger(-1);
     protected final AtomicReference<YamlElement> root = new AtomicReference<>(null);
     protected final AtomicReference<String> path = new AtomicReference<>(null);
@@ -57,20 +54,6 @@ public class WorkflowContext {
                 .ifPresent(path::set);
     }
 
-    public YamlElement position() {
-        return position.get();
-    }
-
-    public YamlElement position(final String text) {
-        return position(text != null ? text.indexOf(CURSOR_STRING) : -1);
-    }
-
-    public YamlElement position(final int offset) {
-        cursorAbs.set(offset != -1 ? offset : cursorAbs.get());
-        position.set(getClosestElement(offset).orElseGet(position::get));
-        return position.get();
-    }
-
     public Optional<YamlElement> getClosestElement(final int offset) {
         return Optional.of(offset)
                 .filter(o -> o != -1)
@@ -86,11 +69,6 @@ public class WorkflowContext {
                 .flatMap(o -> root().allElements()
                         .filter(element -> element.startIndexAbs() >= offset)
                         .min(Comparator.comparingInt(YamlElement::startIndexAbs)));
-    }
-
-
-    public int cursorAbs() {
-        return cursorAbs.get();
     }
 
     public YamlElement root() {
@@ -184,7 +162,6 @@ public class WorkflowContext {
                 }
             }));
         }
-        position.set(new YamlElement(-1, -1, null, null, null, null, null));
         ofNullable(path.get()).ifPresent(p -> WORKFLOW_CONTEXT_MAP.put(p, this));
         return this;
     }

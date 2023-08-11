@@ -29,17 +29,21 @@ import java.util.concurrent.atomic.AtomicReference;
 
 public class ApplicationListeners implements ProjectActivity {
 
-    private final Disposable disposable = Disposer.newDisposable();
+    private final AtomicReference<Disposable> disposableRef = new AtomicReference<>();
 
     @Nullable
     @Override
     public Object execute(@NotNull final Project project, @NotNull final Continuation<? super Unit> continuation) {
+        if (disposableRef.get() == null) {
+            disposableRef.set(Disposer.newDisposable());
+            Disposer.register(project, disposableRef.get());
+        }
 
         // ON TYPING (with delay)
-        EditorFactory.getInstance().getEventMulticaster().addDocumentListener(new FileChangeListener(project), disposable);
+        EditorFactory.getInstance().getEventMulticaster().addDocumentListener(new FileChangeListener(project), disposableRef.get());
 
         // SWITCH TABS
-        project.getMessageBus().connect(disposable).subscribe(FileEditorManagerListener.FILE_EDITOR_MANAGER, new FileFocusListener(project));
+        project.getMessageBus().connect(disposableRef.get()).subscribe(FileEditorManagerListener.FILE_EDITOR_MANAGER, new FileFocusListener(project));
 
         // AFTER STARTUP
         final FileEditorManager fileEditorManager = FileEditorManager.getInstance(project);
