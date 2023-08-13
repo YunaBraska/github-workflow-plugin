@@ -1,8 +1,6 @@
 package com.github.yunabraska.githubworkflow.model;
 
 import com.github.yunabraska.githubworkflow.completion.GitHubWorkflowUtils;
-import com.intellij.openapi.vfs.VirtualFile;
-import com.intellij.psi.PsiFile;
 
 import java.util.Comparator;
 import java.util.HashMap;
@@ -31,7 +29,6 @@ public class WorkflowContext {
     public static final Map<String, WorkflowContext> WORKFLOW_CONTEXT_MAP = new ConcurrentHashMap<>();
     protected final AtomicInteger cursorAbs = new AtomicInteger(-1);
     protected final AtomicReference<YamlElement> root = new AtomicReference<>(null);
-    protected final AtomicReference<String> path = new AtomicReference<>(null);
     protected final Map<String, YamlElement> jobs = new HashMap<>();
     protected final Map<String, YamlElement> needs = new HashMap<>();
     protected final Map<String, YamlElement> steps = new HashMap<>();
@@ -46,12 +43,6 @@ public class WorkflowContext {
 
     public WorkflowContext(final YamlElement root) {
         this.root.set(root);
-        ofNullable(root).
-                map(YamlElement::node)
-                .map(YamlElementHelper::getPsiFile)
-                .map(yamlFile -> Optional.of(yamlFile.getOriginalFile()).map(PsiFile::getVirtualFile).orElseGet(yamlFile::getVirtualFile))
-                .map(VirtualFile::getPath)
-                .ifPresent(path::set);
     }
 
     public Optional<YamlElement> getClosestElement(final int offset) {
@@ -73,10 +64,6 @@ public class WorkflowContext {
 
     public YamlElement root() {
         return root.get();
-    }
-
-    public String path() {
-        return path.get();
     }
 
     public Map<String, YamlElement> jobs() {
@@ -162,7 +149,6 @@ public class WorkflowContext {
                 }
             }));
         }
-        ofNullable(path.get()).ifPresent(p -> WORKFLOW_CONTEXT_MAP.put(p, this));
         return this;
     }
 
@@ -184,15 +170,8 @@ public class WorkflowContext {
                 line.endIndexAbs(),
                 kv.getKey(),
                 kv.getValue(),
-                root().node(),
                 step,
                 null
         );
     }
-
-
-    //TODO: context item
-    //  cursor position, needs, jobs, steps, env, secrets, vars,...
-    //  full context only on certain cursor positions like workflow & jobs outputs
-
 }

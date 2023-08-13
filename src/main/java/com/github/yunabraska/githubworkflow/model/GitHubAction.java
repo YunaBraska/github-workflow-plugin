@@ -163,6 +163,7 @@ public class GitHubAction {
         }
     }
 
+    @SuppressWarnings("BlockingMethodInNonBlockingContext")
     public void deleteCache() {
         isAvailable.set(false);
         WORKFLOW_CACHE.remove(workFlowCacheId());
@@ -217,7 +218,7 @@ public class GitHubAction {
                 final WorkflowContext context = yamlOf(PsiFileFactory.getInstance(ProjectManager.getInstance().getDefaultProject()).createFileFromText(key, FileTypeManager.getInstance().getFileTypeByExtension("yaml"), text)).context().init();
                 contextRef.set(context);
             } catch (final Exception e) {
-                final WorkflowContext defaultValue = new YamlElement(-1, -1, null, null, null, null, null).context().init();
+                final WorkflowContext defaultValue = new YamlElement(-1, -1, null, null, null, null).context().init();
                 contextRef.set(key == null ? defaultValue : WORKFLOW_CACHE.getOrDefault(key, defaultValue));
             }
         });

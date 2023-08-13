@@ -26,6 +26,7 @@ import java.util.Optional;
 import java.util.function.Consumer;
 import java.util.function.Predicate;
 
+import static com.github.yunabraska.githubworkflow.model.WorkflowContext.WORKFLOW_CONTEXT_MAP;
 import static java.util.Optional.ofNullable;
 
 public class YamlElementHelper {
@@ -41,8 +42,9 @@ public class YamlElementHelper {
         }
     }
 
+    @SuppressWarnings("java:S2637")
     public static String getPath(final PsiElement element) {
-        return ofNullable(getVirtualFile(element)).map(VirtualFile::getPath).orElse(null);
+        return ofNullable(element).map(YamlElementHelper::getVirtualFile).map(VirtualFile::getPath).orElse(null);
     }
 
     public static VirtualFile getVirtualFile(final PsiElement element) {
@@ -60,7 +62,15 @@ public class YamlElementHelper {
     }
 
     public static YamlElement yamlOf(final PsiElement element) {
-        return yamlOf(createRootElement(element), getYamlRoot(element));
+        final PsiElement rootPsiElement = getYamlRoot(element);
+        final YamlElement rootYamlElement = ofNullable(rootPsiElement).map(root -> yamlOf(createRootElement(element), root)).orElse(null);
+        ofNullable(rootYamlElement)
+                .map(yamlElement -> rootPsiElement)
+                .map(YamlElementHelper::getPsiFile)
+                .map(yamlFile -> Optional.of(yamlFile.getOriginalFile()).map(PsiFile::getVirtualFile).orElseGet(yamlFile::getVirtualFile))
+                .map(VirtualFile::getPath)
+                .ifPresent(patString -> WORKFLOW_CONTEXT_MAP.put(patString, rootYamlElement.context()));
+        return rootYamlElement;
     }
 
     public static YamlElement yamlOf(final YamlElement parent, final PsiElement element) {
@@ -85,7 +95,7 @@ public class YamlElementHelper {
             //IGNORE
             return parent;
         } else {
-            throw new RuntimeException("Not Implemented Element " + element.getClass().getSimpleName());
+            throw new NotImplementedException("You have detected a new element which i did not recognise [" + element.getClass().getSimpleName() + "]");
         }
     }
 
@@ -100,7 +110,6 @@ public class YamlElementHelper {
                 element.getTextRange().getEndOffset(),
                 null,
                 null,
-                element,
                 parent,
                 new ArrayList<>()
         );
@@ -115,7 +124,6 @@ public class YamlElementHelper {
                 -1,
                 null,
                 element.getText(),
-                element,
                 null,
                 new ArrayList<>()
         ), element.getChildren());
@@ -127,7 +135,6 @@ public class YamlElementHelper {
                 element.getTextOffset() + element.getKeyText().length(),
                 element.getKeyText(),
                 null,
-                element,
                 parent,
                 new ArrayList<>()
         ), element.getChildren());
@@ -140,7 +147,6 @@ public class YamlElementHelper {
                 element.getTextRange().getEndOffset(),
                 null,
                 element.getText(),
-                element,
                 parent,
                 new ArrayList<>()
         ), element.getChildren());
@@ -165,7 +171,6 @@ public class YamlElementHelper {
                     element.getTextRange().getStartOffset() + textRange.getEndOffset(),
                     null,
                     element.getText().substring(textRange.getStartOffset(), textRange.getEndOffset()),
-                    element,
                     parent,
                     null
             )).forEach(addToParent(parent));

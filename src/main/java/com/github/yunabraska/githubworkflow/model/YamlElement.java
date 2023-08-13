@@ -1,6 +1,6 @@
 package com.github.yunabraska.githubworkflow.model;
 
-import com.intellij.psi.PsiElement;
+import com.intellij.openapi.util.TextRange;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -30,7 +30,6 @@ public class YamlElement {
     protected final int endIndexAbs;
     protected final String key;
     protected final String text;
-    protected final PsiElement node;
     protected final YamlElement parent;
     protected final List<YamlElement> children;
     protected final WorkflowContext context;
@@ -41,14 +40,12 @@ public class YamlElement {
             final int endIndexAbs,
             final String key,
             final String text,
-            final PsiElement node,
             final YamlElement parent,
             final List<YamlElement> children) {
         this.startIndexAbs = startIndexAbs;
         this.endIndexAbs = endIndexAbs;
         this.key = key;
         this.text = text;
-        this.node = node;
         this.parent = parent;
         this.children = children != null ? children : Collections.emptyList();
         this.context = parent == null ? new WorkflowContext(this) : null;
@@ -56,10 +53,6 @@ public class YamlElement {
 
     public YamlElement parent() {
         return parent;
-    }
-
-    public PsiElement node() {
-        return node;
     }
 
     public List<YamlElement> children() {
@@ -96,6 +89,10 @@ public class YamlElement {
 
     public String textOrChildTextNoQuotes() {
         return ofNullable(textNoQuotes()).orElseGet(this::childTextNoQuotes);
+    }
+
+    public TextRange textRange() {
+        return startIndexAbs > -1 && endIndexAbs >= startIndexAbs ? new TextRange(startIndexAbs(), endIndexAbs()) : null;
     }
 
     public String key() {

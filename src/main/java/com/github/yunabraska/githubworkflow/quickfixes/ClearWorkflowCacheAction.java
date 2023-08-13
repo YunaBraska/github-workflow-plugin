@@ -3,15 +3,10 @@ package com.github.yunabraska.githubworkflow.quickfixes;
 import com.github.yunabraska.githubworkflow.model.GitHubAction;
 import com.intellij.codeInsight.intention.IntentionAction;
 import com.intellij.openapi.editor.Editor;
-import com.intellij.openapi.options.ShowSettingsUtil;
 import com.intellij.openapi.project.Project;
 import com.intellij.psi.PsiFile;
 import com.intellij.util.IncorrectOperationException;
 import org.jetbrains.annotations.NotNull;
-
-import java.util.function.Consumer;
-
-import static java.util.Optional.ofNullable;
 
 public class ClearWorkflowCacheAction implements IntentionAction {
 

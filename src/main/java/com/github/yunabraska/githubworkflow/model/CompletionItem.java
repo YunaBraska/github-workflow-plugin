@@ -6,7 +6,6 @@ import com.intellij.codeInsight.lookup.LookupElement;
 
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -17,6 +16,8 @@ import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
+import static com.github.yunabraska.githubworkflow.completion.GitHubWorkflowUtils.getDescription;
+import static com.github.yunabraska.githubworkflow.completion.GitHubWorkflowUtils.orEmpty;
 import static com.github.yunabraska.githubworkflow.config.GitHubWorkflowConfig.DEFAULT_VALUE_MAP;
 import static com.github.yunabraska.githubworkflow.config.GitHubWorkflowConfig.FIELD_ENVS;
 import static com.github.yunabraska.githubworkflow.config.GitHubWorkflowConfig.FIELD_NEEDS;
@@ -25,11 +26,8 @@ import static com.github.yunabraska.githubworkflow.config.GitHubWorkflowConfig.F
 import static com.github.yunabraska.githubworkflow.config.GitHubWorkflowConfig.FIELD_SECRETS;
 import static com.github.yunabraska.githubworkflow.config.GitHubWorkflowConfig.FIELD_STEPS;
 import static com.github.yunabraska.githubworkflow.config.GitHubWorkflowConfig.FIELD_USES;
-import static com.github.yunabraska.githubworkflow.completion.GitHubWorkflowUtils.getDescription;
-import static com.github.yunabraska.githubworkflow.completion.GitHubWorkflowUtils.orEmpty;
 import static com.github.yunabraska.githubworkflow.config.NodeIcon.*;
 import static com.github.yunabraska.githubworkflow.model.YamlElementHelper.hasText;
-import static java.util.Collections.emptyList;
 import static java.util.Optional.ofNullable;
 
 public class CompletionItem {
@@ -64,7 +62,7 @@ public class CompletionItem {
                         .collect(Collectors.toMap(step -> ofNullable(step.id()).orElseGet(() -> "step_" + step.childIndex()), YamlElement::usesOrName, (existing, replacement) -> existing))
                 )
                 .map(map -> completionItemsOf(map, ICON_STEP))
-                .orElseGet(Collections::emptyList);
+                .orElseGet(ArrayList::new);
     }
 
     public static List<CompletionItem> listStepOutputs(final YamlElement position, final int cursorAbs, final String stepId) {
@@ -83,7 +81,7 @@ public class CompletionItem {
                             .map(run -> completionItemOf(run.key(), run.textOrChildTextNoQuotes(), ICON_TEXT_VARIABLE))
                             .forEach(result::add);
                     return result;
-                }).orElseGet(Collections::emptyList);
+                }).orElseGet(ArrayList::new);
     }
 
     public static List<CompletionItem> listJobs(final YamlElement position) {
@@ -94,7 +92,7 @@ public class CompletionItem {
                 .map(YamlElement::findParentOn)
                 .map(on -> position.context().jobs().values().stream().collect(Collectors.toMap(YamlElement::key, job -> ofNullable(job.usesOrName()).orElse("job_" + job.childIndex()), (existing, replacement) -> existing)))
                 .map(map -> completionItemsOf(map, ICON_JOB))
-                .orElseGet(Collections::emptyList);
+                .orElseGet(ArrayList::new);
     }
 
     public static List<CompletionItem> listJobOutputs(final YamlElement position, final String jobId) {
@@ -122,7 +120,7 @@ public class CompletionItem {
                 .filter(hasKey())
                 .filter(job -> job.startIndexAbs() < positionJob)
                 .map(job -> completionItemOf(job.key(), ofNullable(job.usesOrName()).orElse("job_" + job.childIndex()), ICON_NEEDS))
-                .toList();
+                .collect(Collectors.toCollection(ArrayList::new));
     }
 
     public static List<CompletionItem> listJobNeeds(final YamlElement position) {
@@ -132,7 +130,7 @@ public class CompletionItem {
                 .filter(hasKey())
                 .filter(job -> job.startIndexAbs() < positionJob)
                 .map(YamlElement::key)
-                .toList();
+                .collect(Collectors.toCollection(ArrayList::new));
 
         return position.findParentJob()
                 .flatMap(job -> job.child(FIELD_NEEDS))
@@ -141,9 +139,9 @@ public class CompletionItem {
                         .filter(YamlElementHelper::hasText)
                         .filter(validJobs::contains)
                         .map(need -> completionItemOf(need, "", ICON_NEEDS))
-                        .toList()
+                        .collect(Collectors.toCollection(ArrayList::new))
                 )
-                .orElse(emptyList());
+                .orElse(new ArrayList<>());
     }
 
     public static List<CompletionItem> listInputs(final YamlElement position) {
@@ -176,7 +174,7 @@ public class CompletionItem {
                 .map(on -> on.findChildNodes(secrets -> FIELD_SECRETS.equals(secrets.key())))
                 .map(secrets -> secrets.stream().flatMap(secret -> secret.children().stream()).filter(hasKey()).collect(Collectors.toMap(YamlElement::key, GitHubWorkflowUtils::getDescription, (existing, replacement) -> existing)))
                 .map(map -> completionItemsOf(map, ICON_SECRET_WORKFLOW))
-                .orElseGet(Collections::emptyList);
+                .orElseGet(ArrayList::new);
     }
 
     public static List<CompletionItem> listEnvs(final YamlElement position, final int cursorAbs) {
@@ -237,7 +235,7 @@ public class CompletionItem {
         return map == null ? new ArrayList<>() : map.entrySet().stream()
                 .map(item -> completionItemOf(item.getKey(), item.getValue(), icon))
                 .filter(Objects::nonNull)
-                .toList();
+                .collect(Collectors.toCollection(ArrayList::new));
     }
 
     public static CompletionItem completionItemOf(final String key, final String text, final NodeIcon icon) {

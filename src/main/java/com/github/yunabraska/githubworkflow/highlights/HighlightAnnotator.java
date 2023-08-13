@@ -17,8 +17,8 @@ import com.intellij.lang.annotation.HighlightSeverity;
 import com.intellij.openapi.util.TextRange;
 import com.intellij.psi.PsiElement;
 import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
 import org.jetbrains.yaml.YAMLLanguage;
+import org.jetbrains.yaml.psi.YAMLKeyValue;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -60,6 +60,7 @@ public class HighlightAnnotator implements Annotator {
                                 ? Arrays.asList(new OpenUrlIntentionAction(gitHubAction.marketplaceUrl(), marketplaceText), new OpenUrlIntentionAction(gitHubAction.toUrl(), browserText))
                                 : List.of(new OpenUrlIntentionAction(gitHubAction.toUrl(), browserText));
                         create(
+                                psiElement,
                                 holder,
                                 HighlightSeverity.INFORMATION,
                                 ProblemHighlightType.INFORMATION,
@@ -74,6 +75,7 @@ public class HighlightAnnotator implements Annotator {
                     element.findParentStep().map(YamlElement::uses).map(GitHubAction::getGitHubAction).map(GitHubAction::inputs).map(Map::keySet).ifPresent(inputs -> {
                         if (!inputs.contains(element.key())) {
                             create(
+                                    psiElement,
                                     holder,
                                     HighlightSeverity.ERROR,
                                     ProblemHighlightType.GENERIC_ERROR,
@@ -86,11 +88,12 @@ public class HighlightAnnotator implements Annotator {
                 }
                 if (element.findParent(FIELD_USES).isPresent()) {
                     ofNullable(ACTION_CACHE.get(element.textOrChildText())).ifPresent(action -> create(
+                            psiElement,
                             holder,
                             action.isAvailable() ? HighlightSeverity.INFORMATION : HighlightSeverity.WEAK_WARNING,
                             action.isAvailable() ? ProblemHighlightType.INFORMATION : ProblemHighlightType.WEAK_WARNING,
                             List.of(action.isAvailable() ? new ClearWorkflowCacheAction(action) : new OpenSettingsIntentionAction(project -> action.deleteCache())),
-                            element.node().getTextRange(),
+                            element.textRange(),
                             action.isAvailable() ? "Clear item cache [" + action.slug() + "]" : "Unresolved [" + action.slug() + "]"
                     ));
                 } else if (element.parent() != null && (FIELD_RUN.equals(element.parent().key())
@@ -109,10 +112,11 @@ public class HighlightAnnotator implements Annotator {
                         final List<String> jobs = element.context().jobs().values().stream().filter(j -> j.startIndexAbs() < job.startIndexAbs()).map(YamlElement::key).toList();
                         element.children().forEach(jobChild -> {
                             final String jobId = jobChild.textOrChildTextNoQuotes().trim();
-                            final TextRange range = newRange(psiElement, jobChild.startIndexAbs(), jobChild.startIndexAbs() + jobId.length());
+                            final TextRange range = new TextRange(jobChild.startIndexAbs(), jobChild.startIndexAbs() + jobId.length());
                             if (!jobs.contains(jobId)) {
                                 //INVALID JOB_ID
                                 create(
+                                        psiElement,
                                         holder,
                                         HighlightSeverity.ERROR,
                                         ProblemHighlightType.GENERIC_ERROR,
@@ -121,19 +125,18 @@ public class HighlightAnnotator implements Annotator {
                                         "Invalid [" + jobId + "] - needs to be a valid jobId from previous jobs"
                                 );
                             } else {
-                                ofNullable(job.node()).map(PsiElement::getText).ifPresent(jobText -> {
-                                    //UNUSED JOB_ID
-                                    if (!jobText.contains(FIELD_NEEDS + "." + jobId + ".")) {
-                                        create(
-                                                holder,
-                                                HighlightSeverity.INFORMATION,
-                                                ProblemHighlightType.INFORMATION,
-                                                List.of(new ReplaceTextIntentionAction(range, jobId, true)),
-                                                range,
-                                                "Unused [" + jobId + "]"
-                                        );
-                                    }
-                                });
+                                //UNUSED JOB_ID
+                                if (job.allElements().noneMatch(child -> child.text() != null && child.text().contains(FIELD_NEEDS + "." + jobId + "."))) {
+                                    create(
+                                            psiElement,
+                                            holder,
+                                            HighlightSeverity.INFORMATION,
+                                            ProblemHighlightType.INFORMATION,
+                                            List.of(new ReplaceTextIntentionAction(range, jobId, true)),
+                                            range,
+                                            "Unused [" + jobId + "]"
+                                    );
+                                }
                             }
                         });
                     });
@@ -160,8 +163,9 @@ public class HighlightAnnotator implements Annotator {
                                 .map(parts -> parts[3])
                                 .toList();
                         element.children().stream().filter(output -> output.key() != null).filter(output -> !usedOutputs.contains(output.key())).forEach(unusedOutput -> {
-                            final TextRange range = newRange(psiElement, unusedOutput.startIndexAbs(), unusedOutput.children().stream().mapToInt(YamlElement::endIndexAbs).max().orElseGet(unusedOutput::endIndexAbs));
+                            final TextRange range = new TextRange(unusedOutput.startIndexAbs(), unusedOutput.children().stream().mapToInt(YamlElement::endIndexAbs).max().orElseGet(unusedOutput::endIndexAbs));
                             create(
+                                    psiElement,
                                     holder,
                                     HighlightSeverity.WEAK_WARNING,
                                     ProblemHighlightType.LIKE_UNUSED_SYMBOL,
@@ -193,6 +197,7 @@ public class HighlightAnnotator implements Annotator {
                     if (!secrets.contains(secretId)) {
                         final TextRange textRange = simpleTextRange(psiElement, matcher, secretId);
                         create(
+                                psiElement,
                                 holder,
                                 HighlightSeverity.WEAK_WARNING,
                                 ProblemHighlightType.WEAK_WARNING,
@@ -247,6 +252,7 @@ public class HighlightAnnotator implements Annotator {
         if (!FIELD_OUTPUTS.equals(itemId)) {
             final TextRange textRange = simpleTextRange(psiElement, matcher, itemId);
             create(
+                    psiElement,
                     holder,
                     HighlightSeverity.ERROR,
                     ProblemHighlightType.GENERIC_ERROR,
@@ -263,6 +269,7 @@ public class HighlightAnnotator implements Annotator {
         if (!outputs.contains(itemId)) {
             final TextRange textRange = simpleTextRange(psiElement, matcher, itemId);
             create(
+                    psiElement,
                     holder,
                     HighlightSeverity.ERROR,
                     ProblemHighlightType.GENERIC_ERROR,
@@ -277,6 +284,7 @@ public class HighlightAnnotator implements Annotator {
         if (!items.contains(itemId)) {
             final TextRange textRange = simpleTextRange(psiElement, matcher, itemId);
             create(
+                    psiElement,
                     holder,
                     HighlightSeverity.ERROR,
                     ProblemHighlightType.GENERIC_ERROR,
@@ -290,19 +298,33 @@ public class HighlightAnnotator implements Annotator {
     }
 
     private static YamlElement toYamlElement(final PsiElement psiElement, final YamlElement root) {
-        return root.allElements().filter(e -> psiElement.equals(e.node())).findFirst().orElse(null);
+        return psiElement instanceof final YAMLKeyValue kvPSI && kvPSI.getKey() != null && kvPSI.getKey().getTextRange() != null
+                ? root.allElements()
+                .filter(element -> element.startIndexAbs() > -1 && element.startIndexAbs() <= kvPSI.getKey().getTextRange().getStartOffset())
+                .filter(element -> element.endIndexAbs() > -1 && element.endIndexAbs() >= kvPSI.getKey().getTextRange().getEndOffset())
+                .filter(element -> element.textNoQuotes() != null && !element.textNoQuotes().isEmpty() && !element.textNoQuotes().isBlank())
+                .findFirst()
+                .orElseGet(() -> root.context().getClosestElement(psiElement.getTextOffset()).orElse(null))
+                : root.allElements()
+                .filter(element -> element.startIndexAbs() > -1 && element.startIndexAbs() <= psiElement.getTextRange().getStartOffset())
+                .filter(element -> element.endIndexAbs() > -1 && element.endIndexAbs() >= psiElement.getTextRange().getEndOffset())
+                .filter(element -> element.textNoQuotes() != null && !element.textNoQuotes().isEmpty() && !element.textNoQuotes().isBlank())
+                .findFirst()
+                .orElseGet(() -> root.context().getClosestElement(psiElement.getTextOffset()).orElse(null));
     }
 
-    @Nullable
     private static TextRange simpleTextRange(@NotNull final PsiElement psiElement, final Matcher matcher, final String itemId) {
         final int start = psiElement.getTextRange().getStartOffset() + psiElement.getText().indexOf(itemId, matcher.start(0));
-        return newRange(psiElement, start, start + itemId.length());
+        return new TextRange(start, start + itemId.length());
     }
 
-    private static TextRange newRange(final PsiElement psiElement, final int start, final int end) {
-        final int newStart = Math.max(psiElement.getTextRange().getStartOffset(), start);
-        final int newEnd = Math.min(psiElement.getTextRange().getEndOffset(), end);
-        return newStart >= newEnd ? null : new TextRange(newStart, newEnd);
+    private static TextRange fixRange(final PsiElement psiElement, final TextRange range) {
+        if (range != null) {
+            final int newStart = Math.max(psiElement.getTextRange().getStartOffset(), range.getStartOffset());
+            final int newEnd = Math.min(psiElement.getTextRange().getEndOffset(), range.getEndOffset());
+            return newStart >= newEnd ? null : new TextRange(newStart, newEnd);
+        }
+        return null;
     }
 
     private static void ifEnoughItems(
@@ -316,8 +338,9 @@ public class HighlightAnnotator implements Annotator {
         if (parts.length < min || parts.length < 2) {
             final String unfinishedStatement = String.join(".", parts);
             final int startOffset = psiElement.getTextRange().getStartOffset() + psiElement.getText().indexOf(unfinishedStatement);
-            final TextRange textRange = newRange(psiElement, startOffset, startOffset + unfinishedStatement.length());
+            final TextRange textRange = new TextRange(startOffset, startOffset + unfinishedStatement.length());
             create(
+                    psiElement,
                     holder,
                     HighlightSeverity.ERROR,
                     ProblemHighlightType.GENERIC_ERROR,
@@ -330,8 +353,9 @@ public class HighlightAnnotator implements Annotator {
             final String longPart = "." + String.join(".", (Arrays.copyOfRange(parts, max, parts.length)));
             final int statementStartIndex = psiElement.getText().indexOf(fullStatement);
             final int startOffset = psiElement.getTextRange().getStartOffset() + statementStartIndex + fullStatement.lastIndexOf(longPart);
-            final TextRange textRange = newRange(psiElement, startOffset, startOffset + longPart.length());
+            final TextRange textRange = new TextRange(startOffset, startOffset + longPart.length());
             create(
+                    psiElement,
                     holder,
                     HighlightSeverity.ERROR,
                     ProblemHighlightType.GENERIC_ERROR,
@@ -345,16 +369,17 @@ public class HighlightAnnotator implements Annotator {
     }
 
     @SuppressWarnings({"DataFlowIssue", "ResultOfMethodCallIgnored"})
-    public static void create(final AnnotationHolder holder, final HighlightSeverity level, final ProblemHighlightType type, final Collection<IntentionAction> quickFixes, final TextRange range, final String message) {
-        if (range != null) {
+    public static void create(final PsiElement psiElement, final AnnotationHolder holder, final HighlightSeverity level, final ProblemHighlightType type, final Collection<IntentionAction> quickFixes, final TextRange range, final String message) {
+        final TextRange textRange = fixRange(psiElement, range);
+        if (textRange != null) {
             final AnnotationBuilder annotation = holder.newAnnotation(level, message);
             final AnnotationBuilder silentAnnotation = holder.newSilentAnnotation(level);
-            ofNullable(range).ifPresent(annotation::range);
+            ofNullable(textRange).ifPresent(annotation::range);
             ofNullable(type).ifPresent(annotation::highlightType);
             ofNullable(message).ifPresent(annotation::tooltip);
             ofNullable(quickFixes).ifPresent(q -> q.forEach(annotation::withFix));
 
-            ofNullable(range).ifPresent(silentAnnotation::range);
+            ofNullable(textRange).ifPresent(silentAnnotation::range);
             ofNullable(quickFixes).ifPresent(q -> q.forEach(silentAnnotation::withFix));
 
             annotation.create();

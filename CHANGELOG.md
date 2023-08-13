@@ -4,6 +4,14 @@
 
 ## [Unreleased]
 
+## [2.2.1] - 2023-08-13
+
+### Continue Renovations
+
+- Added Dependabot Schema Validation
+- Added automated Error Reporting
+- Cleanups
+
 ## [2.2.0] - 2023-08-13
 
 ### Continue Renovations

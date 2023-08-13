@@ -232,6 +232,7 @@ public class GitHubWorkflowUtils {
     private static String downloadFromGitHub(final String downloadUrl, final GithubAccount account) throws IOException {
         final String token = GHCompatibilityUtil.getOrRequestToken(account, ProjectManager.getInstance().getDefaultProject());
         return GithubApiRequestExecutor.Factory.getInstance().create(token).execute(new GithubApiRequest.Get<>(downloadUrl) {
+            @SuppressWarnings("BlockingMethodInNonBlockingContext")
             @Override
             public String extractResult(final @NotNull GithubApiResponse response) {
                 try {
@@ -252,6 +253,7 @@ public class GitHubWorkflowUtils {
         });
     }
 
+    @SuppressWarnings("BlockingMethodInNonBlockingContext")
     private static String downloadContent(final String url, final Path path, final long expirationTime, final boolean usingGithub) {
         try {
             if (Files.exists(path) && (expirationTime < 1 || Files.getLastModifiedTime(path).toMillis() > System.currentTimeMillis() - expirationTime)) {
@@ -272,6 +274,7 @@ public class GitHubWorkflowUtils {
     }
 
 
+    @SuppressWarnings("BlockingMethodInNonBlockingContext")
     public static String readFileAsync(final Path path) {
         try (final BufferedReader reader = Files.newBufferedReader(path, Charset.defaultCharset())) {
             final StringBuilder contentBuilder = new StringBuilder();
@@ -287,7 +290,7 @@ public class GitHubWorkflowUtils {
     }
 
 
-    @SuppressWarnings("java:S2142")
+    @SuppressWarnings({"java:S2142", "BlockingMethodInNonBlockingContext"})
     private static String downloadContent(final String urlString) {
         LOG.info("Download [" + urlString + "]");
         try {
