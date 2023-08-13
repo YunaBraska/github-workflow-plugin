@@ -4,6 +4,12 @@
 
 ## [Unreleased]
 
+## [2.1.0] - 2023-08-10
+
+### Continue Renovations
+
+- Added automated Error Reporting
+
 ## [2.0.4] - 2023-08-10
 
 ### Continue Renovations

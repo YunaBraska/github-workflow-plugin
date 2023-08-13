@@ -10,10 +10,11 @@
     <depends>org.jetbrains.plugins.github</depends>
     <!-- Parsing YAML Elements -->
     <depends>org.jetbrains.plugins.yaml</depends>
-    <!-- Syntax Highlighting -->
-<!--    <depends>com.intellij.java</depends>-->
 
     <extensions defaultExtensionNs="com.intellij">
+        <!-- Crash Reporter -->
+        <errorHandler implementation="com.github.yunabraska.githubworkflow.quickfixes.GhwPluginErrorReportSubmitter"/>
+
         <!-- Auto Completion -->
         <completion.contributor language="yaml"
                                 implementationClass="com.github.yunabraska.githubworkflow.completion.GitHubWorkflowCompletionContributor"/>

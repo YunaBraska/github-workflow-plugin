@@ -31,7 +31,6 @@ import java.util.function.Consumer;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-import static com.github.yunabraska.githubworkflow.completion.GitHubWorkflowUtils.TMP_DIR;
 import static com.github.yunabraska.githubworkflow.config.GitHubWorkflowConfig.*;
 import static com.github.yunabraska.githubworkflow.model.CompletionItem.listEnvs;
 import static com.github.yunabraska.githubworkflow.model.CompletionItem.listInputs;
