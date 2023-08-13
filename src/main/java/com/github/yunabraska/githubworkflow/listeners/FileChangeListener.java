@@ -11,7 +11,7 @@ import java.nio.file.Paths;
 import java.util.Optional;
 
 import static com.github.yunabraska.githubworkflow.completion.GitHubWorkflowUtils.isWorkflowPath;
-import static com.github.yunabraska.githubworkflow.listeners.ApplicationListeners.asyncInitWorkflowFile;
+import static com.github.yunabraska.githubworkflow.listeners.ApplicationStartup.asyncInitWorkflowFile;
 
 public class FileChangeListener implements DocumentListener {
 

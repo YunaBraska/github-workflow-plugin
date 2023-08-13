@@ -5,6 +5,7 @@ import com.github.yunabraska.githubworkflow.model.WorkflowContext;
 import com.github.yunabraska.githubworkflow.model.YamlElement;
 import com.github.yunabraska.githubworkflow.model.YamlElementHelper;
 import com.intellij.openapi.Disposable;
+import com.intellij.openapi.actionSystem.ex.ActionManagerEx;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.editor.EditorFactory;
 import com.intellij.openapi.fileEditor.FileEditorManager;
@@ -27,31 +28,37 @@ import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
 
 
-public class ApplicationListeners implements ProjectActivity {
-
-    private final AtomicReference<Disposable> disposableRef = new AtomicReference<>();
+public class ApplicationStartup implements ProjectActivity {
 
     @Nullable
     @Override
     public Object execute(@NotNull final Project project, @NotNull final Continuation<? super Unit> continuation) {
-        if (disposableRef.get() == null) {
-            disposableRef.set(Disposer.newDisposable());
-            Disposer.register(project, disposableRef.get());
-        }
+        final Disposable listenerDisposable = Disposer.newDisposable();
+        Disposer.register(ListenerService.getInstance(project), listenerDisposable);
 
         // ON TYPING (with delay)
-        EditorFactory.getInstance().getEventMulticaster().addDocumentListener(new FileChangeListener(project), disposableRef.get());
+        EditorFactory.getInstance().getEventMulticaster().addDocumentListener(new FileChangeListener(project), listenerDisposable);
 
         // SWITCH TABS
-        project.getMessageBus().connect(disposableRef.get()).subscribe(FileEditorManagerListener.FILE_EDITOR_MANAGER, new FileFocusListener(project));
+        project.getMessageBus().connect(listenerDisposable).subscribe(FileEditorManagerListener.FILE_EDITOR_MANAGER, new FileFocusListener(project));
 
         // AFTER STARTUP
         final FileEditorManager fileEditorManager = FileEditorManager.getInstance(project);
         for (final VirtualFile openedFile : fileEditorManager.getOpenFiles()) {
             asyncInitWorkflowFile(project, openedFile);
         }
+
+        Disposer.register(ListenerService.getInstance(project), () -> unregisterAction(project));
         return null;
     }
+
+    private void unregisterAction(final Project project) {
+        final ActionManagerEx actionManager = ActionManagerEx.getInstanceEx();
+        for (final String oldId : actionManager.getActionIdList("GHWP_" + project.getLocationHash())) {
+            actionManager.unregisterAction(oldId);
+        }
+    }
+
 
     public static void asyncInitWorkflowFile(final Project project, final VirtualFile virtualFile) {
         if (virtualFile != null && (GitHubWorkflowUtils.isWorkflowPath(Paths.get(virtualFile.getPath())))) {
@@ -86,7 +93,7 @@ public class ApplicationListeners implements ProjectActivity {
             public void run(@NotNull final ProgressIndicator indicator) {
                 indicator.setFraction(0.3);
                 indicator.setText("Resolving " + (action.isAction() ? "action" : "workflow") + action.slug());
-                action.resolve();
+                action.resolve(project);
                 indicator.setText("Done resolving " + (action.isAction() ? "action" : "workflow") + action.slug());
                 indicator.setFraction(0.8);
             }

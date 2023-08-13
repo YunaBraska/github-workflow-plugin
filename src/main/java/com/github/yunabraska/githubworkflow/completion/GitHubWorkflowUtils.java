@@ -8,11 +8,11 @@ import com.intellij.codeInsight.completion.CompletionResultSet;
 import com.intellij.codeInsight.completion.PrioritizedLookupElement;
 import com.intellij.codeInsight.lookup.LookupElement;
 import com.intellij.codeInsight.lookup.LookupElementBuilder;
+import com.intellij.ide.impl.ProjectUtil;
 import com.intellij.json.JsonFileType;
 import com.intellij.openapi.application.ApplicationInfo;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.diagnostic.Logger;
-import com.intellij.openapi.project.ProjectManager;
 import com.intellij.openapi.vfs.VfsUtil;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.psi.FileViewProvider;
@@ -230,7 +230,7 @@ public class GitHubWorkflowUtils {
 
     @SuppressWarnings("DataFlowIssue")
     private static String downloadFromGitHub(final String downloadUrl, final GithubAccount account) throws IOException {
-        final String token = GHCompatibilityUtil.getOrRequestToken(account, ProjectManager.getInstance().getDefaultProject());
+        final String token = GHCompatibilityUtil.getOrRequestToken(account, ProjectUtil.getActiveProject());
         return GithubApiRequestExecutor.Factory.getInstance().create(token).execute(new GithubApiRequest.Get<>(downloadUrl) {
             @SuppressWarnings("BlockingMethodInNonBlockingContext")
             @Override

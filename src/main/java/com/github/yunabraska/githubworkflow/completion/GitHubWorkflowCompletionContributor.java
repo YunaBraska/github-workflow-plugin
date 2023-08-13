@@ -54,6 +54,7 @@ public class GitHubWorkflowCompletionContributor extends CompletionContributor {
                     @NotNull final CompletionResultSet resultSet
             ) {
                 getWorkflowFile(parameters.getPosition()).map(Path::toString).map(WORKFLOW_CONTEXT_MAP::get).ifPresent(context -> {
+                    context.actions().values().forEach(action -> action.resolve(parameters.getEditor().getProject()));
                     final int offset = parameters.getOffset();
                     final YamlElement position = context.getClosestElement(offset).orElse(new YamlElement(-1, -1, null, null, null, null));
                     final String[] prefix = new String[]{""};

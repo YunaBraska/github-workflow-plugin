@@ -4,6 +4,17 @@
 
 ## [Unreleased]
 
+- composite-actions
+
+## [2.2.2] - 2023-08-13
+
+### Continue Renovations
+
+- Added GitHub icons to detected files
+- Stabilised Listeners/Disposable
+- Resolve `uses` on Code Completion in case background process is not finished
+- Fix for multi Projects - acting now on the right project from context
+
 ## [2.2.1] - 2023-08-13
 
 ### Continue Renovations

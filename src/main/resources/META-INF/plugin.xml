@@ -21,11 +21,16 @@
         <!-- Syntax Highlighting -->
         <annotator language="yaml"
                    implementationClass="com.github.yunabraska.githubworkflow.highlights.HighlightAnnotator"/>
+
         <!-- Register Events -->
-        <postStartupActivity implementation="com.github.yunabraska.githubworkflow.listeners.ApplicationListeners"/>
+        <postStartupActivity implementation="com.github.yunabraska.githubworkflow.listeners.ApplicationStartup"/>
+
+        <!-- Schema Icon provider -->
+        <iconProvider implementation="com.github.yunabraska.githubworkflow.schema.GitHubActionIconProvider"/>
     </extensions>
 
     <extensions defaultExtensionNs="JavaScript.JsonSchema">
+        <!-- Schema Registry -->
         <ProviderFactory implementation="com.github.yunabraska.githubworkflow.schema.GitHubSchemaProviderFactory"/>
     </extensions>
 </idea-plugin>

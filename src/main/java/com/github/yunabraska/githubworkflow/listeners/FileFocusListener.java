@@ -5,7 +5,7 @@ import com.intellij.openapi.fileEditor.FileEditorManagerListener;
 import com.intellij.openapi.project.Project;
 import org.jetbrains.annotations.NotNull;
 
-import static com.github.yunabraska.githubworkflow.listeners.ApplicationListeners.asyncInitWorkflowFile;
+import static com.github.yunabraska.githubworkflow.listeners.ApplicationStartup.asyncInitWorkflowFile;
 
 public class FileFocusListener implements FileEditorManagerListener {
 
