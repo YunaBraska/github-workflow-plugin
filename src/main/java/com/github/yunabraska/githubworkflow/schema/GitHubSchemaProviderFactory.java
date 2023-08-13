@@ -20,6 +20,7 @@ public class GitHubSchemaProviderFactory implements JsonSchemaProviderFactory {
     @Override
     public List<JsonSchemaFileProvider> getProviders(@NotNull final Project project) {
         return Arrays.asList(
+                new DependabotSchemaProvider(),
                 new GitHubActionSchemaProvider(),
                 new GitHubFoundingSchemaProvider(),
                 new GitHubWorkflowSchemaProvider(),
