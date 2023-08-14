@@ -22,10 +22,13 @@ import kotlin.Unit;
 import kotlin.coroutines.Continuation;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
+import org.jetbrains.yaml.psi.YAMLFile;
 
 import java.nio.file.Paths;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
+
+import static com.intellij.openapi.util.io.NioFiles.toPath;
 
 
 public class ApplicationStartup implements ProjectActivity {
@@ -61,7 +64,7 @@ public class ApplicationStartup implements ProjectActivity {
 
 
     public static void asyncInitWorkflowFile(final Project project, final VirtualFile virtualFile) {
-        if (virtualFile != null && (GitHubWorkflowUtils.isWorkflowPath(Paths.get(virtualFile.getPath())))) {
+        if (virtualFile != null && (GitHubWorkflowUtils.isWorkflowPath(toPath(virtualFile.getPath())))) {
 
             // READ CONTEXT
             final AtomicReference<WorkflowContext> context = readContext(project, virtualFile);
@@ -78,11 +81,11 @@ public class ApplicationStartup implements ProjectActivity {
         final AtomicReference<WorkflowContext> context = new AtomicReference<>(null);
         ApplicationManager.getApplication().runReadAction(() -> Optional.of(PsiManager.getInstance(project))
                 .map(psiManager -> psiManager.findFile(virtualFile))
+                .filter(YAMLFile.class::isInstance)
                 .map(PsiElement::getChildren)
                 .map(children -> children.length > 0 ? children[0] : null)
                 .map(YamlElementHelper::yamlOf)
                 .map(YamlElement::context)
-                .map(WorkflowContext::init)
                 .ifPresent(context::set));
         return context;
     }

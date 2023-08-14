@@ -3,6 +3,7 @@ package com.github.yunabraska.githubworkflow.model;
 import com.github.yunabraska.githubworkflow.completion.GitHubWorkflowUtils;
 import com.github.yunabraska.githubworkflow.config.NodeIcon;
 import com.intellij.codeInsight.lookup.LookupElement;
+import com.intellij.openapi.project.Project;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -65,7 +66,7 @@ public class CompletionItem {
                 .orElseGet(ArrayList::new);
     }
 
-    public static List<CompletionItem> listStepOutputs(final YamlElement position, final int cursorAbs, final String stepId) {
+    public static List<CompletionItem> listStepOutputs(final Project project, final YamlElement position, final int cursorAbs, final String stepId) {
         return position
                 .findParentJob()
                 .flatMap(job -> job.child(FIELD_STEPS))
@@ -74,7 +75,7 @@ public class CompletionItem {
                 .filter(step -> position.findParentOutput().isPresent() || step.endIndexAbs() < cursorAbs)
                 .map(step -> {
                     //STEP OUTPUTS FROM USES [ACTION/WORKFLOW]
-                    final List<CompletionItem> result = ofNullable(step.uses()).map(GitHubAction::getGitHubAction).map(GitHubAction::outputs).map(map -> completionItemsOf(map, ICON_OUTPUT)).orElseGet(ArrayList::new);
+                    final List<CompletionItem> result = ofNullable(step.uses()).map(GitHubAction::getGitHubAction).map(action -> action.outputs(project)).map(map -> completionItemsOf(map, ICON_OUTPUT)).orElseGet(ArrayList::new);
                     //STEP OUTPUTS FROM TEXT
                     position.context().runOutputs().values().stream()
                             .filter(run -> stepId != null && run.findParentStep().filter(parent -> stepId.equals(parent.id())).isPresent())
@@ -95,7 +96,7 @@ public class CompletionItem {
                 .orElseGet(ArrayList::new);
     }
 
-    public static List<CompletionItem> listJobOutputs(final YamlElement position, final String jobId) {
+    public static List<CompletionItem> listJobOutputs(final Project project, final YamlElement position, final String jobId) {
         final List<CompletionItem> result = new ArrayList<>();
         final Optional<YamlElement> jobNode = position.context().jobs().values().stream().filter(job -> jobId != null && jobId.equals(job.key())).findFirst();
 
@@ -107,7 +108,7 @@ public class CompletionItem {
         //JOB USES OUTPUTS
         jobNode.flatMap(job -> job.child(FIELD_USES).map(YamlElement::textOrChildTextNoQuotes))
                 .map(GitHubAction::getGitHubAction)
-                .map(GitHubAction::outputs)
+                .map(action -> action.outputs(project))
                 .map(childList -> completionItemsOf(childList, ICON_OUTPUT))
                 .ifPresent(result::addAll);
         return result;

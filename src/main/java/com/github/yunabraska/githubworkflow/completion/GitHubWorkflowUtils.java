@@ -209,13 +209,17 @@ public class GitHubWorkflowUtils {
     @NotNull
     public static Path cachePath(final GitHubAction gitHubAction) {
         return TMP_DIR.resolve(
-                gitHubAction.actionName()
-                        + ofNullable(gitHubAction.slug()).map(s -> "_" + s.replace("/", "")).orElse("")
-                        + ofNullable(gitHubAction.sub()).map(s -> "_" + s.replace("/", "")).orElse("")
-                        + ofNullable(gitHubAction.ref()).map(s -> "_" + s.replace("/", "")).orElse("")
-                        + ofNullable(gitHubAction.actionName()).map(s -> "_" + s.replace("/", "")).orElse("")
+                clearString(gitHubAction.actionName())
+                        + ofNullable(gitHubAction.slug()).map(GitHubWorkflowUtils::clearString).orElse("")
+                        + ofNullable(gitHubAction.sub()).map(GitHubWorkflowUtils::clearString).orElse("")
+                        + ofNullable(gitHubAction.ref()).map(GitHubWorkflowUtils::clearString).orElse("")
+                        + ofNullable(gitHubAction.actionName()).map(GitHubWorkflowUtils::clearString).orElse("")
                         + "_schema.json"
         );
+    }
+
+    private static String clearString(final String input) {
+        return input == null ? "" : "_" + input.replace("/", "_").replace("\\", "_");
     }
 
     public static String downloadFileFromGitHub(final String downloadUrl) {
@@ -328,7 +332,8 @@ public class GitHubWorkflowUtils {
     }
 
     public static boolean isWorkflowPath(final Path path) {
-        return path.getNameCount() > 2
+        return path != null
+                && path.getNameCount() > 2
                 && isYamlFile(path)
                 && path.getName(path.getNameCount() - 2).toString().equalsIgnoreCase("workflows")
                 && path.getName(path.getNameCount() - 3).toString().equalsIgnoreCase(".github");

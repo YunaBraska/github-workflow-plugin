@@ -12,6 +12,7 @@ import java.util.Optional;
 
 import static com.github.yunabraska.githubworkflow.completion.GitHubWorkflowUtils.isWorkflowPath;
 import static com.github.yunabraska.githubworkflow.listeners.ApplicationStartup.asyncInitWorkflowFile;
+import static com.intellij.openapi.util.io.NioFiles.toPath;
 
 public class FileChangeListener implements DocumentListener {
 
@@ -28,7 +29,7 @@ public class FileChangeListener implements DocumentListener {
         Optional.of(event.getDocument())
                 .map(document -> FileDocumentManager.getInstance().getFile(document))
                 .ifPresent(virtualFile -> {
-                    if (isWorkflowPath(Paths.get(virtualFile.getPath()))) {
+                    if (isWorkflowPath(toPath(virtualFile.getPath()))) {
                         alarm.cancelAllRequests();
                         alarm.addRequest(() -> {
                             if (!project.isDisposed()) {

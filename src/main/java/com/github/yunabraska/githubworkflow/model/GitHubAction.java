@@ -5,10 +5,14 @@ import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.fileTypes.FileTypeManager;
 import com.intellij.openapi.project.Project;
+import com.intellij.openapi.project.ProjectUtil;
 import com.intellij.psi.PsiFileFactory;
+import com.intellij.psi.PsiManager;
+import org.jetbrains.yaml.psi.YAMLFile;
 
 import java.io.IOException;
 import java.nio.file.Files;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -42,7 +46,7 @@ public class GitHubAction {
     private final List<String> tags = new CopyOnWriteArrayList<>();
     private final AtomicReference<String> ref = new AtomicReference<>(null);
     private final AtomicReference<String> slug = new AtomicReference<>(null);
-    private final AtomicReference<String> sub = new AtomicReference<>(null);
+    private final AtomicReference<String> sub = new AtomicReference<>("");
     private final AtomicReference<String> actionName = new AtomicReference<>(null);
     private final AtomicReference<String> downloadUrl = new AtomicReference<>(null);
     private final AtomicReference<String> uses = new AtomicReference<>(null);
@@ -53,10 +57,11 @@ public class GitHubAction {
 
     public static GitHubAction getGitHubAction(final String uses) {
         try {
+            final String cleanedUses = uses == null ? null : uses.replace("IntellijIdeaRulezzz ", "").trim();
             GitHubAction gitHubAction = ACTION_CACHE.getOrDefault(uses, null);
             if (gitHubAction == null || gitHubAction.expiration() < System.currentTimeMillis()) {
                 ofNullable(gitHubAction).ifPresent(GitHubAction::deleteFile);
-                gitHubAction = new GitHubAction(uses);
+                gitHubAction = new GitHubAction(cleanedUses);
                 ACTION_CACHE.put(uses, gitHubAction);
             }
             return gitHubAction;
@@ -65,11 +70,17 @@ public class GitHubAction {
         }
     }
 
-    public Map<String, String> inputs() {
+    public Map<String, String> inputs(final Project project) {
+        if (isLocal.get()) {
+            return extractLocalParameters(project, downloadUrl.get(), FIELD_INPUTS);
+        }
         return inputs;
     }
 
-    public Map<String, String> outputs() {
+    public Map<String, String> outputs(final Project project) {
+        if (isLocal.get()) {
+            return extractLocalParameters(project, downloadUrl.get(), FIELD_OUTPUTS);
+        }
         return outputs;
     }
 
@@ -105,8 +116,16 @@ public class GitHubAction {
         return isAction.get();
     }
 
+    public String uses() {
+        return uses.get();
+    }
+
     public String toUrl() {
         return isAction.get() ? toActionYamlUrl() : toWorkflowYamlUrl();
+    }
+
+    public String toRawUrl() {
+        return isAction.get() ? toRawActionYamlUrl() : toRawWorkflowYamlUrl();
     }
 
     public String marketplaceUrl() {
@@ -135,31 +154,25 @@ public class GitHubAction {
 
     private GitHubAction(final String uses) {
         if (uses != null) {
-            //TODO: better name extraction
             final int tagIndex = uses.indexOf("@");
             final int userNameIndex = uses.indexOf("/");
             final int repoNameIndex = uses.indexOf("/", userNameIndex + 1);
-            if (uses.startsWith("./") && uses.contains(".github")) {
-                isLocal.set(true);
-            }
-
             this.uses.set(uses);
+            isLocal.set(tagIndex == -1);
+            ref.set(tagIndex != -1 ? uses.substring(tagIndex + 1) : null);
+            isAction.set(isLocal.get() || (!uses.contains(".yaml") && !uses.contains(".yml") && !uses.contains(".action.y")));
             if (tagIndex != -1 && userNameIndex < tagIndex) {
-                ref.set(uses.substring(tagIndex + 1));
                 slug.set(uses.substring(0, repoNameIndex > 0 ? repoNameIndex : tagIndex));
-                if (uses.contains(".yaml") || uses.contains(".yml")) {
-                    isAction.set(false);
+                if (!isAction.get()) {
                     actionName.set(uses.substring(uses.lastIndexOf("/") + 1, tagIndex));
-                    downloadUrl.set(isLocal.get() ? uses : toRawWorkflowYamlUrl());
-//                    setActionParameters(toRawWorkflowYamlUrl());
                 } else {
-                    isAction.set(true);
                     sub.set(repoNameIndex < tagIndex && repoNameIndex > 0 ? "/" + uses.substring(repoNameIndex + 1, tagIndex) : "");
                     actionName.set(uses.substring(userNameIndex + 1, tagIndex));
-                    downloadUrl.set(isLocal.get() ? uses : toRawActionYamlUrl());
-//                    setActionParameters(toActionYamlUrl());
                 }
+            } else {
+                actionName.set(uses);
             }
+            downloadUrl.set(isLocal.get() ? uses + "/action.yml" : toRawUrl());
         }
     }
 
@@ -169,7 +182,6 @@ public class GitHubAction {
         }
     }
 
-    @SuppressWarnings("BlockingMethodInNonBlockingContext")
     public void deleteCache() {
         isAvailable.set(false);
         WORKFLOW_CACHE.remove(workFlowCacheId());
@@ -188,14 +200,16 @@ public class GitHubAction {
 
     private void setActionParameters(final Project project, final String downloadUrl) {
         try {
-//            if (isLocal.get()) {
-//                final VirtualFile virtualFile = ProjectUtil.guessProjectDir(project);
-//                ProjectUtil.guessProjectDir(project).findFileByRelativePath(downloadUrl.substring(downloadUrl.indexOf(".github")));
-//                final VirtualFile baseDir = project.getBaseDir();
-//                expiration.set(System.currentTimeMillis() + CACHE_TEN_MINUTES / 10);
-//            } else {
-            extractActionParameters(project, downloadAction(downloadUrl, this));
-//            }
+            if (isLocal.get()) {
+                isAvailable.set(ofNullable(project)
+                        .map(ProjectUtil::guessProjectDir)
+                        .map(dir -> dir.findFileByRelativePath(downloadUrl))
+                        .isPresent());
+                expiration.set(System.currentTimeMillis() + CACHE_TEN_MINUTES);
+                WORKFLOW_CACHE.put(workFlowCacheId(), new WorkflowContext(null));
+            } else {
+                extractActionParameters(project, downloadAction(downloadUrl, this));
+            }
         } catch (final Exception e) {
             LOG.warn("Failed to set parameters [" + this.uses.get() + "]", e);
             isAvailable.set(false);
@@ -209,6 +223,22 @@ public class GitHubAction {
         final WorkflowContext context = contextOf(project, workFlowCacheId(), content);
         inputs.putAll(getActionParameters(context, FIELD_INPUTS, isAction.get()));
         outputs.putAll(getActionParameters(context, FIELD_OUTPUTS, isAction.get()));
+    }
+
+    private Map<String, String> extractLocalParameters(final Project project, final String path, final String nodeKey) {
+        final AtomicReference<Map<String, String>> result = new AtomicReference<>(new HashMap<>());
+        ApplicationManager.getApplication().runReadAction(() -> ofNullable(project)
+                .map(ProjectUtil::guessProjectDir)
+                .map(dir -> dir.findFileByRelativePath(path))
+                .map(file -> PsiManager.getInstance(project).findFile(file))
+                .filter(YAMLFile.class::isInstance)
+//                    .map(PsiElement::getChildren)
+//                    .map(children -> children.length > 0 ? children[0] : null)
+                .map(YamlElementHelper::yamlOf)
+                .map(YamlElement::context)
+                .map(context -> getActionParameters(context, nodeKey, isAction.get()))
+                .ifPresent(result::set));
+        return result.get();
     }
 
     private String workFlowCacheId() {
@@ -231,7 +261,7 @@ public class GitHubAction {
         final AtomicReference<WorkflowContext> contextRef = new AtomicReference<>();
         ApplicationManager.getApplication().runReadAction(() -> {
             try {
-                final WorkflowContext context = yamlOf(PsiFileFactory.getInstance(project).createFileFromText(key, FileTypeManager.getInstance().getFileTypeByExtension("yaml"), text)).context().init();
+                final WorkflowContext context = yamlOf(PsiFileFactory.getInstance(project).createFileFromText(key, FileTypeManager.getInstance().getFileTypeByExtension("yaml"), text)).context();
                 contextRef.set(context);
             } catch (final Exception e) {
                 final WorkflowContext defaultValue = new YamlElement(-1, -1, null, null, null, null).context().init();

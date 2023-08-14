@@ -4,7 +4,12 @@
 
 ## [Unreleased]
 
-- composite-actions
+## [2.2.3] - 2023-08-15
+
+### Continue Renovations
+
+- Stabilised code completion on `with` fields
+- Added support for `composite-actions`
 
 ## [2.2.2] - 2023-08-13
 

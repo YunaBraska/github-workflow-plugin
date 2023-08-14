@@ -17,7 +17,7 @@
 
         <!-- Auto Completion -->
         <completion.contributor language="yaml"
-                                implementationClass="com.github.yunabraska.githubworkflow.completion.GitHubWorkflowCompletionContributor"/>
+                                implementationClass="com.github.yunabraska.githubworkflow.completion.CodeCompletionService"/>
         <!-- Syntax Highlighting -->
         <annotator language="yaml"
                    implementationClass="com.github.yunabraska.githubworkflow.highlights.HighlightAnnotator"/>

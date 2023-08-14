@@ -11,11 +11,12 @@ import com.intellij.codeInsight.completion.CompletionResultSet;
 import com.intellij.codeInsight.completion.CompletionType;
 import com.intellij.codeInsight.completion.impl.CamelHumpMatcher;
 import com.intellij.codeInsight.lookup.LookupElement;
+import com.intellij.openapi.project.Project;
 import com.intellij.patterns.PlatformPatterns;
+import com.intellij.psi.PsiElement;
 import com.intellij.util.ProcessingContext;
 import org.jetbrains.annotations.NotNull;
 
-import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -34,13 +35,13 @@ import static com.github.yunabraska.githubworkflow.config.NodeIcon.ICON_NODE;
 import static com.github.yunabraska.githubworkflow.config.NodeIcon.ICON_OUTPUT;
 import static com.github.yunabraska.githubworkflow.config.NodeIcon.ICON_RUNNER;
 import static com.github.yunabraska.githubworkflow.model.CompletionItem.*;
-import static com.github.yunabraska.githubworkflow.model.WorkflowContext.WORKFLOW_CONTEXT_MAP;
+import static com.github.yunabraska.githubworkflow.model.YamlElementHelper.yamlOf;
 import static java.util.Collections.singletonList;
 import static java.util.Optional.ofNullable;
 
-public class GitHubWorkflowCompletionContributor extends CompletionContributor {
+public class CodeCompletionService extends CompletionContributor {
 
-    public GitHubWorkflowCompletionContributor() {
+    public CodeCompletionService() {
         extend(CompletionType.BASIC, PlatformPatterns.psiElement(), completionProvider());
     }
 
@@ -53,7 +54,9 @@ public class GitHubWorkflowCompletionContributor extends CompletionContributor {
                     @NotNull final ProcessingContext processingContext,
                     @NotNull final CompletionResultSet resultSet
             ) {
-                getWorkflowFile(parameters.getPosition()).map(Path::toString).map(WORKFLOW_CONTEXT_MAP::get).ifPresent(context -> {
+                getWorkflowFile(parameters.getPosition()).map(path -> yamlOf(parameters.getPosition())).map(YamlElement::context).ifPresent(context -> {
+                    // Fixme: remove if EDT errors pops up
+                    final Project project = Optional.of(parameters.getOriginalFile()).map(PsiElement::getProject).orElse(null);
                     context.actions().values().forEach(action -> action.resolve(parameters.getEditor().getProject()));
                     final int offset = parameters.getOffset();
                     final YamlElement position = context.getClosestElement(offset).orElse(new YamlElement(-1, -1, null, null, null, null));
@@ -68,12 +71,12 @@ public class GitHubWorkflowCompletionContributor extends CompletionContributor {
                             if (i != 0 && (previousCompletions.isEmpty() || previousCompletions.stream().noneMatch(item -> item.key().equals(cbi[index])))) {
                                 return;
                             } else {
-                                addCompletionItems(cbi, i, offset, position, completionResultMap);
+                                addCompletionItems(project, cbi, i, offset, position, completionResultMap);
                             }
                         }
                         //ADD LOOKUP ELEMENTS
                         ofNullable(completionResultMap.getOrDefault(cbi.length - 1, null))
-                                .map(GitHubWorkflowCompletionContributor::toLookupItems)
+                                .map(CodeCompletionService::toLookupItems)
                                 .ifPresent(lookupElements -> addElementsWithPrefix(resultSet, prefix[0], lookupElements));
                     });
                     //ACTIONS && WORKFLOWS
@@ -81,7 +84,7 @@ public class GitHubWorkflowCompletionContributor extends CompletionContributor {
                         if (position.findParent(FIELD_NEEDS).isPresent()) {
                             //[jobs.job_name.needs] list previous jobs
                             Optional.of(listNeeds(position)).filter(cil -> !cil.isEmpty())
-                                    .map(GitHubWorkflowCompletionContributor::toLookupItems)
+                                    .map(CodeCompletionService::toLookupItems)
                                     .ifPresent(lookupElements -> addElementsWithPrefix(resultSet, getDefaultPrefix(parameters), lookupElements));
                         } else {
                             //USES COMPLETION [jobs.job_id.steps.step_id:with]
@@ -90,7 +93,7 @@ public class GitHubWorkflowCompletionContributor extends CompletionContributor {
                                     .flatMap(step -> step.child(FIELD_USES))
                                     .map(YamlElement::textOrChildTextNoQuotes)
                                     .map(GitHubAction::getGitHubAction)
-                                    .map(GitHubAction::inputs);
+                                    .map(action -> action.inputs(project));
                             withCompletion.ifPresent(map -> addLookupElements(resultSet.withPrefixMatcher(getDefaultPrefix(parameters)), map, NodeIcon.ICON_INPUT, ':'));
                         }
                     }
@@ -103,20 +106,20 @@ public class GitHubWorkflowCompletionContributor extends CompletionContributor {
         resultSet.withPrefixMatcher(new CamelHumpMatcher(prefix)).addAllElements(lookupElements);
     }
 
-    private static void addCompletionItems(final String[] cbi, final int i, final int offset, final YamlElement position, final Map<Integer, List<CompletionItem>> completionItemMap) {
+    private static void addCompletionItems(final Project project, final String[] cbi, final int i, final int offset, final YamlElement position, final Map<Integer, List<CompletionItem>> completionItemMap) {
         if (i == 0) {
             handleFirstItem(cbi, i, offset, position, completionItemMap);
         } else if (i == 1) {
             handleSecondItem(cbi, i, completionItemMap);
         } else if (i == 2) {
-            handleThirdItem(cbi, i, offset, position, completionItemMap);
+            handleThirdItem(project, cbi, i, offset, position, completionItemMap);
         }
     }
 
-    private static void handleThirdItem(final String[] cbi, final int i, final int offset, final YamlElement position, final Map<Integer, List<CompletionItem>> completionItemMap) {
+    private static void handleThirdItem(final Project project, final String[] cbi, final int i, final int offset, final YamlElement position, final Map<Integer, List<CompletionItem>> completionItemMap) {
         switch (cbi[0]) {
-            case FIELD_JOBS, FIELD_NEEDS -> completionItemMap.put(i, listJobOutputs(position, cbi[1]));
-            case FIELD_STEPS -> completionItemMap.put(i, listStepOutputs(position, offset, cbi[1]));
+            case FIELD_JOBS, FIELD_NEEDS -> completionItemMap.put(i, listJobOutputs(project, position, cbi[1]));
+            case FIELD_STEPS -> completionItemMap.put(i, listStepOutputs(project, position, offset, cbi[1]));
             default -> {
                 // ignored
             }

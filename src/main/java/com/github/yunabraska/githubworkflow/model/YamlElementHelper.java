@@ -69,7 +69,7 @@ public class YamlElementHelper {
                 .map(YamlElementHelper::getPsiFile)
                 .map(yamlFile -> Optional.of(yamlFile.getOriginalFile()).map(PsiFile::getVirtualFile).orElseGet(yamlFile::getVirtualFile))
                 .map(VirtualFile::getPath)
-                .ifPresent(patString -> WORKFLOW_CONTEXT_MAP.put(patString, rootYamlElement.context()));
+                .ifPresent(patString -> WORKFLOW_CONTEXT_MAP.put(patString, rootYamlElement.context().init()));
         return rootYamlElement;
     }
 

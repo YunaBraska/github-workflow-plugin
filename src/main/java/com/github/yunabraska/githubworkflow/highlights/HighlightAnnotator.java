@@ -14,6 +14,7 @@ import com.intellij.lang.annotation.AnnotationBuilder;
 import com.intellij.lang.annotation.AnnotationHolder;
 import com.intellij.lang.annotation.Annotator;
 import com.intellij.lang.annotation.HighlightSeverity;
+import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.TextRange;
 import com.intellij.psi.PsiElement;
 import org.jetbrains.annotations.NotNull;
@@ -50,6 +51,7 @@ public class HighlightAnnotator implements Annotator {
 
     @Override
     public void annotate(@NotNull final PsiElement psiElement, @NotNull final AnnotationHolder holder) {
+        final Project project = ofNullable(psiElement.getContainingFile()).map(PsiElement::getProject).orElse(null);
         if (psiElement.getLanguage() instanceof YAMLLanguage) {
             ofNullable(WORKFLOW_CONTEXT_MAP.get(getPath(psiElement))).map(WorkflowContext::root).map(root -> toYamlElement(psiElement, root)).ifPresent(element -> {
                 if (FIELD_USES.equals(element.key())) {
@@ -72,7 +74,7 @@ public class HighlightAnnotator implements Annotator {
                 }
                 //VALIDATE ACTION INPUTS
                 if (element.key() != null && ofNullable(element.parent()).map(YamlElement::key).filter(FIELD_WITH::equals).isPresent()) {
-                    element.findParentStep().map(YamlElement::uses).map(GitHubAction::getGitHubAction).map(GitHubAction::inputs).map(Map::keySet).ifPresent(inputs -> {
+                    element.findParentStep().map(YamlElement::uses).map(GitHubAction::getGitHubAction).map(action -> action.inputs(ofNullable(psiElement.getContainingFile()).map(PsiElement::getProject).orElse(null))).map(Map::keySet).ifPresent(inputs -> {
                         if (!inputs.contains(element.key())) {
                             create(
                                     psiElement,
@@ -92,9 +94,9 @@ public class HighlightAnnotator implements Annotator {
                             holder,
                             action.isAvailable() ? HighlightSeverity.INFORMATION : HighlightSeverity.WEAK_WARNING,
                             action.isAvailable() ? ProblemHighlightType.INFORMATION : ProblemHighlightType.WEAK_WARNING,
-                            List.of(action.isAvailable() ? new ClearWorkflowCacheAction(action) : new OpenSettingsIntentionAction(project -> action.deleteCache())),
+                            List.of(action.isAvailable() ? new ClearWorkflowCacheAction(action) : new OpenSettingsIntentionAction(p -> action.deleteCache())),
                             element.textRange(),
-                            action.isAvailable() ? "Clear item cache [" + action.slug() + "]" : "Unresolved [" + action.slug() + "]"
+                            action.isAvailable() ? "Clear item cache [" + action.slug() + "]" : "Unresolved [" + ofNullable(action.slug()).orElseGet(action::uses) + "]"
                     ));
                 } else if (element.parent() != null && (FIELD_RUN.equals(element.parent().key())
                         || "if".equals(element.parent().key())
@@ -106,7 +108,7 @@ public class HighlightAnnotator implements Annotator {
                 )) {
                     //TODO: Find solution for undetected items with only one '.' e.g. [inputs.]
                     //  MAYBE: regex needs to have '${{ }}', only 'if' content is different
-                    processBracketItems(psiElement, holder, element);
+                    processBracketItems(project, psiElement, holder, element);
                 } else if (FIELD_NEEDS.equals(element.key())) {
                     element.findParentJob().ifPresent(job -> {
                         final List<String> jobs = element.context().jobs().values().stream().filter(j -> j.startIndexAbs() < job.startIndexAbs()).map(YamlElement::key).toList();
@@ -180,7 +182,7 @@ public class HighlightAnnotator implements Annotator {
         }
     }
 
-    private static void processBracketItems(@NotNull final PsiElement psiElement, @NotNull final AnnotationHolder holder, final YamlElement element) {
+    private static void processBracketItems(final Project project, @NotNull final PsiElement psiElement, @NotNull final AnnotationHolder holder, final YamlElement element) {
         final Matcher matcher = CARET_BRACKET_ITEM_PATTERN.matcher(psiElement.getText());
         while (matcher.find()) {
             final String[] parts = Arrays.stream(matcher.group().split("\\."))
@@ -216,7 +218,7 @@ public class HighlightAnnotator implements Annotator {
                 case FIELD_STEPS -> ifEnoughItems(holder, psiElement, parts, 4, 4, stepId -> {
                     final List<String> steps = listSteps(element).stream().map(CompletionItem::key).toList();
                     if (isDefinedItem0(psiElement, holder, matcher, stepId, steps) && isField2Valid(psiElement, holder, matcher, parts[2])) {
-                        final List<String> outputs = listStepOutputs(element, element.startIndexAbs(), stepId).stream().map(CompletionItem::key).toList();
+                        final List<String> outputs = listStepOutputs(project, element, element.startIndexAbs(), stepId).stream().map(CompletionItem::key).toList();
                         isValidItem3(psiElement, holder, matcher, parts[3], outputs);
 
                     }
@@ -227,7 +229,7 @@ public class HighlightAnnotator implements Annotator {
                             final List<String> jobs = listJobs(element).stream().map(CompletionItem::key).toList();
                             //noinspection DuplicatedCode
                             if (isDefinedItem0(psiElement, holder, matcher, jobId, jobs) && isField2Valid(psiElement, holder, matcher, parts[2])) {
-                                final List<String> outputs = listJobOutputs(element, jobId).stream().map(CompletionItem::key).toList();
+                                final List<String> outputs = listJobOutputs(project, element, jobId).stream().map(CompletionItem::key).toList();
                                 isValidItem3(psiElement, holder, matcher, parts[3], outputs);
                             }
                         });
@@ -236,7 +238,7 @@ public class HighlightAnnotator implements Annotator {
                             final Set<String> needs = needElement.needItems();
                             //noinspection DuplicatedCode
                             if (isDefinedItem0(psiElement, holder, matcher, jobId, needs) && isField2Valid(psiElement, holder, matcher, parts[2])) {
-                                final List<String> outputs = listJobOutputs(element, jobId).stream().map(CompletionItem::key).toList();
+                                final List<String> outputs = listJobOutputs(project, element, jobId).stream().map(CompletionItem::key).toList();
                                 isValidItem3(psiElement, holder, matcher, parts[3], outputs);
                             }
                         }));
