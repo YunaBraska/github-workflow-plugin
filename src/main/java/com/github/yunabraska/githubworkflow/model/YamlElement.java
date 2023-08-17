@@ -181,7 +181,7 @@ public class YamlElement {
     }
 
     public Optional<YamlElement> findParent(final String key) {
-        return findParent(p -> key.equalsIgnoreCase(p.key()));
+        return key == null? Optional.empty() : findParent(p -> key.equalsIgnoreCase(p.key()));
     }
 
     public Optional<YamlElement> findParent(final Predicate<YamlElement> filter) {

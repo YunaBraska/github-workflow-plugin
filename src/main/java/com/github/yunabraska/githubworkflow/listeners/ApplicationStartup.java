@@ -4,6 +4,7 @@ import com.github.yunabraska.githubworkflow.completion.GitHubWorkflowUtils;
 import com.github.yunabraska.githubworkflow.model.WorkflowContext;
 import com.github.yunabraska.githubworkflow.model.YamlElement;
 import com.github.yunabraska.githubworkflow.model.YamlElementHelper;
+import com.intellij.codeInsight.daemon.DaemonCodeAnalyzer;
 import com.intellij.openapi.Disposable;
 import com.intellij.openapi.actionSystem.ex.ActionManagerEx;
 import com.intellij.openapi.application.ApplicationManager;
@@ -17,6 +18,7 @@ import com.intellij.openapi.startup.ProjectActivity;
 import com.intellij.openapi.util.Disposer;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.psi.PsiElement;
+import com.intellij.psi.PsiFile;
 import com.intellij.psi.PsiManager;
 import kotlin.Unit;
 import kotlin.coroutines.Continuation;
@@ -24,7 +26,6 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.yaml.psi.YAMLFile;
 
-import java.nio.file.Paths;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -71,9 +72,21 @@ public class ApplicationStartup implements ProjectActivity {
 
             // ASYNC HTTP CONTEXT
             if (context.get() != null) {
-                downloadWorkflows(project, context.get());
+                downloadWorkflows(project, virtualFile, context.get());
             }
         }
+    }
+
+    public static void triggerSyntaxHighLightingRefresh(final Project project, final VirtualFile virtualFile) {
+        ApplicationManager.getApplication().invokeLater(() -> {
+            if (virtualFile.isValid()) {
+                // Trigger re-highlighting or any other UI related action
+                final PsiFile psiFile = PsiManager.getInstance(project).findFile(virtualFile);
+                if (psiFile != null) {
+                    DaemonCodeAnalyzer.getInstance(project).restart(psiFile);
+                }
+            }
+        });
     }
 
     @NotNull
@@ -90,7 +103,7 @@ public class ApplicationStartup implements ProjectActivity {
         return context;
     }
 
-    private static void downloadWorkflows(final Project project, final WorkflowContext context) {
+    private static void downloadWorkflows(final Project project, final VirtualFile virtualFile, final WorkflowContext context) {
         context.actions().values().forEach(action -> new Task.Backgroundable(project, "Resolving " + (action.isAction() ? "action" : "workflow") + action.slug(), false) {
             @Override
             public void run(@NotNull final ProgressIndicator indicator) {
@@ -99,6 +112,7 @@ public class ApplicationStartup implements ProjectActivity {
                 action.resolve(project);
                 indicator.setText("Done resolving " + (action.isAction() ? "action" : "workflow") + action.slug());
                 indicator.setFraction(0.8);
+                triggerSyntaxHighLightingRefresh(project, virtualFile);
             }
         }.queue());
     }

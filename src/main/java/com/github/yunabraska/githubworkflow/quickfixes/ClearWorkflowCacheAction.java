@@ -8,6 +8,8 @@ import com.intellij.psi.PsiFile;
 import com.intellij.util.IncorrectOperationException;
 import org.jetbrains.annotations.NotNull;
 
+import static com.github.yunabraska.githubworkflow.listeners.ApplicationStartup.asyncInitWorkflowFile;
+
 public class ClearWorkflowCacheAction implements IntentionAction {
 
     private final GitHubAction action;
@@ -19,13 +21,13 @@ public class ClearWorkflowCacheAction implements IntentionAction {
     @NotNull
     @Override
     public String getText() {
-        return "Clear item cache [" + action.slug() + "]";
+        return "Reload [" + action.slug() + "]";
     }
 
     @NotNull
     @Override
     public String getFamilyName() {
-        return "ClearGhaCacheItem";
+        return "ReloadGhaAction";
     }
 
     @Override
@@ -36,6 +38,7 @@ public class ClearWorkflowCacheAction implements IntentionAction {
     @Override
     public void invoke(@NotNull final Project project, final Editor editor, final PsiFile file) throws IncorrectOperationException {
         action.deleteCache();
+        asyncInitWorkflowFile(project, file.getVirtualFile());
     }
 
     @Override

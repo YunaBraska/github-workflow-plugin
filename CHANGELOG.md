@@ -4,6 +4,13 @@
 
 ## [Unreleased]
 
+## [2.2.4] - 2023-08-17
+
+### Responsive Highlights
+
+- Syntax Highlighting refreshes now on typing
+- Exchanged `Clear Cache` with `Reload`
+
 ## [2.2.3] - 2023-08-15
 
 ### Continue Renovations

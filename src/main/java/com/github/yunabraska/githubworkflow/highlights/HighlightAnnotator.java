@@ -96,7 +96,7 @@ public class HighlightAnnotator implements Annotator {
                             action.isAvailable() ? ProblemHighlightType.INFORMATION : ProblemHighlightType.WEAK_WARNING,
                             List.of(action.isAvailable() ? new ClearWorkflowCacheAction(action) : new OpenSettingsIntentionAction(p -> action.deleteCache())),
                             element.textRange(),
-                            action.isAvailable() ? "Clear item cache [" + action.slug() + "]" : "Unresolved [" + ofNullable(action.slug()).orElseGet(action::uses) + "]"
+                            action.isAvailable() ? "Reload [" + action.slug() + "]" : "Unresolved [" + ofNullable(action.slug()).orElseGet(action::uses) + "]"
                     ));
                 } else if (element.parent() != null && (FIELD_RUN.equals(element.parent().key())
                         || "if".equals(element.parent().key())
