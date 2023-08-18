@@ -32,6 +32,7 @@ import static com.github.yunabraska.githubworkflow.config.GitHubWorkflowConfig.F
 import static com.github.yunabraska.githubworkflow.config.GitHubWorkflowConfig.FIELD_ON;
 import static com.github.yunabraska.githubworkflow.config.GitHubWorkflowConfig.FIELD_OUTPUTS;
 import static com.github.yunabraska.githubworkflow.config.GitHubWorkflowConfig.WORKFLOW_CACHE;
+import static com.github.yunabraska.githubworkflow.model.YamlElement.CURSOR_STRING;
 import static com.github.yunabraska.githubworkflow.model.YamlElementHelper.hasText;
 import static com.github.yunabraska.githubworkflow.model.YamlElementHelper.yamlOf;
 import static java.util.Optional.ofNullable;
@@ -57,7 +58,7 @@ public class GitHubAction {
 
     public static GitHubAction getGitHubAction(final String uses) {
         try {
-            final String cleanedUses = uses == null ? null : uses.replace("IntellijIdeaRulezzz ", "").trim();
+            final String cleanedUses = uses == null ? null : uses.replace(CURSOR_STRING + " ", "").trim();
             GitHubAction gitHubAction = ACTION_CACHE.getOrDefault(uses, null);
             if (gitHubAction == null || gitHubAction.expiration() < System.currentTimeMillis()) {
                 ofNullable(gitHubAction).ifPresent(GitHubAction::deleteFile);
@@ -261,10 +262,10 @@ public class GitHubAction {
         final AtomicReference<WorkflowContext> contextRef = new AtomicReference<>();
         ApplicationManager.getApplication().runReadAction(() -> {
             try {
-                final WorkflowContext context = yamlOf(PsiFileFactory.getInstance(project).createFileFromText(key, FileTypeManager.getInstance().getFileTypeByExtension("yaml"), text)).context();
+                final WorkflowContext context = yamlOf(PsiFileFactory.getInstance(project).createFileFromText(key, FileTypeManager.getInstance().getFileTypeByExtension("yaml"), text.replaceAll("\r?\\n|\\r", "\n"))).context();
                 contextRef.set(context);
             } catch (final Exception e) {
-                final WorkflowContext defaultValue = new YamlElement(-1, -1, null, null, null, null).context().init();
+                final WorkflowContext defaultValue = new YamlElement(-1, -1, null, null, true).context();
                 contextRef.set(key == null ? defaultValue : WORKFLOW_CACHE.getOrDefault(key, defaultValue));
             }
         });

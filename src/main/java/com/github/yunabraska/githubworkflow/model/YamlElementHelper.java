@@ -1,32 +1,26 @@
 package com.github.yunabraska.githubworkflow.model;
 
+import com.intellij.openapi.util.TextRange;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.psi.PsiElement;
 import com.intellij.psi.PsiFile;
-import com.intellij.psi.impl.source.tree.LeafPsiElement;
-import com.intellij.psi.impl.source.tree.PsiErrorElementImpl;
+import org.jetbrains.annotations.NotNull;
 import org.jetbrains.yaml.YAMLLanguage;
-import org.jetbrains.yaml.psi.YAMLCompoundValue;
 import org.jetbrains.yaml.psi.YAMLDocument;
 import org.jetbrains.yaml.psi.YAMLFile;
 import org.jetbrains.yaml.psi.YAMLKeyValue;
-import org.jetbrains.yaml.psi.YAMLMapping;
-import org.jetbrains.yaml.psi.YAMLQuotedText;
-import org.jetbrains.yaml.psi.YAMLScalar;
-import org.jetbrains.yaml.psi.YAMLSequence;
 import org.jetbrains.yaml.psi.YAMLSequenceItem;
 import org.jetbrains.yaml.psi.impl.YAMLBlockScalarImpl;
-import org.jetbrains.yaml.psi.impl.YAMLPlainTextImpl;
 
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.function.Consumer;
 import java.util.function.Predicate;
+import java.util.stream.Stream;
 
 import static com.github.yunabraska.githubworkflow.model.WorkflowContext.WORKFLOW_CONTEXT_MAP;
+import static com.github.yunabraska.githubworkflow.model.YamlElement.createYamlElement;
 import static java.util.Optional.ofNullable;
 
 public class YamlElementHelper {
@@ -62,61 +56,80 @@ public class YamlElementHelper {
     }
 
     public static YamlElement yamlOf(final PsiElement element) {
-        final PsiElement rootPsiElement = getYamlRoot(element);
-        final YamlElement rootYamlElement = ofNullable(rootPsiElement).map(root -> yamlOf(createRootElement(element), root)).orElse(null);
-        ofNullable(rootYamlElement)
-                .map(yamlElement -> rootPsiElement)
+        final PsiElement psiRoot = getYamlRoot(element);
+        final YamlElement elementRoot = ofNullable(psiRoot).map(root -> yamlOf(createRootElement(element), root)).orElse(null);
+        ofNullable(elementRoot)
+                .map(YamlElement::initContext)
+                .map(yamlElement -> psiRoot)
                 .map(YamlElementHelper::getPsiFile)
                 .map(yamlFile -> Optional.of(yamlFile.getOriginalFile()).map(PsiFile::getVirtualFile).orElseGet(yamlFile::getVirtualFile))
                 .map(VirtualFile::getPath)
-                .ifPresent(patString -> WORKFLOW_CONTEXT_MAP.put(patString, rootYamlElement.context().init()));
-        return rootYamlElement;
+                .ifPresent(patString -> WORKFLOW_CONTEXT_MAP.put(patString, elementRoot.context()));
+        return elementRoot;
     }
 
-    public static YamlElement yamlOf(final YamlElement parent, final PsiElement element) {
-        if (element instanceof YAMLFile || element instanceof YAMLDocument) {
-            return addChildren(parent, element.getChildren());
-        } else if (element instanceof YAMLMapping) {
-            return addChildren(parent, element.getChildren());
-        } else if (element instanceof final YAMLKeyValue yamlKeyValue) {
-            return createElement(parent, yamlKeyValue);
-        } else if (element instanceof final YAMLSequenceItem yamlSequenceItem) {
-            return addChildren(parent, yamlSequenceItem);
-        } else if (element instanceof final YAMLSequence yamlSequence) {
-            return addChildren(parent, yamlSequence);
-        } else if (element instanceof YAMLQuotedText || element instanceof YAMLPlainTextImpl) {
-            return createElement(parent, (YAMLScalar) element);
-        } else if (element instanceof final YAMLBlockScalarImpl yamlBlockScalarImpl) {
-            return addChildren(parent, yamlBlockScalarImpl);
-        } else if (element instanceof YAMLCompoundValue
-                || element instanceof PsiErrorElementImpl
-                || element instanceof LeafPsiElement
-        ) {
-            //IGNORE
-            return parent;
-        } else {
-            throw new NotImplementedException("You have detected a new element which i did not recognise [" + element.getClass().getSimpleName() + "]");
+    public static YamlElement yamlOf(final YamlElement parent, final PsiElement psiElement) {
+        if (psiElement == null) {
+            return null;
         }
-    }
 
-    private static YamlElement addChildren(final YamlElement parent, final YAMLSequence element) {
-        Arrays.stream(element.getChildren()).map(child -> yamlOf(parent, child)).forEach(addToParent(parent));
-        return parent;
-    }
+        //INVOKE ONLY ONE: getTextRange invoke only once as it can be slow in deep trees
+        final Optional<TextRange> range = ofNullable(psiElement.getTextRange());
 
-    private static YamlElement addChildren(final YamlElement parent, final YAMLSequenceItem element) {
-        final YamlElement listItem = new YamlElement(
-                element.getTextRange().getStartOffset(),
-                element.getTextRange().getEndOffset(),
-                null,
-                null,
-                parent,
-                new ArrayList<>()
+        //PREPARE RESULT
+        final YamlElement result = createYamlElement(
+                range.map(TextRange::getStartOffset).orElse(-1),
+                range.map(TextRange::getEndOffset).orElse(-1),
+                (psiElement instanceof final YAMLKeyValue keyValue ? keyValue.getKeyText() : null),
+                hasChildren(psiElement) ? null : psiElement.getText()
         );
-        Arrays.stream(element.getChildren()).map(child -> yamlOf(listItem, child)).forEach(addToParent(listItem));
-        addToParent(parent).accept(listItem);
-        return parent;
+
+        //GET ALL CHILDREN
+        final List<YamlElement> children = Stream.concat(getChildren(psiElement, result).stream(), result.children().stream())
+                .distinct()
+                .filter(Objects::nonNull)
+                .filter(child -> !result.equals(child))
+                .toList();
+
+        //AVOID WRAPPER ELEMENTS - exclude YAMLSequenceItem as it represents list items "- name: something"
+        if (result.key() == null && result.text() == null && !(psiElement instanceof YAMLSequenceItem)) {
+            if (children.size() == 1) {
+                return children.get(0).parent(parent);
+            } else {
+                return parent.children(children);
+            }
+        }
+        return result.parent(parent).children(children);
     }
+
+    @NotNull
+    private static List<YamlElement> getChildren(final PsiElement psiElement, final YamlElement result) {
+        return Optional.of(psiElement)
+                .filter(YAMLBlockScalarImpl.class::isInstance)
+                .map(YAMLBlockScalarImpl.class::cast)
+                .map(YamlElementHelper::createChildren).orElseGet(() -> Arrays.stream(psiElement.getChildren()).map(psi -> yamlOf(result, psi)).toList());
+    }
+
+    @NotNull
+    private static List<YamlElement> createChildren(final YAMLBlockScalarImpl psi) {
+        return psi.getContentRanges().stream().map(textRange -> createYamlElement(
+                psi.getTextRange().getStartOffset() + textRange.getStartOffset(),
+                psi.getTextRange().getStartOffset() + textRange.getEndOffset(),
+                null,
+                psi.getText().substring(textRange.getStartOffset(), textRange.getEndOffset())
+        )).toList();
+    }
+
+    public static boolean hasChildren(final PsiElement psiElement) {
+        return ofNullable(psiElement)
+                .filter(YAMLBlockScalarImpl.class::isInstance)
+                .map(YAMLBlockScalarImpl.class::cast)
+                .map(YAMLBlockScalarImpl::getContentRanges)
+                .map(List::size)
+                .or(() -> ofNullable(psiElement).map(PsiElement::getChildren).map(children -> children.length))
+                .map(count -> count > 0).orElse(false);
+    }
+
 
     private static YamlElement createRootElement(final PsiElement element) {
         return addChildren(new YamlElement(
@@ -124,31 +137,7 @@ public class YamlElementHelper {
                 -1,
                 null,
                 element.getText(),
-                null,
-                new ArrayList<>()
-        ), element.getChildren());
-    }
-
-    private static YamlElement createElement(final YamlElement parent, final YAMLKeyValue element) {
-        return addChildren(new YamlElement(
-                element.getTextOffset(),
-                element.getTextOffset() + element.getKeyText().length(),
-                element.getKeyText(),
-                null,
-                parent,
-                new ArrayList<>()
-        ), element.getChildren());
-    }
-
-    //ATTENTION: "YAMLScalar" is nearly everything. Use with care
-    private static YamlElement createElement(final YamlElement parent, final YAMLScalar element) {
-        return addChildren(new YamlElement(
-                element.getTextRange().getStartOffset(),
-                element.getTextRange().getEndOffset(),
-                null,
-                element.getText(),
-                parent,
-                new ArrayList<>()
+                true
         ), element.getChildren());
     }
 
@@ -164,19 +153,6 @@ public class YamlElementHelper {
         return parent;
     }
 
-    private static YamlElement addChildren(final YamlElement parent, final YAMLBlockScalarImpl element) {
-        if (parent != null) {
-            element.getContentRanges().stream().map(textRange -> new YamlElement(
-                    element.getTextRange().getStartOffset() + textRange.getStartOffset(),
-                    element.getTextRange().getStartOffset() + textRange.getEndOffset(),
-                    null,
-                    element.getText().substring(textRange.getStartOffset(), textRange.getEndOffset()),
-                    parent,
-                    null
-            )).forEach(addToParent(parent));
-        }
-        return parent;
-    }
 
     public static List<YamlElement> filterNodesRecursive(final YamlElement currentNode, final Predicate<YamlElement> filter, final List<YamlElement> resultNodes) {
         if (filter.test(currentNode)) {
@@ -186,14 +162,6 @@ public class YamlElementHelper {
             filterNodesRecursive(child, filter, resultNodes);
         }
         return resultNodes;
-    }
-
-    private static Consumer<YamlElement> addToParent(final YamlElement parent) {
-        return child -> ofNullable(parent)
-                .filter(p -> child != null)
-                .filter(p -> child != p)
-                .filter(p -> !p.children().contains(child))
-                .ifPresent(p -> p.children().add(child));
     }
 
     public static boolean hasText(final String str) {

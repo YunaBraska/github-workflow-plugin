@@ -57,7 +57,7 @@ public class CodeCompletionService extends CompletionContributor {
                 getWorkflowFile(parameters.getPosition()).map(path -> yamlOf(parameters.getPosition())).map(YamlElement::context).ifPresent(context -> {
                     final Project project = Optional.of(parameters.getOriginalFile()).map(PsiElement::getProject).orElse(null);
                     final int offset = parameters.getOffset();
-                    final YamlElement position = context.getClosestElement(offset).orElse(new YamlElement(-1, -1, null, null, null, null));
+                    final YamlElement position = context.getClosestElement(offset).orElse(new YamlElement(-1, -1, null, null, false));
                     final String[] prefix = new String[]{""};
                     final Optional<String[]> caretBracketItem = Optional.of(position).filter(p -> p.startIndexAbs() > -1).map(pos -> getCaretBracketItem(pos, offset, prefix)).orElseGet(() -> Optional.of(prefix));
                     caretBracketItem.ifPresent(cbi -> {
