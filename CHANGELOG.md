@@ -4,6 +4,12 @@
 
 ## [Unreleased]
 
+## [2.2.5] - 2023-08-18
+
+### Intellisense for Windows
+
+- Added windows support ... don't ask ^^
+
 ## [2.2.4] - 2023-08-17
 
 ### Responsive Highlights
