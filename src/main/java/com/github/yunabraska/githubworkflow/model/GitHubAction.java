@@ -262,7 +262,7 @@ public class GitHubAction {
         final AtomicReference<WorkflowContext> contextRef = new AtomicReference<>();
         ApplicationManager.getApplication().runReadAction(() -> {
             try {
-                final WorkflowContext context = yamlOf(PsiFileFactory.getInstance(project).createFileFromText(key, FileTypeManager.getInstance().getFileTypeByExtension("yaml"), text)).context();
+                final WorkflowContext context = yamlOf(PsiFileFactory.getInstance(project).createFileFromText(key, FileTypeManager.getInstance().getFileTypeByExtension("yaml"), text.replaceAll("\r?\\n|\\r", "\n"))).context();
                 contextRef.set(context);
             } catch (final Exception e) {
                 final WorkflowContext defaultValue = new YamlElement(-1, -1, null, null, true).context();
