@@ -20,6 +20,7 @@ import static com.github.yunabraska.githubworkflow.config.GitHubWorkflowConfig.F
 import static com.github.yunabraska.githubworkflow.config.GitHubWorkflowConfig.FIELD_SECRETS;
 import static com.github.yunabraska.githubworkflow.config.GitHubWorkflowConfig.FIELD_STEPS;
 import static com.github.yunabraska.githubworkflow.config.GitHubWorkflowConfig.FIELD_USES;
+import static com.github.yunabraska.githubworkflow.model.YamlElement.createYamlElement;
 import static java.util.Comparator.comparingInt;
 import static java.util.Optional.ofNullable;
 
@@ -157,21 +158,19 @@ public class WorkflowContext {
     }
 
     private void parseOutputs(final YamlElement step, final YamlElement line) {
-        ofNullable(line.text()).map(GitHubWorkflowUtils::toGithubOutputs).ifPresent(outputMap -> outputMap.entrySet().stream().map(output -> createElement(step, line, output)).forEach(output -> this.runOutputs.put(output.path(), output)));
+        ofNullable(line.text()).map(GitHubWorkflowUtils::toGithubOutputs).ifPresent(outputMap -> outputMap.entrySet().stream().map(output -> createSingleElement(step, line, output)).forEach(output -> this.runOutputs.put(output.path(), output)));
     }
 
     private void parseEnvs(final YamlElement step, final YamlElement line) {
-        ofNullable(line.text()).map(GitHubWorkflowUtils::toGithubEnvs).ifPresent(envsMap -> envsMap.entrySet().stream().map(env -> createElement(step, line, env)).forEach(env -> this.runEnvs.put(env.path(), env)));
+        ofNullable(line.text()).map(GitHubWorkflowUtils::toGithubEnvs).ifPresent(envsMap -> envsMap.entrySet().stream().map(env -> createSingleElement(step, line, env)).forEach(env -> this.runEnvs.put(env.path(), env)));
     }
 
-    private YamlElement createElement(final YamlElement step, final YamlElement line, final Map.Entry<String, String> kv) {
-        return new YamlElement(
+    private YamlElement createSingleElement(final YamlElement step, final YamlElement line, final Map.Entry<String, String> kv) {
+        return createYamlElement(
                 line.startIndexAbs(),
                 line.endIndexAbs(),
                 kv.getKey(),
-                kv.getValue(),
-                step,
-                null
-        );
+                kv.getValue()
+        ).detachedParent(step);
     }
 }

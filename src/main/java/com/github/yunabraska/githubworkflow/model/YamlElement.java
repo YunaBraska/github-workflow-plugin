@@ -3,6 +3,8 @@ package com.github.yunabraska.githubworkflow.model;
 import com.intellij.openapi.util.TextRange;
 
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
@@ -26,12 +28,12 @@ import static java.util.Optional.ofNullable;
 @SuppressWarnings({"SameReturnValue", "unused"})
 public class YamlElement {
 
+    protected YamlElement parent;
     protected final int startIndexAbs;
     protected final int endIndexAbs;
     protected final String key;
     protected final String text;
-    protected final YamlElement parent;
-    protected final List<YamlElement> children;
+    protected final List<YamlElement> children = new ArrayList<>();
     protected final WorkflowContext context;
     public static final String CURSOR_STRING = "IntellijIdeaRulezzz";
 
@@ -40,15 +42,22 @@ public class YamlElement {
             final int endIndexAbs,
             final String key,
             final String text,
-            final YamlElement parent,
-            final List<YamlElement> children) {
+            final boolean isRootElement
+    ) {
         this.startIndexAbs = startIndexAbs;
         this.endIndexAbs = endIndexAbs;
         this.key = key;
         this.text = text;
-        this.parent = parent;
-        this.children = children != null ? children : Collections.emptyList();
-        this.context = parent == null ? new WorkflowContext(this) : null;
+        this.context = isRootElement ? new WorkflowContext(this) : null;
+    }
+
+    public static YamlElement createYamlElement(
+            final int startIndexAbs,
+            final int endIndexAbs,
+            final String key,
+            final String text
+    ) {
+        return new YamlElement(startIndexAbs, endIndexAbs, key, text, false);
     }
 
     public YamlElement parent() {
@@ -57,6 +66,33 @@ public class YamlElement {
 
     public List<YamlElement> children() {
         return children;
+    }
+
+    public YamlElement detachedParent(final YamlElement parent) {
+        this.parent = parent;
+        return this;
+    }
+
+    public YamlElement parent(final YamlElement parent) {
+        ofNullable(parent).ifPresent(p -> {
+            this.parent = parent;
+            parent.children(this);
+        });
+        return this;
+    }
+
+    public YamlElement children(final YamlElement... children) {
+        return children(children == null ? null : Arrays.asList(children));
+    }
+
+    public YamlElement children(final Collection<YamlElement> children) {
+        ofNullable(children).orElseGet(Collections::emptyList).stream().filter(Objects::nonNull).filter(child -> !this.equals(child)).forEach(child -> {
+            child.parent = this;
+            if (!this.children.contains(child)) {
+                this.children.add(child);
+            }
+        });
+        return this;
     }
 
     public int startIndexAbs() {
@@ -141,15 +177,16 @@ public class YamlElement {
 
 
     public WorkflowContext context() {
-        return root().context;
+        return parent() == null? context : parent().context();
+    }
+
+    public YamlElement initContext() {
+        ofNullable(root()).map(YamlElement::context).ifPresent(WorkflowContext::init);
+        return this;
     }
 
     public YamlElement root() {
-        YamlElement current = this;
-        while (current.parent() != null) {
-            current = current.parent();
-        }
-        return current;
+        return parent() == null? this : parent().root();
     }
 
     public Stream<YamlElement> allElements() {
@@ -181,7 +218,7 @@ public class YamlElement {
     }
 
     public Optional<YamlElement> findParent(final String key) {
-        return key == null? Optional.empty() : findParent(p -> key.equalsIgnoreCase(p.key()));
+        return key == null ? Optional.empty() : findParent(p -> key.equalsIgnoreCase(p.key()));
     }
 
     public Optional<YamlElement> findParent(final Predicate<YamlElement> filter) {
@@ -226,6 +263,19 @@ public class YamlElement {
             children.stream().map(YamlElement::textOrChildTextNoQuotes).filter(Objects::nonNull).forEach(result::add);
         }
         return result;
+    }
+
+    @Override
+    public boolean equals(final Object o) {
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
+        final YamlElement that = (YamlElement) o;
+        return startIndexAbs == that.startIndexAbs && endIndexAbs == that.endIndexAbs && Objects.equals(key, that.key) && Objects.equals(text, that.text);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(startIndexAbs, endIndexAbs, key, text);
     }
 
     @Override
