@@ -7,7 +7,6 @@ import com.intellij.openapi.project.Project;
 import com.intellij.util.Alarm;
 import org.jetbrains.annotations.NotNull;
 
-import java.nio.file.Paths;
 import java.util.Optional;
 
 import static com.github.yunabraska.githubworkflow.completion.GitHubWorkflowUtils.isWorkflowPath;

@@ -1,6 +1,5 @@
 package com.github.yunabraska.githubworkflow.quickfixes;
 
-import com.intellij.codeInsight.intention.IntentionAction;
 import com.intellij.openapi.command.WriteCommandAction;
 import com.intellij.openapi.editor.Document;
 import com.intellij.openapi.editor.Editor;
@@ -12,12 +11,15 @@ import com.intellij.psi.PsiFile;
 import com.intellij.util.IncorrectOperationException;
 import org.jetbrains.annotations.NotNull;
 
-public class ReplaceTextIntentionAction implements IntentionAction {
+import javax.swing.*;
+
+public class ReplaceTextIntentionAction extends QuickFix {
     private final boolean delete;
     private final String newText;
     private final TextRange textRange;
 
-    public ReplaceTextIntentionAction(final TextRange textRange, final String newText, final boolean delete) {
+    public ReplaceTextIntentionAction(final TextRange textRange, final String newText, final boolean delete, final Icon icon) {
+        super(icon);
         this.delete = delete;
         this.newText = newText;
         this.textRange = textRange;

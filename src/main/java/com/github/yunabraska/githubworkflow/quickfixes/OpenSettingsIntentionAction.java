@@ -1,6 +1,5 @@
 package com.github.yunabraska.githubworkflow.quickfixes;
 
-import com.intellij.codeInsight.intention.IntentionAction;
 import com.intellij.openapi.editor.Editor;
 import com.intellij.openapi.options.ShowSettingsUtil;
 import com.intellij.openapi.project.Project;
@@ -8,15 +7,17 @@ import com.intellij.psi.PsiFile;
 import com.intellij.util.IncorrectOperationException;
 import org.jetbrains.annotations.NotNull;
 
+import javax.swing.*;
 import java.util.function.Consumer;
 
 import static java.util.Optional.ofNullable;
 
-public class OpenSettingsIntentionAction implements IntentionAction {
+public class OpenSettingsIntentionAction extends QuickFix {
 
     private final Consumer<Project> execute;
 
-    public OpenSettingsIntentionAction(final Consumer<Project> execute) {
+    public OpenSettingsIntentionAction(final Consumer<Project> execute, final Icon icon) {
+        super(icon);
         this.execute = execute;
     }
 

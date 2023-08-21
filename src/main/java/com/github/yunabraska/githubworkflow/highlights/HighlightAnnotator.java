@@ -4,19 +4,22 @@ import com.github.yunabraska.githubworkflow.model.CompletionItem;
 import com.github.yunabraska.githubworkflow.model.GitHubAction;
 import com.github.yunabraska.githubworkflow.model.WorkflowContext;
 import com.github.yunabraska.githubworkflow.model.YamlElement;
-import com.github.yunabraska.githubworkflow.quickfixes.ClearWorkflowCacheAction;
 import com.github.yunabraska.githubworkflow.quickfixes.OpenSettingsIntentionAction;
 import com.github.yunabraska.githubworkflow.quickfixes.OpenUrlIntentionAction;
+import com.github.yunabraska.githubworkflow.quickfixes.QuickFix;
+import com.github.yunabraska.githubworkflow.quickfixes.ReloadGhaAction;
 import com.github.yunabraska.githubworkflow.quickfixes.ReplaceTextIntentionAction;
-import com.intellij.codeInsight.intention.IntentionAction;
 import com.intellij.codeInspection.ProblemHighlightType;
+import com.intellij.icons.AllIcons;
 import com.intellij.lang.annotation.AnnotationBuilder;
 import com.intellij.lang.annotation.AnnotationHolder;
 import com.intellij.lang.annotation.Annotator;
 import com.intellij.lang.annotation.HighlightSeverity;
 import com.intellij.openapi.project.Project;
+import com.intellij.openapi.util.Key;
 import com.intellij.openapi.util.TextRange;
 import com.intellij.psi.PsiElement;
+import com.intellij.psi.impl.source.tree.LeafElement;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.yaml.YAMLLanguage;
 import org.jetbrains.yaml.psi.YAMLKeyValue;
@@ -46,8 +49,9 @@ import static java.util.Optional.ofNullable;
 
 public class HighlightAnnotator implements Annotator {
 
-    //    public static final Pattern CARET_BRACKET_ITEM_PATTERN = Pattern.compile("\\b(\\w++(?:\\.\\w++)++)\\b");
     public static final Pattern CARET_BRACKET_ITEM_PATTERN = Pattern.compile("[\\s|\\t^{]\\b(\\w++(?:\\.\\w++)++)[\\s|\\t$}]");
+    //    public static final Pattern CARET_BRACKET_ITEM_PATTERN = Pattern.compile("\\b(\\w++(?:\\.\\w++)++)\\b");
+    private static final Key<Boolean> ANNOTATED_KEY = new Key<>(HighlightAnnotator.class.getSimpleName());
 
     @Override
     public void annotate(@NotNull final PsiElement psiElement, @NotNull final AnnotationHolder holder) {
@@ -58,9 +62,9 @@ public class HighlightAnnotator implements Annotator {
                     ofNullable(element.childTextNoQuotes()).map(GitHubAction::getGitHubAction).filter(GitHubAction::isAvailable).ifPresent(gitHubAction -> {
                         final String browserText = "Open in Browser [" + gitHubAction.slug() + "]";
                         final String marketplaceText = "Open in Marketplace [" + gitHubAction.slug() + "]";
-                        final List<IntentionAction> quickFixes = gitHubAction.isAction()
-                                ? Arrays.asList(new OpenUrlIntentionAction(gitHubAction.marketplaceUrl(), marketplaceText), new OpenUrlIntentionAction(gitHubAction.toUrl(), browserText))
-                                : List.of(new OpenUrlIntentionAction(gitHubAction.toUrl(), browserText));
+                        final List<QuickFix> quickFixes = gitHubAction.isAction()
+                                ? Arrays.asList(new OpenUrlIntentionAction(gitHubAction.marketplaceUrl(), marketplaceText, null), new OpenUrlIntentionAction(gitHubAction.toUrl(), browserText, null))
+                                : List.of(new OpenUrlIntentionAction(gitHubAction.toUrl(), browserText, null));
                         create(
                                 psiElement,
                                 holder,
@@ -73,7 +77,7 @@ public class HighlightAnnotator implements Annotator {
                     });
                 }
                 //VALIDATE ACTION INPUTS
-                if (element.key() != null && ofNullable(element.parent()).map(YamlElement::key).filter(FIELD_WITH::equals).isPresent()) {
+                if (!(psiElement instanceof LeafElement) && element.key() != null && ofNullable(element.parent()).map(YamlElement::key).filter(FIELD_WITH::equals).isPresent()) {
                     element.findParentStep().map(YamlElement::uses).map(GitHubAction::getGitHubAction).map(action -> action.inputs(ofNullable(psiElement.getContainingFile()).map(PsiElement::getProject).orElse(null))).map(Map::keySet).ifPresent(inputs -> {
                         if (!inputs.contains(element.key())) {
                             create(
@@ -81,20 +85,20 @@ public class HighlightAnnotator implements Annotator {
                                     holder,
                                     HighlightSeverity.ERROR,
                                     ProblemHighlightType.GENERIC_ERROR,
-                                    List.of(new ReplaceTextIntentionAction(psiElement.getTextRange(), element.key(), true)),
+                                    List.of(new ReplaceTextIntentionAction(psiElement.getTextRange(), element.key(), true, null)),
                                     psiElement.getTextRange(),
                                     "Invalid [" + element.key() + "]"
                             );
                         }
                     });
                 }
-                if (element.findParent(FIELD_USES).isPresent()) {
+                if (!(psiElement instanceof LeafElement) && element.findParent(FIELD_USES).isPresent()) {
                     ofNullable(ACTION_CACHE.get(element.textOrChildText())).ifPresent(action -> create(
                             psiElement,
                             holder,
                             action.isAvailable() ? HighlightSeverity.INFORMATION : HighlightSeverity.WEAK_WARNING,
                             action.isAvailable() ? ProblemHighlightType.INFORMATION : ProblemHighlightType.WEAK_WARNING,
-                            List.of(action.isAvailable() ? new ClearWorkflowCacheAction(action) : new OpenSettingsIntentionAction(p -> action.deleteCache())),
+                            List.of(action.isAvailable() ? new ReloadGhaAction(action, AllIcons.Actions.ForceRefresh) : new OpenSettingsIntentionAction(p -> action.deleteCache(), AllIcons.General.Settings)),
                             element.textRange(),
                             action.isAvailable() ? "Reload [" + action.slug() + "]" : "Unresolved [" + ofNullable(action.slug()).orElseGet(action::uses) + "]"
                     ));
@@ -122,7 +126,7 @@ public class HighlightAnnotator implements Annotator {
                                         holder,
                                         HighlightSeverity.ERROR,
                                         ProblemHighlightType.GENERIC_ERROR,
-                                        jobs.stream().map(need -> new ReplaceTextIntentionAction(range, need, false)).map(ia -> (IntentionAction) ia).toList(),
+                                        jobs.stream().map(need -> new ReplaceTextIntentionAction(range, need, false, null)).map(ia -> (QuickFix) ia).toList(),
                                         range,
                                         "Invalid [" + jobId + "] - needs to be a valid jobId from previous jobs"
                                 );
@@ -134,7 +138,7 @@ public class HighlightAnnotator implements Annotator {
                                             holder,
                                             HighlightSeverity.INFORMATION,
                                             ProblemHighlightType.INFORMATION,
-                                            List.of(new ReplaceTextIntentionAction(range, jobId, true)),
+                                            List.of(new ReplaceTextIntentionAction(range, jobId, true, null)),
                                             range,
                                             "Unused [" + jobId + "]"
                                     );
@@ -171,7 +175,7 @@ public class HighlightAnnotator implements Annotator {
                                     holder,
                                     HighlightSeverity.WEAK_WARNING,
                                     ProblemHighlightType.LIKE_UNUSED_SYMBOL,
-                                    List.of(new ReplaceTextIntentionAction(range, unusedOutput.key(), true)),
+                                    List.of(new ReplaceTextIntentionAction(range, unusedOutput.key(), true, null)),
                                     range,
                                     "Unused [" + unusedOutput.key() + "]"
                             );
@@ -203,7 +207,7 @@ public class HighlightAnnotator implements Annotator {
                                 holder,
                                 HighlightSeverity.WEAK_WARNING,
                                 ProblemHighlightType.WEAK_WARNING,
-                                secrets.stream().map(output -> new ReplaceTextIntentionAction(textRange, output, false)).map(ia -> (IntentionAction) ia).toList(),
+                                secrets.stream().map(output -> new ReplaceTextIntentionAction(textRange, output, false, null)).map(ia -> (QuickFix) ia).toList(),
                                 textRange,
                                 "Undefined [" + secretId + "] - it might be provided at runtime"
                         );
@@ -258,7 +262,7 @@ public class HighlightAnnotator implements Annotator {
                     holder,
                     HighlightSeverity.ERROR,
                     ProblemHighlightType.GENERIC_ERROR,
-                    List.of(new ReplaceTextIntentionAction(textRange, FIELD_OUTPUTS, false)),
+                    List.of(new ReplaceTextIntentionAction(textRange, FIELD_OUTPUTS, false, null)),
                     textRange,
                     "Invalid [" + itemId + "]"
             );
@@ -275,7 +279,7 @@ public class HighlightAnnotator implements Annotator {
                     holder,
                     HighlightSeverity.ERROR,
                     ProblemHighlightType.GENERIC_ERROR,
-                    outputs.stream().map(output -> new ReplaceTextIntentionAction(textRange, output, false)).map(ia -> (IntentionAction) ia).toList(),
+                    outputs.stream().map(output -> new ReplaceTextIntentionAction(textRange, output, false, null)).map(ia -> (QuickFix) ia).toList(),
                     textRange,
                     "Undefined [" + itemId + "]"
             );
@@ -290,7 +294,7 @@ public class HighlightAnnotator implements Annotator {
                     holder,
                     HighlightSeverity.ERROR,
                     ProblemHighlightType.GENERIC_ERROR,
-                    items.stream().map(output -> new ReplaceTextIntentionAction(textRange, output, false)).map(ia -> (IntentionAction) ia).toList(),
+                    items.stream().map(output -> new ReplaceTextIntentionAction(textRange, output, false, null)).map(ia -> (QuickFix) ia).toList(),
                     textRange,
                     "Undefined [" + itemId + "]"
             );
@@ -361,7 +365,7 @@ public class HighlightAnnotator implements Annotator {
                     holder,
                     HighlightSeverity.ERROR,
                     ProblemHighlightType.GENERIC_ERROR,
-                    List.of(new ReplaceTextIntentionAction(textRange, longPart, true)),
+                    List.of(new ReplaceTextIntentionAction(textRange, longPart, true, null)),
                     textRange,
                     "Not valid here [" + longPart + "]"
             );
@@ -371,7 +375,15 @@ public class HighlightAnnotator implements Annotator {
     }
 
     @SuppressWarnings({"DataFlowIssue", "ResultOfMethodCallIgnored"})
-    public static void create(final PsiElement psiElement, final AnnotationHolder holder, final HighlightSeverity level, final ProblemHighlightType type, final Collection<IntentionAction> quickFixes, final TextRange range, final String message) {
+    public static void create(
+            final PsiElement psiElement,
+            final AnnotationHolder holder,
+            final HighlightSeverity level,
+            final ProblemHighlightType type,
+            final Collection<QuickFix> quickFixes,
+            final TextRange range,
+            final String message
+    ) {
         final TextRange textRange = fixRange(psiElement, range);
         if (textRange != null) {
             final AnnotationBuilder annotation = holder.newAnnotation(level, message);
@@ -379,7 +391,10 @@ public class HighlightAnnotator implements Annotator {
             ofNullable(textRange).ifPresent(annotation::range);
             ofNullable(type).ifPresent(annotation::highlightType);
             ofNullable(message).ifPresent(annotation::tooltip);
-            ofNullable(quickFixes).ifPresent(q -> q.forEach(annotation::withFix));
+            ofNullable(quickFixes).ifPresent(q -> q.forEach(action -> {
+                annotation.withFix(action);
+                ofNullable(action.icon()).map(icon -> new IconRenderer(action, psiElement, icon)).ifPresent(annotation::gutterIconRenderer);
+            }));
 
             ofNullable(textRange).ifPresent(silentAnnotation::range);
             ofNullable(quickFixes).ifPresent(q -> q.forEach(silentAnnotation::withFix));

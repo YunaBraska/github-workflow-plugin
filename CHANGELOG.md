@@ -4,6 +4,13 @@
 
 ## [Unreleased]
 
+## [2.2.6] - 2023-08-21
+
+### Added QuickFix Icons
+
+- Added Annotation QuickFix Icons
+- Fix: #12 Progressbar bug which broke the background resolver from GitHub actions and workflows
+
 ## [2.2.5] - 2023-08-18
 
 ### Intellisense for Windows

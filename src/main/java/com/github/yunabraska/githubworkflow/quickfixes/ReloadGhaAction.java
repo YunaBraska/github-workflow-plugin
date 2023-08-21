@@ -1,20 +1,24 @@
 package com.github.yunabraska.githubworkflow.quickfixes;
 
 import com.github.yunabraska.githubworkflow.model.GitHubAction;
-import com.intellij.codeInsight.intention.IntentionAction;
 import com.intellij.openapi.editor.Editor;
 import com.intellij.openapi.project.Project;
 import com.intellij.psi.PsiFile;
 import com.intellij.util.IncorrectOperationException;
 import org.jetbrains.annotations.NotNull;
 
+import javax.swing.*;
+
+import java.util.Objects;
+
 import static com.github.yunabraska.githubworkflow.listeners.ApplicationStartup.asyncInitWorkflowFile;
 
-public class ClearWorkflowCacheAction implements IntentionAction {
+public class ReloadGhaAction extends QuickFix {
 
     private final GitHubAction action;
 
-    public ClearWorkflowCacheAction(final GitHubAction action) {
+    public ReloadGhaAction(final GitHubAction action, final Icon icon) {
+        super(icon);
         this.action = action;
     }
 
@@ -44,5 +48,19 @@ public class ClearWorkflowCacheAction implements IntentionAction {
     @Override
     public boolean startInWriteAction() {
         return false;
+    }
+
+    @Override
+    public boolean equals(final Object o) {
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
+        if (!super.equals(o)) return false;
+        final ReloadGhaAction that = (ReloadGhaAction) o;
+        return Objects.equals(action, that.action);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(super.hashCode(), action);
     }
 }

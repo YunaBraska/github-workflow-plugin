@@ -107,12 +107,20 @@ public class ApplicationStartup implements ProjectActivity {
         context.actions().values().forEach(action -> new Task.Backgroundable(project, "Resolving " + (action.isAction() ? "action" : "workflow") + action.slug(), false) {
             @Override
             public void run(@NotNull final ProgressIndicator indicator) {
-                indicator.setFraction(0.3);
-                indicator.setText("Resolving " + (action.isAction() ? "action" : "workflow") + action.slug());
-                action.resolve(project);
-                indicator.setText("Done resolving " + (action.isAction() ? "action" : "workflow") + action.slug());
-                indicator.setFraction(0.8);
-                triggerSyntaxHighLightingRefresh(project, virtualFile);
+                try {
+                    indicator.setIndeterminate(false);
+                    indicator.setFraction(0.3);
+                    indicator.setText("Resolving " + (action.isAction() ? "action" : "workflow") + action.slug());
+                    action.resolve(project);
+                    indicator.setText("Done resolving " + (action.isAction() ? "action" : "workflow") + action.slug());
+                    indicator.setFraction(0.8);
+                    triggerSyntaxHighLightingRefresh(project, virtualFile);
+                } catch (final Exception e) {
+                    // Proceed action even on issues within the progress bar
+                    action.resolve(project);
+                    triggerSyntaxHighLightingRefresh(project, virtualFile);
+                    throw e;
+                }
             }
         }.queue());
     }

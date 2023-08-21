@@ -3,11 +3,11 @@ package com.github.yunabraska.githubworkflow.model;
 import com.github.yunabraska.githubworkflow.completion.GitHubWorkflowUtils;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.diagnostic.Logger;
-import com.intellij.openapi.fileTypes.FileTypeManager;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.project.ProjectUtil;
 import com.intellij.psi.PsiFileFactory;
 import com.intellij.psi.PsiManager;
+import org.jetbrains.yaml.YAMLFileType;
 import org.jetbrains.yaml.psi.YAMLFile;
 
 import java.io.IOException;
@@ -15,7 +15,9 @@ import java.nio.file.Files;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
+import java.util.StringJoiner;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -262,7 +264,7 @@ public class GitHubAction {
         final AtomicReference<WorkflowContext> contextRef = new AtomicReference<>();
         ApplicationManager.getApplication().runReadAction(() -> {
             try {
-                final WorkflowContext context = yamlOf(PsiFileFactory.getInstance(project).createFileFromText(key, FileTypeManager.getInstance().getFileTypeByExtension("yaml"), text.replaceAll("\r?\\n|\\r", "\n"))).context();
+                final WorkflowContext context = yamlOf(PsiFileFactory.getInstance(project).createFileFromText(key, YAMLFileType.YML, text.replaceAll("\r?\\n|\\r", "\n"))).context();
                 contextRef.set(context);
             } catch (final Exception e) {
                 final WorkflowContext defaultValue = new YamlElement(-1, -1, null, null, true).context();
@@ -278,4 +280,23 @@ public class GitHubAction {
         return context;
     }
 
+    @Override
+    public boolean equals(final Object o) {
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
+        final GitHubAction that = (GitHubAction) o;
+        return Objects.equals(uses(), that.uses());
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(uses());
+    }
+
+    @Override
+    public String toString() {
+        return new StringJoiner(", ", GitHubAction.class.getSimpleName() + "[", "]")
+                .add("uses=" + uses)
+                .toString();
+    }
 }
