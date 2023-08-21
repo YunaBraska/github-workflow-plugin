@@ -42,17 +42,7 @@ public class YamlElementHelper {
     }
 
     public static VirtualFile getVirtualFile(final PsiElement element) {
-        return ofNullable(getPsiFile(element)).map(yamlFile -> Optional.of(yamlFile.getOriginalFile()).map(PsiFile::getVirtualFile).orElseGet(yamlFile::getVirtualFile)).orElse(null);
-    }
-
-    public static YAMLFile getPsiFile(final PsiElement element) {
-        if (element == null) {
-            return null;
-        } else if (element instanceof final YAMLFile yamlFile) {
-            return yamlFile;
-        } else {
-            return getPsiFile(element.getParent());
-        }
+        return ofNullable(element.getContainingFile()).map(yamlFile -> Optional.of(yamlFile.getOriginalFile()).map(PsiFile::getVirtualFile).orElseGet(yamlFile::getVirtualFile)).orElse(null);
     }
 
     public static YamlElement yamlOf(final PsiElement element) {
@@ -61,7 +51,7 @@ public class YamlElementHelper {
         ofNullable(elementRoot)
                 .map(YamlElement::initContext)
                 .map(yamlElement -> psiRoot)
-                .map(YamlElementHelper::getPsiFile)
+                .map(PsiElement::getContainingFile)
                 .map(yamlFile -> Optional.of(yamlFile.getOriginalFile()).map(PsiFile::getVirtualFile).orElseGet(yamlFile::getVirtualFile))
                 .map(VirtualFile::getPath)
                 .ifPresent(patString -> WORKFLOW_CONTEXT_MAP.put(patString, elementRoot.context()));

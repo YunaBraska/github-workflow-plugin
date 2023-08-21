@@ -10,8 +10,6 @@ import org.jetbrains.annotations.Nullable;
 
 import javax.swing.*;
 
-import static java.util.Optional.ofNullable;
-
 public class IconRenderer extends GutterIconRenderer {
 
     private final Icon icon;
@@ -27,7 +25,7 @@ public class IconRenderer extends GutterIconRenderer {
     @Nullable
     @Override
     public AnAction getClickAction() {
-        return ofNullable(icon).map(ico -> new CustomClickAction(quickFix, psiElement)).orElse(null);
+        return icon != null && quickFix != null ? new CustomClickAction(quickFix, psiElement) : null;
     }
 
     @NotNull
@@ -38,13 +36,13 @@ public class IconRenderer extends GutterIconRenderer {
 
     @Override
     public boolean isNavigateAction() {
-        return icon != null;
+        return quickFix != null;
     }
 
     @Override
     @Nullable
     public String getTooltipText() {
-        return icon == null ? null : quickFix.getText();
+        return quickFix == null ? null : quickFix.getText();
     }
 
     @Override

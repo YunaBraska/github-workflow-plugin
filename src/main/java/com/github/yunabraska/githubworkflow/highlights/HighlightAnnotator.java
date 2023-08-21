@@ -36,6 +36,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import static com.github.yunabraska.githubworkflow.config.GitHubWorkflowConfig.*;
+import static com.github.yunabraska.githubworkflow.config.NodeIcon.ICON_TEXT_VARIABLE;
 import static com.github.yunabraska.githubworkflow.model.CompletionItem.listEnvs;
 import static com.github.yunabraska.githubworkflow.model.CompletionItem.listInputs;
 import static com.github.yunabraska.githubworkflow.model.CompletionItem.listJobOutputs;
@@ -45,6 +46,8 @@ import static com.github.yunabraska.githubworkflow.model.CompletionItem.listStep
 import static com.github.yunabraska.githubworkflow.model.CompletionItem.listSteps;
 import static com.github.yunabraska.githubworkflow.model.WorkflowContext.WORKFLOW_CONTEXT_MAP;
 import static com.github.yunabraska.githubworkflow.model.YamlElementHelper.getPath;
+import static com.github.yunabraska.githubworkflow.model.YamlElementHelper.hasText;
+import static com.intellij.lang.annotation.HighlightSeverity.INFORMATION;
 import static java.util.Optional.ofNullable;
 
 public class HighlightAnnotator implements Annotator {
@@ -55,7 +58,7 @@ public class HighlightAnnotator implements Annotator {
 
     @Override
     public void annotate(@NotNull final PsiElement psiElement, @NotNull final AnnotationHolder holder) {
-        final Project project = ofNullable(psiElement.getContainingFile()).map(PsiElement::getProject).orElse(null);
+        final Project project = psiElement.getProject();
         if (psiElement.getLanguage() instanceof YAMLLanguage) {
             ofNullable(WORKFLOW_CONTEXT_MAP.get(getPath(psiElement))).map(WorkflowContext::root).map(root -> toYamlElement(psiElement, root)).ifPresent(element -> {
                 if (FIELD_USES.equals(element.key())) {
@@ -68,7 +71,7 @@ public class HighlightAnnotator implements Annotator {
                         create(
                                 psiElement,
                                 holder,
-                                HighlightSeverity.INFORMATION,
+                                INFORMATION,
                                 ProblemHighlightType.INFORMATION,
                                 quickFixes,
                                 psiElement.getTextRange(),
@@ -96,7 +99,7 @@ public class HighlightAnnotator implements Annotator {
                     ofNullable(ACTION_CACHE.get(element.textOrChildText())).ifPresent(action -> create(
                             psiElement,
                             holder,
-                            action.isAvailable() ? HighlightSeverity.INFORMATION : HighlightSeverity.WEAK_WARNING,
+                            action.isAvailable() ? INFORMATION : HighlightSeverity.WEAK_WARNING,
                             action.isAvailable() ? ProblemHighlightType.INFORMATION : ProblemHighlightType.WEAK_WARNING,
                             List.of(action.isAvailable() ? new ReloadGhaAction(action, AllIcons.Actions.ForceRefresh) : new OpenSettingsIntentionAction(p -> action.deleteCache(), AllIcons.General.Settings)),
                             element.textRange(),
@@ -136,7 +139,7 @@ public class HighlightAnnotator implements Annotator {
                                     create(
                                             psiElement,
                                             holder,
-                                            HighlightSeverity.INFORMATION,
+                                            INFORMATION,
                                             ProblemHighlightType.INFORMATION,
                                             List.of(new ReplaceTextIntentionAction(range, jobId, true, null)),
                                             range,
@@ -181,6 +184,10 @@ public class HighlightAnnotator implements Annotator {
                             );
                         });
                     });
+                }
+                // SHOW Output Env && Output Variable declaration
+                if (psiElement instanceof LeafElement && element.parent() != null && FIELD_RUN.equals(element.parent().key()) && hasText(psiElement.getText()) && (PATTERN_GITHUB_OUTPUT.matcher(psiElement.getText()).find() || PATTERN_GITHUB_ENV.matcher(psiElement.getText()).find())) {
+                    holder.newSilentAnnotation(INFORMATION).gutterIconRenderer(new IconRenderer(null, psiElement, ICON_TEXT_VARIABLE.icon())).create();
                 }
             });
         }
