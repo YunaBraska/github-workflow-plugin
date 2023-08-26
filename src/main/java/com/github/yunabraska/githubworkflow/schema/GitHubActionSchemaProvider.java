@@ -31,7 +31,11 @@ public class GitHubActionSchemaProvider implements JsonSchemaFileProvider {
     }
 
     public Predicate<Path> validatePath() {
-        return path -> path.getNameCount() > 1
+        return GitHubActionSchemaProvider::isActionYaml;
+    }
+
+    public static boolean isActionYaml(final Path path) {
+        return path.getNameCount() > 1
                 && (path.getName(path.getNameCount() - 1).toString().equalsIgnoreCase("action.yml")
                 || path.getName(path.getNameCount() - 1).toString().equalsIgnoreCase("action.yaml"));
     }

@@ -36,6 +36,12 @@ Add your GitHub account to access private repositories:
 
 ## Learning List
 
+- [ ] Create Tests
+- [ ] Refactor - less custom elements == less memory leaks
+- [ ] Auto Complete Uses with local action files
+- [ ] Auto Complete Uses field with Tags & Branches
+- [ ] Link local files action files aka find usages 
+- [ ] implement CMD+B 
 - [x] Create a new [IntelliJ Platform Plugin Template][template] project.
 - [x] Get familiar with the [template documentation][template].
 - [x] Adjust the [pluginGroup](./gradle.properties), [plugin ID](./src/main/resources/META-INF/plugin.xml).

@@ -34,7 +34,7 @@ public class ReplaceTextIntentionAction extends QuickFix {
     @NotNull
     @Override
     public String getFamilyName() {
-        return "ReplaceText";
+        return this.getClass().getSimpleName();
     }
 
     @Override

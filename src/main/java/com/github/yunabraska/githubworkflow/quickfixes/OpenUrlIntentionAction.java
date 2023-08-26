@@ -27,7 +27,7 @@ public class OpenUrlIntentionAction extends QuickFix {
     @NotNull
     @Override
     public String getFamilyName() {
-        return "Open URL";
+        return this.getClass().getSimpleName();
     }
 
     @Override

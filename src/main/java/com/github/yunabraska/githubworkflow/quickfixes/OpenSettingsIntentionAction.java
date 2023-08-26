@@ -30,7 +30,7 @@ public class OpenSettingsIntentionAction extends QuickFix {
     @NotNull
     @Override
     public String getFamilyName() {
-        return "AddGitHubAccount";
+        return this.getClass().getSimpleName();
     }
 
     @Override

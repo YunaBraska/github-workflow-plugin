@@ -1,24 +1,26 @@
 package com.github.yunabraska.githubworkflow.quickfixes;
 
 import com.github.yunabraska.githubworkflow.model.GitHubAction;
+import com.intellij.ide.util.PsiNavigationSupport;
 import com.intellij.openapi.editor.Editor;
 import com.intellij.openapi.project.Project;
+import com.intellij.openapi.vfs.LocalFileSystem;
+import com.intellij.psi.PsiDocumentManager;
+import com.intellij.psi.PsiElement;
 import com.intellij.psi.PsiFile;
+import com.intellij.psi.PsiManager;
 import com.intellij.util.IncorrectOperationException;
 import org.jetbrains.annotations.NotNull;
 
 import javax.swing.*;
 
-import java.util.Objects;
-
-import static com.github.yunabraska.githubworkflow.listeners.ApplicationStartup.asyncInitWorkflowFile;
 import static java.util.Optional.ofNullable;
 
-public class ReloadGhaAction extends QuickFix {
+public class JumpToFile extends QuickFix {
 
     private final GitHubAction action;
 
-    public ReloadGhaAction(final GitHubAction action, final Icon icon) {
+    public JumpToFile(final GitHubAction action, final Icon icon) {
         super(icon);
         this.action = action;
     }
@@ -26,7 +28,7 @@ public class ReloadGhaAction extends QuickFix {
     @NotNull
     @Override
     public String getText() {
-        return "Reload [" + ofNullable(action.slug()).orElseGet(action::uses) + "]";
+        return "Navigate to [" + ofNullable(action.slug()).orElseGet(action::uses) + "]";
     }
 
     @NotNull
@@ -42,26 +44,19 @@ public class ReloadGhaAction extends QuickFix {
 
     @Override
     public void invoke(@NotNull final Project project, final Editor editor, final PsiFile file) throws IncorrectOperationException {
-        action.deleteCache();
-        asyncInitWorkflowFile(project, file.getVirtualFile());
+        // Get VirtualFile for target
+        ofNullable(action)
+                .map(a -> a.getLocalPath(project))
+                .map(path -> LocalFileSystem.getInstance().findFileByPath(path))
+                .map(target -> PsiManager.getInstance(project).findFile(target))
+                .ifPresent(psiFile -> {
+                    // Navigate to PsiElement
+                    PsiNavigationSupport.getInstance().createNavigatable(project, psiFile.getVirtualFile(), 0).navigate(true);
+                });
     }
 
     @Override
     public boolean startInWriteAction() {
         return false;
-    }
-
-    @Override
-    public boolean equals(final Object o) {
-        if (this == o) return true;
-        if (o == null || getClass() != o.getClass()) return false;
-        if (!super.equals(o)) return false;
-        final ReloadGhaAction that = (ReloadGhaAction) o;
-        return Objects.equals(action, that.action);
-    }
-
-    @Override
-    public int hashCode() {
-        return Objects.hash(super.hashCode(), action);
     }
 }

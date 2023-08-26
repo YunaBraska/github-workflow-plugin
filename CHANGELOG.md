@@ -4,11 +4,11 @@
 
 ## [Unreleased]
 
-## [2.2.7] - 2023-08-22
+## [2.2.7] - 2023-08-26
 
 ### Maintenance
 
-- Some improvements
+- Local action support
 
 ## [2.2.6] - 2023-08-21
 

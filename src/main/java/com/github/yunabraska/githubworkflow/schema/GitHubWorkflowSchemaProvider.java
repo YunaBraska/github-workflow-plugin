@@ -8,10 +8,12 @@ import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Optional;
 
 import static com.github.yunabraska.githubworkflow.completion.GitHubWorkflowUtils.downloadSchema;
+import static com.github.yunabraska.githubworkflow.completion.GitHubWorkflowUtils.isYamlFile;
 import static com.github.yunabraska.githubworkflow.schema.GitHubSchemaProviderFactory.GITHUB_SCHEMA_CACHE;
 
 public class GitHubWorkflowSchemaProvider implements JsonSchemaFileProvider {
@@ -22,6 +24,13 @@ public class GitHubWorkflowSchemaProvider implements JsonSchemaFileProvider {
     @Override
     public boolean isAvailable(@NotNull final VirtualFile file) {
         return Optional.of(file).map(VirtualFile::getPath).map(Paths::get).filter(GitHubWorkflowUtils::isWorkflowPath).isPresent();
+    }
+
+    public static boolean isWorkflowYaml(final Path path) {
+        return path != null && path.getNameCount() > 2
+                && isYamlFile(path)
+                && path.getName(path.getNameCount() - 2).toString().equalsIgnoreCase("workflows")
+                && path.getName(path.getNameCount() - 3).toString().equalsIgnoreCase(".github");
     }
 
     @NotNull

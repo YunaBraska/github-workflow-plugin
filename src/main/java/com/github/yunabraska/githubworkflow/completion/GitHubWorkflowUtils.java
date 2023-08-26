@@ -3,6 +3,7 @@ package com.github.yunabraska.githubworkflow.completion;
 import com.github.yunabraska.githubworkflow.config.NodeIcon;
 import com.github.yunabraska.githubworkflow.model.GitHubAction;
 import com.github.yunabraska.githubworkflow.model.YamlElement;
+import com.github.yunabraska.githubworkflow.model.YamlElementHelper;
 import com.intellij.codeInsight.completion.CompletionParameters;
 import com.intellij.codeInsight.completion.CompletionResultSet;
 import com.intellij.codeInsight.completion.PrioritizedLookupElement;
@@ -41,12 +42,15 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.Future;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.regex.Matcher;
 
 import static com.github.yunabraska.githubworkflow.completion.AutoPopupInsertHandler.addSuffix;
 import static com.github.yunabraska.githubworkflow.config.GitHubWorkflowConfig.CACHE_ONE_DAY;
 import static com.github.yunabraska.githubworkflow.config.GitHubWorkflowConfig.PATTERN_GITHUB_ENV;
 import static com.github.yunabraska.githubworkflow.config.GitHubWorkflowConfig.PATTERN_GITHUB_OUTPUT;
+import static com.github.yunabraska.githubworkflow.schema.GitHubActionSchemaProvider.isActionYaml;
+import static com.github.yunabraska.githubworkflow.schema.GitHubWorkflowSchemaProvider.isWorkflowYaml;
 import static java.util.Optional.ofNullable;
 
 public class GitHubWorkflowUtils {
@@ -195,7 +199,7 @@ public class GitHubWorkflowUtils {
             final Path path = TMP_DIR.resolve(name + "_schema.json");
             final VirtualFile newVirtualFile = new LightVirtualFile("github_workflow_plugin_" + path.getFileName().toString(), JsonFileType.INSTANCE, "");
             //FIXME: how to use the intellij idea cache?
-            VfsUtil.saveText(newVirtualFile, downloadContent(url, path, CACHE_ONE_DAY * 30, false));
+            VfsUtil.saveText(newVirtualFile, getOrDownloadContent(url, path, CACHE_ONE_DAY * 30, false));
             return newVirtualFile;
         } catch (final Exception ignored) {
             return null;
@@ -203,7 +207,7 @@ public class GitHubWorkflowUtils {
     }
 
     public static String downloadAction(final String url, final GitHubAction gitHubAction) {
-        return downloadContent(url, cachePath(gitHubAction), CACHE_ONE_DAY * 14, true);
+        return getOrDownloadContent(url, cachePath(gitHubAction), CACHE_ONE_DAY * 14, true);
     }
 
     @NotNull
@@ -258,28 +262,41 @@ public class GitHubWorkflowUtils {
     }
 
     @SuppressWarnings("BlockingMethodInNonBlockingContext")
-    private static String downloadContent(final String url, final Path path, final long expirationTime, final boolean usingGithub) {
+    private static String getOrDownloadContent(final String url, final Path path, final long expirationTime, final boolean usingGithub) {
         try {
-            if (Files.exists(path) && (expirationTime < 1 || Files.getLastModifiedTime(path).toMillis() > System.currentTimeMillis() - expirationTime)) {
-                LOG.info("Cache load [" + path + "] expires in [" + (System.currentTimeMillis() - expirationTime) + "ms]");
-                return readFileAsync(path);
-            } else {
-                if (!Files.exists(path.getParent())) {
-                    Files.createDirectories(path.getParent());
-                }
-                final String content = Optional.of(usingGithub).filter(withGH -> withGH).map(withGH -> downloadFileFromGitHub(url)).orElseGet(() -> downloadContent(url));
-                Files.write(path, content.getBytes());
-                return content;
+            final AtomicReference<String> content = new AtomicReference<>(null);
+            if (Files.exists(path) && Files.getLastModifiedTime(path).toMillis() > System.currentTimeMillis() - expirationTime) {
+                ofNullable(readFileAsync(path, expirationTime)).filter(YamlElementHelper::hasText).ifPresent(content::set);
+            }
+            if (content.get() != null || downloadContent(url, path, usingGithub, content)) {
+                return content.get();
             }
         } catch (final Exception e) {
             LOG.warn("Cache failed for [" + url + "] message [" + (e instanceof NullPointerException ? null : e.getMessage()) + "]");
-            return "";
         }
+        return "";
     }
 
+    private static boolean downloadContent(final String url, final Path path, final boolean usingGithub, final AtomicReference<String> content) throws IOException {
+        if (!Files.exists(path.getParent())) {
+            Files.createDirectories(path.getParent());
+        }
+        Optional.of(usingGithub)
+                .filter(withGH -> withGH)
+                .map(withGH -> downloadFileFromGitHub(url))
+                .or(() -> ofNullable(downloadContent(url)))
+                .filter(YamlElementHelper::hasText)
+                .ifPresent(content::set);
+        if (content.get() != null) {
+            Files.write(path, content.get().getBytes());
+            return true;
+        }
+        return false;
+    }
 
     @SuppressWarnings("BlockingMethodInNonBlockingContext")
-    public static String readFileAsync(final Path path) {
+    public static String readFileAsync(final Path path, final long expirationTime) {
+        LOG.info("Cache load [" + path + "] expires in [" + (System.currentTimeMillis() - expirationTime) + "ms]");
         try (final BufferedReader reader = Files.newBufferedReader(path, Charset.defaultCharset())) {
             final StringBuilder contentBuilder = new StringBuilder();
             String line;
@@ -287,9 +304,14 @@ public class GitHubWorkflowUtils {
                 contentBuilder.append(line).append(System.lineSeparator());
             }
             return contentBuilder.toString();
-        } catch (final IOException e) {
-            LOG.error("Failed to read file [" + path + "] message [" + e.getMessage() + "]");
-            return "";
+        } catch (final Exception e) {
+            try {
+                Files.deleteIfExists(path);
+            } catch (final Exception ignored) {
+                // ignored
+            }
+            LOG.warn("Failed to read file [" + path + "] message [" + e.getMessage() + "]");
+            return null;
         }
     }
 
@@ -332,11 +354,7 @@ public class GitHubWorkflowUtils {
     }
 
     public static boolean isWorkflowPath(final Path path) {
-        return path != null
-                && path.getNameCount() > 2
-                && isYamlFile(path)
-                && path.getName(path.getNameCount() - 2).toString().equalsIgnoreCase("workflows")
-                && path.getName(path.getNameCount() - 3).toString().equalsIgnoreCase(".github");
+        return path != null && (isActionYaml(path) || isWorkflowYaml(path));
     }
 
     public static boolean isYamlFile(final Path path) {

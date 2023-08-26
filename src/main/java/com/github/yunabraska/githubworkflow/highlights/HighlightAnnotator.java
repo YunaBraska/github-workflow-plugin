@@ -4,6 +4,7 @@ import com.github.yunabraska.githubworkflow.model.CompletionItem;
 import com.github.yunabraska.githubworkflow.model.GitHubAction;
 import com.github.yunabraska.githubworkflow.model.WorkflowContext;
 import com.github.yunabraska.githubworkflow.model.YamlElement;
+import com.github.yunabraska.githubworkflow.quickfixes.JumpToFile;
 import com.github.yunabraska.githubworkflow.quickfixes.OpenSettingsIntentionAction;
 import com.github.yunabraska.githubworkflow.quickfixes.OpenUrlIntentionAction;
 import com.github.yunabraska.githubworkflow.quickfixes.QuickFix;
@@ -36,6 +37,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import static com.github.yunabraska.githubworkflow.config.GitHubWorkflowConfig.*;
+import static com.github.yunabraska.githubworkflow.config.NodeIcon.ICON_NEEDS;
 import static com.github.yunabraska.githubworkflow.config.NodeIcon.ICON_TEXT_VARIABLE;
 import static com.github.yunabraska.githubworkflow.model.CompletionItem.listEnvs;
 import static com.github.yunabraska.githubworkflow.model.CompletionItem.listInputs;
@@ -96,15 +98,29 @@ public class HighlightAnnotator implements Annotator {
                     });
                 }
                 if (!(psiElement instanceof LeafElement) && element.findParent(FIELD_USES).isPresent()) {
-                    ofNullable(ACTION_CACHE.get(element.textOrChildText())).ifPresent(action -> create(
-                            psiElement,
-                            holder,
-                            action.isAvailable() ? INFORMATION : HighlightSeverity.WEAK_WARNING,
-                            action.isAvailable() ? ProblemHighlightType.INFORMATION : ProblemHighlightType.WEAK_WARNING,
-                            List.of(action.isAvailable() ? new ReloadGhaAction(action, AllIcons.Actions.ForceRefresh) : new OpenSettingsIntentionAction(p -> action.deleteCache(), AllIcons.General.Settings)),
-                            element.textRange(),
-                            action.isAvailable() ? "Reload [" + action.slug() + "]" : "Unresolved [" + ofNullable(action.slug()).orElseGet(action::uses) + "]"
-                    ));
+                    ofNullable(ACTION_CACHE.get(element.textOrChildText())).ifPresent(action -> {
+                        if(action.isLocal() && action.isAvailable()){
+                            create(
+                                    psiElement,
+                                    holder,
+                                    INFORMATION,
+                                    ProblemHighlightType.INFORMATION,
+                                    List.of(new JumpToFile(action, AllIcons.Gutter.ImplementedMethod)),
+                                    element.textRange(),
+                                    "Jump to file [" + ofNullable(action.slug()).orElseGet(action::uses) + "]"
+                            );
+                        } else if(!action.isLocal()) {
+                            create(
+                                    psiElement,
+                                    holder,
+                                    action.isAvailable() ? INFORMATION : HighlightSeverity.WEAK_WARNING,
+                                    action.isAvailable() ? ProblemHighlightType.INFORMATION : ProblemHighlightType.WEAK_WARNING,
+                                    action.isAvailable() ? List.of(new ReloadGhaAction(action, AllIcons.General.InlineRefresh)) : List.of(new ReloadGhaAction(action, AllIcons.General.InlineRefresh), new OpenSettingsIntentionAction(p -> action.deleteCache(), AllIcons.General.Settings)),
+                                    element.textRange(),
+                                    action.isAvailable() ? "Reload [" + ofNullable(action.slug()).orElseGet(action::uses) + "]" : "Unresolved [" + ofNullable(action.slug()).orElseGet(action::uses) + "]"
+                            );
+                        }
+                    });
                 } else if (element.parent() != null && (FIELD_RUN.equals(element.parent().key())
                         || "if".equals(element.parent().key())
                         || "name".equals(element.parent().key())
@@ -187,7 +203,7 @@ public class HighlightAnnotator implements Annotator {
                 }
                 // SHOW Output Env && Output Variable declaration
                 if (psiElement instanceof LeafElement && element.parent() != null && FIELD_RUN.equals(element.parent().key()) && hasText(psiElement.getText()) && (PATTERN_GITHUB_OUTPUT.matcher(psiElement.getText()).find() || PATTERN_GITHUB_ENV.matcher(psiElement.getText()).find())) {
-                    holder.newSilentAnnotation(INFORMATION).gutterIconRenderer(new IconRenderer(null, psiElement, ICON_TEXT_VARIABLE.icon())).create();
+                    holder.newSilentAnnotation(INFORMATION).gutterIconRenderer(new IconRenderer(null, psiElement, AllIcons.Nodes.Gvariable)).create();
                 }
             });
         }
@@ -381,7 +397,6 @@ public class HighlightAnnotator implements Annotator {
         }
     }
 
-    @SuppressWarnings({"DataFlowIssue", "ResultOfMethodCallIgnored"})
     public static void create(
             final PsiElement psiElement,
             final AnnotationHolder holder,
@@ -393,21 +408,48 @@ public class HighlightAnnotator implements Annotator {
     ) {
         final TextRange textRange = fixRange(psiElement, range);
         if (textRange != null) {
-            final AnnotationBuilder annotation = holder.newAnnotation(level, message);
-            final AnnotationBuilder silentAnnotation = holder.newSilentAnnotation(level);
-            ofNullable(textRange).ifPresent(annotation::range);
-            ofNullable(type).ifPresent(annotation::highlightType);
-            ofNullable(message).ifPresent(annotation::tooltip);
-            ofNullable(quickFixes).ifPresent(q -> q.forEach(action -> {
-                annotation.withFix(action);
-                ofNullable(action.icon()).map(icon -> new IconRenderer(action, psiElement, icon)).ifPresent(annotation::gutterIconRenderer);
-            }));
-
-            ofNullable(textRange).ifPresent(silentAnnotation::range);
-            ofNullable(quickFixes).ifPresent(q -> q.forEach(silentAnnotation::withFix));
-
-            annotation.create();
-            silentAnnotation.create();
+            final List<QuickFix> safeQuickFixes = quickFixes != null ? new ArrayList<>(quickFixes) : new ArrayList<>();
+            if (safeQuickFixes.isEmpty()) {
+                safeQuickFixes.add(null);
+            }
+            for (final QuickFix fix : safeQuickFixes) {
+                createAnnotation(
+                        psiElement,
+                        holder,
+                        level,
+                        type,
+                        fix,
+                        textRange,
+                        message
+                );
+            }
         }
+    }
+
+    @SuppressWarnings({"DataFlowIssue", "ResultOfMethodCallIgnored"})
+    private static void createAnnotation(
+            final PsiElement psiElement,
+            final AnnotationHolder holder,
+            final HighlightSeverity level,
+            final ProblemHighlightType type,
+            final QuickFix quickFix,
+            final TextRange range,
+            final String message
+    ) {
+        final AnnotationBuilder annotation = holder.newAnnotation(level, message);
+        final AnnotationBuilder silentAnnotation = holder.newSilentAnnotation(level);
+        ofNullable(range).ifPresent(annotation::range);
+        ofNullable(type).ifPresent(annotation::highlightType);
+        ofNullable(message).ifPresent(annotation::tooltip);
+        ofNullable(quickFix).ifPresent(fix -> {
+            annotation.withFix(fix);
+            ofNullable(fix.icon()).map(icon -> new IconRenderer(fix, psiElement, icon)).ifPresent(annotation::gutterIconRenderer);
+        });
+
+        ofNullable(range).ifPresent(silentAnnotation::range);
+        ofNullable(quickFix).ifPresent(silentAnnotation::withFix);
+
+        annotation.create();
+        silentAnnotation.create();
     }
 }

@@ -5,6 +5,7 @@ import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.project.ProjectUtil;
+import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.psi.PsiFileFactory;
 import com.intellij.psi.PsiManager;
 import org.jetbrains.yaml.YAMLFileType;
@@ -119,6 +120,10 @@ public class GitHubAction {
         return isAction.get();
     }
 
+    public boolean isLocal() {
+        return isLocal.get();
+    }
+
     public String uses() {
         return uses.get();
     }
@@ -175,7 +180,7 @@ public class GitHubAction {
             } else {
                 actionName.set(uses);
             }
-            downloadUrl.set(isLocal.get() ? uses + "/action.yml" : toRawUrl());
+            downloadUrl.set(isLocal.get() ? uses : toRawUrl());
         }
     }
 
@@ -206,7 +211,7 @@ public class GitHubAction {
             if (isLocal.get()) {
                 isAvailable.set(ofNullable(project)
                         .map(ProjectUtil::guessProjectDir)
-                        .map(dir -> dir.findFileByRelativePath(downloadUrl))
+                        .map(dir -> findActionYaml(downloadUrl, dir))
                         .isPresent());
                 expiration.set(System.currentTimeMillis() + CACHE_TEN_MINUTES);
                 WORKFLOW_CACHE.put(workFlowCacheId(), new WorkflowContext(null));
@@ -232,7 +237,7 @@ public class GitHubAction {
         final AtomicReference<Map<String, String>> result = new AtomicReference<>(new HashMap<>());
         ApplicationManager.getApplication().runReadAction(() -> ofNullable(project)
                 .map(ProjectUtil::guessProjectDir)
-                .map(dir -> dir.findFileByRelativePath(path))
+                .map(dir -> findActionYaml(path, dir))
                 .map(file -> PsiManager.getInstance(project).findFile(file))
                 .filter(YAMLFile.class::isInstance)
 //                    .map(PsiElement::getChildren)
@@ -242,6 +247,20 @@ public class GitHubAction {
                 .map(context -> getActionParameters(context, nodeKey, isAction.get()))
                 .ifPresent(result::set));
         return result.get();
+    }
+
+    public String getLocalPath(final Project project) {
+        return isLocal.get() ? ofNullable(project)
+                .map(ProjectUtil::guessProjectDir)
+                .map(dir -> findActionYaml(downloadUrl.get(), dir))
+                .map(VirtualFile::getPath).orElse(null) : null;
+    }
+
+    private static VirtualFile findActionYaml(final String path, final VirtualFile dir) {
+        return ofNullable(dir.findFileByRelativePath(path)).filter(p -> !p.isDirectory())
+                .or(() -> ofNullable(dir.findFileByRelativePath(path + "/action.yml")).filter(p -> !p.isDirectory()))
+                .or(() -> ofNullable(dir.findFileByRelativePath(path + "/action.yaml")).filter(p -> !p.isDirectory()))
+                .orElse(null);
     }
 
     private String workFlowCacheId() {
