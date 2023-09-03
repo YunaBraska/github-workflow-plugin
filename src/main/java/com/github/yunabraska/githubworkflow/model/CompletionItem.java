@@ -75,7 +75,7 @@ public class CompletionItem {
                 .filter(step -> position.findParentOutput().isPresent() || step.endIndexAbs() < cursorAbs)
                 .map(step -> {
                     //STEP OUTPUTS FROM USES [ACTION/WORKFLOW]
-                    final List<CompletionItem> result = ofNullable(step.uses()).map(GitHubAction::getGitHubAction).map(action -> action.outputs(project)).map(map -> completionItemsOf(map, ICON_OUTPUT)).orElseGet(ArrayList::new);
+                    final List<CompletionItem> result = ofNullable(step.uses()).map(GitHubAction::getGitHubAction).map(action -> action.outputsB(() -> project)).map(map -> completionItemsOf(map, ICON_OUTPUT)).orElseGet(ArrayList::new);
                     //STEP OUTPUTS FROM TEXT
                     position.context().runOutputs().values().stream()
                             .filter(run -> stepId != null && run.findParentStep().filter(parent -> stepId.equals(parent.id())).isPresent())
@@ -108,7 +108,7 @@ public class CompletionItem {
         //JOB USES OUTPUTS
         jobNode.flatMap(job -> job.child(FIELD_USES).map(YamlElement::textOrChildTextNoQuotes))
                 .map(GitHubAction::getGitHubAction)
-                .map(action -> action.outputs(project))
+                .map(action -> action.outputsB(() -> project))
                 .map(childList -> completionItemsOf(childList, ICON_OUTPUT))
                 .ifPresent(result::addAll);
         return result;

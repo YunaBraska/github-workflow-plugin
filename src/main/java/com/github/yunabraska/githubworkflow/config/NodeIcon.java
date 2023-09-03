@@ -20,6 +20,12 @@ public enum NodeIcon {
     ICON_ENV_JOB(AllIcons.Nodes.Parameter),
     ICON_ENV_STEP(AllIcons.Nodes.Parameter),
     ICON_TEXT_VARIABLE(AllIcons.Nodes.Gvariable),
+
+    // FIXES
+    RELOAD(AllIcons.General.InlineRefresh),
+    SETTINGS(AllIcons.General.Settings),
+    HYPERLINK(AllIcons.Ide.External_link_arrow),
+    JUMP_TO_IMPLEMENTATION(AllIcons.Gutter.ImplementedMethod),
     ;
 
     final Icon icon;

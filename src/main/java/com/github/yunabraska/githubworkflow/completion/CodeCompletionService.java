@@ -91,7 +91,7 @@ public class CodeCompletionService extends CompletionContributor {
                                     .flatMap(step -> step.child(FIELD_USES))
                                     .map(YamlElement::textOrChildTextNoQuotes)
                                     .map(GitHubAction::getGitHubAction)
-                                    .map(action -> action.inputs(project));
+                                    .map(action -> action.inputsB(() ->project));
                             withCompletion.ifPresent(map -> addLookupElements(resultSet.withPrefixMatcher(getDefaultPrefix(parameters)), map, NodeIcon.ICON_INPUT, ':'));
                         }
                     }

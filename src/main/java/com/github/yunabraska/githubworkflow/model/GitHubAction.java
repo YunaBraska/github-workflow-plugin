@@ -6,6 +6,7 @@ import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.project.ProjectUtil;
 import com.intellij.openapi.vfs.VirtualFile;
+import com.intellij.psi.PsiElement;
 import com.intellij.psi.PsiFileFactory;
 import com.intellij.psi.PsiManager;
 import org.jetbrains.yaml.YAMLFileType;
@@ -24,6 +25,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 import static com.github.yunabraska.githubworkflow.completion.GitHubWorkflowUtils.cachePath;
@@ -35,6 +37,7 @@ import static com.github.yunabraska.githubworkflow.config.GitHubWorkflowConfig.F
 import static com.github.yunabraska.githubworkflow.config.GitHubWorkflowConfig.FIELD_ON;
 import static com.github.yunabraska.githubworkflow.config.GitHubWorkflowConfig.FIELD_OUTPUTS;
 import static com.github.yunabraska.githubworkflow.config.GitHubWorkflowConfig.WORKFLOW_CACHE;
+import static com.github.yunabraska.githubworkflow.model.PsiElementProcessor.mapToProject;
 import static com.github.yunabraska.githubworkflow.model.YamlElement.CURSOR_STRING;
 import static com.github.yunabraska.githubworkflow.model.YamlElementHelper.hasText;
 import static com.github.yunabraska.githubworkflow.model.YamlElementHelper.yamlOf;
@@ -74,16 +77,24 @@ public class GitHubAction {
         }
     }
 
-    public Map<String, String> inputs(final Project project) {
+    public Map<String, String> inputsA(final Supplier<PsiElement> currentElement) {
+        return inputsB(() -> mapToProject(currentElement));
+    }
+
+    public Map<String, String> outputsA(final Supplier<PsiElement> currentElement) {
+        return outputsB(() -> mapToProject(currentElement));
+    }
+
+    public Map<String, String> inputsB(final Supplier<Project> project) {
         if (isLocal.get()) {
-            return extractLocalParameters(project, downloadUrl.get(), FIELD_INPUTS);
+            return extractLocalParameters(project == null? null : project.get(), downloadUrl.get(), FIELD_INPUTS);
         }
         return inputs;
     }
 
-    public Map<String, String> outputs(final Project project) {
+    public Map<String, String> outputsB(final Supplier<Project> project) {
         if (isLocal.get()) {
-            return extractLocalParameters(project, downloadUrl.get(), FIELD_OUTPUTS);
+            return extractLocalParameters(project == null? null : project.get(), downloadUrl.get(), FIELD_OUTPUTS);
         }
         return outputs;
     }

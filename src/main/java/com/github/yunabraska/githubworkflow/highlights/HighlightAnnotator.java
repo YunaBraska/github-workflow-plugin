@@ -1,14 +1,9 @@
 package com.github.yunabraska.githubworkflow.highlights;
 
 import com.github.yunabraska.githubworkflow.model.CompletionItem;
-import com.github.yunabraska.githubworkflow.model.GitHubAction;
 import com.github.yunabraska.githubworkflow.model.WorkflowContext;
 import com.github.yunabraska.githubworkflow.model.YamlElement;
-import com.github.yunabraska.githubworkflow.quickfixes.JumpToFile;
-import com.github.yunabraska.githubworkflow.quickfixes.OpenSettingsIntentionAction;
-import com.github.yunabraska.githubworkflow.quickfixes.OpenUrlIntentionAction;
 import com.github.yunabraska.githubworkflow.quickfixes.QuickFix;
-import com.github.yunabraska.githubworkflow.quickfixes.ReloadGhaAction;
 import com.github.yunabraska.githubworkflow.quickfixes.ReplaceTextIntentionAction;
 import com.intellij.codeInspection.ProblemHighlightType;
 import com.intellij.icons.AllIcons;
@@ -29,7 +24,6 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.function.Consumer;
@@ -37,8 +31,6 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import static com.github.yunabraska.githubworkflow.config.GitHubWorkflowConfig.*;
-import static com.github.yunabraska.githubworkflow.config.NodeIcon.ICON_NEEDS;
-import static com.github.yunabraska.githubworkflow.config.NodeIcon.ICON_TEXT_VARIABLE;
 import static com.github.yunabraska.githubworkflow.model.CompletionItem.listEnvs;
 import static com.github.yunabraska.githubworkflow.model.CompletionItem.listInputs;
 import static com.github.yunabraska.githubworkflow.model.CompletionItem.listJobOutputs;
@@ -46,6 +38,7 @@ import static com.github.yunabraska.githubworkflow.model.CompletionItem.listJobs
 import static com.github.yunabraska.githubworkflow.model.CompletionItem.listSecrets;
 import static com.github.yunabraska.githubworkflow.model.CompletionItem.listStepOutputs;
 import static com.github.yunabraska.githubworkflow.model.CompletionItem.listSteps;
+import static com.github.yunabraska.githubworkflow.model.PsiElementProcessor.processPsiElement;
 import static com.github.yunabraska.githubworkflow.model.WorkflowContext.WORKFLOW_CONTEXT_MAP;
 import static com.github.yunabraska.githubworkflow.model.YamlElementHelper.getPath;
 import static com.github.yunabraska.githubworkflow.model.YamlElementHelper.hasText;
@@ -60,152 +53,158 @@ public class HighlightAnnotator implements Annotator {
 
     @Override
     public void annotate(@NotNull final PsiElement psiElement, @NotNull final AnnotationHolder holder) {
-        final Project project = psiElement.getProject();
-        if (psiElement.getLanguage() instanceof YAMLLanguage) {
-            ofNullable(WORKFLOW_CONTEXT_MAP.get(getPath(psiElement))).map(WorkflowContext::root).map(root -> toYamlElement(psiElement, root)).ifPresent(element -> {
-                if (FIELD_USES.equals(element.key())) {
-                    ofNullable(element.childTextNoQuotes()).map(GitHubAction::getGitHubAction).filter(GitHubAction::isAvailable).ifPresent(gitHubAction -> {
-                        final String browserText = "Open in Browser [" + gitHubAction.slug() + "]";
-                        final String marketplaceText = "Open in Marketplace [" + gitHubAction.slug() + "]";
-                        final List<QuickFix> quickFixes = gitHubAction.isAction()
-                                ? Arrays.asList(new OpenUrlIntentionAction(gitHubAction.marketplaceUrl(), marketplaceText, null), new OpenUrlIntentionAction(gitHubAction.toUrl(), browserText, null))
-                                : List.of(new OpenUrlIntentionAction(gitHubAction.toUrl(), browserText, null));
-                        create(
-                                psiElement,
-                                holder,
-                                INFORMATION,
-                                ProblemHighlightType.INFORMATION,
-                                quickFixes,
-                                psiElement.getTextRange(),
-                                browserText
-                        );
-                    });
-                }
-                //VALIDATE ACTION INPUTS
-                if (!(psiElement instanceof LeafElement) && element.key() != null && ofNullable(element.parent()).map(YamlElement::key).filter(FIELD_WITH::equals).isPresent()) {
-                    element.findParentStep().map(YamlElement::uses).map(GitHubAction::getGitHubAction).map(action -> action.inputs(ofNullable(psiElement.getContainingFile()).map(PsiElement::getProject).orElse(null))).map(Map::keySet).ifPresent(inputs -> {
-                        if (!inputs.contains(element.key())) {
-                            create(
-                                    psiElement,
-                                    holder,
-                                    HighlightSeverity.ERROR,
-                                    ProblemHighlightType.GENERIC_ERROR,
-                                    List.of(new ReplaceTextIntentionAction(psiElement.getTextRange(), element.key(), true, null)),
-                                    psiElement.getTextRange(),
-                                    "Invalid [" + element.key() + "]"
-                            );
-                        }
-                    });
-                }
-                if (!(psiElement instanceof LeafElement) && element.findParent(FIELD_USES).isPresent()) {
-                    ofNullable(ACTION_CACHE.get(element.textOrChildText())).ifPresent(action -> {
-                        if(action.isLocal() && action.isAvailable()){
-                            create(
-                                    psiElement,
-                                    holder,
-                                    INFORMATION,
-                                    ProblemHighlightType.INFORMATION,
-                                    List.of(new JumpToFile(action, AllIcons.Gutter.ImplementedMethod)),
-                                    element.textRange(),
-                                    "Jump to file [" + ofNullable(action.slug()).orElseGet(action::uses) + "]"
-                            );
-                        } else if(!action.isLocal()) {
-                            create(
-                                    psiElement,
-                                    holder,
-                                    action.isAvailable() ? INFORMATION : HighlightSeverity.WEAK_WARNING,
-                                    action.isAvailable() ? ProblemHighlightType.INFORMATION : ProblemHighlightType.WEAK_WARNING,
-                                    action.isAvailable() ? List.of(new ReloadGhaAction(action, AllIcons.General.InlineRefresh)) : List.of(new ReloadGhaAction(action, AllIcons.General.InlineRefresh), new OpenSettingsIntentionAction(p -> action.deleteCache(), AllIcons.General.Settings)),
-                                    element.textRange(),
-                                    action.isAvailable() ? "Reload [" + ofNullable(action.slug()).orElseGet(action::uses) + "]" : "Unresolved [" + ofNullable(action.slug()).orElseGet(action::uses) + "]"
-                            );
-                        }
-                    });
-                } else if (element.parent() != null && (FIELD_RUN.equals(element.parent().key())
-                        || "if".equals(element.parent().key())
-                        || "name".equals(element.parent().key())
-                        || ("value".equals(element.parent().key()) && element.findParentOutput().isPresent())
-                        || (element.parent() != null && element.parent().parent() != null && FIELD_WITH.equals(element.parent().parent().key()))
-                        || (element.parent() != null && element.parent().parent() != null && FIELD_ENVS.equals(element.parent().parent().key()))
-                        || (element.parent() != null && element.parent().parent() != null && FIELD_OUTPUTS.equals(element.parent().parent().key()))
-                )) {
-                    //TODO: Find solution for undetected items with only one '.' e.g. [inputs.]
-                    //  MAYBE: regex needs to have '${{ }}', only 'if' content is different
-                    processBracketItems(project, psiElement, holder, element);
-                } else if (FIELD_NEEDS.equals(element.key())) {
-                    element.findParentJob().ifPresent(job -> {
-                        final List<String> jobs = element.context().jobs().values().stream().filter(j -> j.startIndexAbs() < job.startIndexAbs()).map(YamlElement::key).toList();
-                        element.children().forEach(jobChild -> {
-                            final String jobId = jobChild.textOrChildTextNoQuotes().trim();
-                            final TextRange range = new TextRange(jobChild.startIndexAbs(), jobChild.startIndexAbs() + jobId.length());
-                            if (!jobs.contains(jobId)) {
-                                //INVALID JOB_ID
+        if (psiElement.isValid()) {
+            processPsiElement(holder, psiElement);
+//            ofNullable(psiElement.getUserData(KEY_QUICK_FIX)).ifPresent(fix -> fix.forEach(f -> f.createAnnotation(psiElement, holder)));
+        } else {
+            final Project project = psiElement.getProject();
+            if (psiElement.getLanguage() instanceof YAMLLanguage) {
+                ofNullable(WORKFLOW_CONTEXT_MAP.get(getPath(psiElement))).map(WorkflowContext::root).map(root -> toYamlElement(psiElement, root)).ifPresent(element -> {
+//                    if (FIELD_USES.equals(element.key())) {
+//                        ofNullable(element.childTextNoQuotes()).map(GitHubAction::getGitHubAction).filter(GitHubAction::isAvailable).ifPresent(gitHubAction -> {
+//                            final String browserText = "Open in Browser [" + gitHubAction.slug() + "]";
+//                            final String marketplaceText = "Open in Marketplace [" + gitHubAction.slug() + "]";
+//                            final List<QuickFix> quickFixes = gitHubAction.isAction()
+//                                    ? Arrays.asList(new OpenUrlIntentionAction(gitHubAction.marketplaceUrl(), marketplaceText, null), new OpenUrlIntentionAction(gitHubAction.toUrl(), browserText, null))
+//                                    : List.of(new OpenUrlIntentionAction(gitHubAction.toUrl(), browserText, null));
+//                            create(
+//                                    psiElement,
+//                                    holder,
+//                                    INFORMATION,
+//                                    ProblemHighlightType.INFORMATION,
+//                                    quickFixes,
+//                                    psiElement.getTextRange(),
+//                                    browserText
+//                            );
+//                        });
+//                    }
+                    //VALIDATE ACTION INPUTS
+//                    if (!(psiElement instanceof LeafElement) && element.key() != null && ofNullable(element.parent()).map(YamlElement::key).filter(FIELD_WITH::equals).isPresent()) {
+//                        element.findParentStep().map(YamlElement::uses).map(GitHubAction::getGitHubAction).map(action -> action.inputsA(() -> psiElement)).map(Map::keySet).ifPresent(inputs -> {
+//                            if (!inputs.contains(element.key())) {
+//                                create(
+//                                        psiElement,
+//                                        holder,
+//                                        HighlightSeverity.ERROR,
+//                                        ProblemHighlightType.GENERIC_ERROR,
+//                                        List.of(new ReplaceTextIntentionAction(psiElement.getTextRange(), element.key(), true, null)),
+//                                        psiElement.getTextRange(),
+//                                        "Invalid [" + element.key() + "]"
+//                                );
+//                            }
+//                        });
+//                    }
+//                    if (!(psiElement instanceof LeafElement) && element.findParent(FIELD_USES).isPresent()) {
+//                        ofNullable(ACTION_CACHE.get(element.textOrChildText())).ifPresent(action -> {
+//                            if (action.isLocal() && action.isAvailable()) {
+//                                create(
+//                                        psiElement,
+//                                        holder,
+//                                        INFORMATION,
+//                                        ProblemHighlightType.INFORMATION,
+//                                        List.of(new JumpToFile(action, AllIcons.Gutter.ImplementedMethod)),
+//                                        element.textRange(),
+//                                        "Jump to file [" + ofNullable(action.slug()).orElseGet(action::uses) + "]"
+//                                );
+//                            } else if (!action.isLocal()) {
+//                                create(
+//                                        psiElement,
+//                                        holder,
+//                                        action.isAvailable() ? INFORMATION : HighlightSeverity.WEAK_WARNING,
+//                                        action.isAvailable() ? ProblemHighlightType.INFORMATION : ProblemHighlightType.WEAK_WARNING,
+//                                        action.isAvailable() ? List.of(new ReloadGhaAction(action, AllIcons.General.InlineRefresh)) : List.of(new ReloadGhaAction(action, AllIcons.General.InlineRefresh), new OpenSettingsIntentionAction(p -> action.deleteCache(), AllIcons.General.Settings)),
+//                                        element.textRange(),
+//                                        action.isAvailable() ? "Reload [" + ofNullable(action.slug()).orElseGet(action::uses) + "]" : "Unresolved [" + ofNullable(action.slug()).orElseGet(action::uses) + "]"
+//                                );
+//                            }
+//                        });
+//                    } else
+                    if (element.parent() != null && (FIELD_RUN.equals(element.parent().key())
+                            || "if".equals(element.parent().key())
+                            || "name".equals(element.parent().key())
+                            || ("value".equals(element.parent().key()) && element.findParentOutput().isPresent())
+                            || (element.parent() != null && element.parent().parent() != null && FIELD_WITH.equals(element.parent().parent().key()))
+                            || (element.parent() != null && element.parent().parent() != null && FIELD_ENVS.equals(element.parent().parent().key()))
+                            || (element.parent() != null && element.parent().parent() != null && FIELD_OUTPUTS.equals(element.parent().parent().key()))
+                    )) {
+                        //TODO: Find solution for undetected items with only one '.' e.g. [inputs.]
+                        //  MAYBE: regex needs to have '${{ }}', only 'if' content is different
+                        processBracketItems(project, psiElement, holder, element);
+//                    } else if (FIELD_NEEDS.equals(element.key())) {
+//                        element.findParentJob().ifPresent(job -> {
+//                            final List<String> jobs = element.context().jobs().values().stream().filter(j -> j.startIndexAbs() < job.startIndexAbs()).map(YamlElement::key).toList();
+//                            element.children().forEach(jobChild -> {
+//                                final String jobId = jobChild.textOrChildTextNoQuotes().trim();
+//                                final TextRange range = new TextRange(jobChild.startIndexAbs(), jobChild.startIndexAbs() + jobId.length());
+//                                if (!jobs.contains(jobId)) {
+//                                    //INVALID JOB_ID
+//                                    create(
+//                                            psiElement,
+//                                            holder,
+//                                            HighlightSeverity.ERROR,
+//                                            ProblemHighlightType.GENERIC_ERROR,
+//                                            jobs.stream().map(need -> new ReplaceTextIntentionAction(range, need, false, null)).map(ia -> (QuickFix) ia).toList(),
+//                                            range,
+//                                            "Invalid [" + jobId + "] - needs to be a valid jobId from previous jobs"
+//                                    );
+//                                } else {
+//                                    //UNUSED JOB_ID
+//                                    if (job.allElements().noneMatch(child -> child.text() != null && child.text().contains(FIELD_NEEDS + "." + jobId + "."))) {
+//                                        create(
+//                                                psiElement,
+//                                                holder,
+//                                                INFORMATION,
+//                                                ProblemHighlightType.INFORMATION,
+//                                                List.of(new ReplaceTextIntentionAction(range, jobId, true, null)),
+//                                                range,
+//                                                "Unused [" + jobId + "]"
+//                                        );
+//                                    }
+//                                }
+//                            });
+//                        });
+                    } else if (FIELD_OUTPUTS.equals(element.key())) {
+                        //CHECK FOR UNUSED JOB OUTPUTS
+                        element.findParentJob().map(YamlElement::key).ifPresent(jobId -> {
+                            final List<String> usedOutputs = element.context().outputs().values().stream()
+                                    .filter(output -> output.findParentOn().isPresent())
+                                    .map(output -> output.child("value").orElse(null))
+                                    .filter(Objects::nonNull)
+                                    .map(YamlElement::textOrChildText)
+                                    .flatMap(value -> {
+                                        final List<String[]> result = new ArrayList<>();
+                                        final Matcher matcher = CARET_BRACKET_ITEM_PATTERN.matcher(value);
+                                        while (matcher.find()) {
+                                            result.add(matcher.group().split("\\."));
+                                        }
+                                        return result.stream();
+                                    })
+                                    .filter(parts -> parts.length == 4)
+                                    .filter(parts -> FIELD_JOBS.equals(parts[0]))
+                                    .filter(parts -> jobId.equals(parts[1]))
+                                    .filter(parts -> FIELD_OUTPUTS.equals(parts[2]))
+                                    .map(parts -> parts[3])
+                                    .toList();
+                            element.children().stream().filter(output -> output.key() != null).filter(output -> !usedOutputs.contains(output.key())).forEach(unusedOutput -> {
+                                final TextRange range = new TextRange(unusedOutput.startIndexAbs(), unusedOutput.children().stream().mapToInt(YamlElement::endIndexAbs).max().orElseGet(unusedOutput::endIndexAbs));
                                 create(
                                         psiElement,
                                         holder,
-                                        HighlightSeverity.ERROR,
-                                        ProblemHighlightType.GENERIC_ERROR,
-                                        jobs.stream().map(need -> new ReplaceTextIntentionAction(range, need, false, null)).map(ia -> (QuickFix) ia).toList(),
+                                        HighlightSeverity.WEAK_WARNING,
+                                        ProblemHighlightType.LIKE_UNUSED_SYMBOL,
+                                        List.of(new ReplaceTextIntentionAction(range, unusedOutput.key(), true, null)),
                                         range,
-                                        "Invalid [" + jobId + "] - needs to be a valid jobId from previous jobs"
+                                        "Unused [" + unusedOutput.key() + "]"
                                 );
-                            } else {
-                                //UNUSED JOB_ID
-                                if (job.allElements().noneMatch(child -> child.text() != null && child.text().contains(FIELD_NEEDS + "." + jobId + "."))) {
-                                    create(
-                                            psiElement,
-                                            holder,
-                                            INFORMATION,
-                                            ProblemHighlightType.INFORMATION,
-                                            List.of(new ReplaceTextIntentionAction(range, jobId, true, null)),
-                                            range,
-                                            "Unused [" + jobId + "]"
-                                    );
-                                }
-                            }
+                            });
                         });
-                    });
-                } else if (FIELD_OUTPUTS.equals(element.key())) {
-                    //CHECK FOR UNUSED JOB OUTPUTS
-                    element.findParentJob().map(YamlElement::key).ifPresent(jobId -> {
-                        final List<String> usedOutputs = element.context().outputs().values().stream()
-                                .filter(output -> output.findParentOn().isPresent())
-                                .map(output -> output.child("value").orElse(null))
-                                .filter(Objects::nonNull)
-                                .map(YamlElement::textOrChildText)
-                                .flatMap(value -> {
-                                    final List<String[]> result = new ArrayList<>();
-                                    final Matcher matcher = CARET_BRACKET_ITEM_PATTERN.matcher(value);
-                                    while (matcher.find()) {
-                                        result.add(matcher.group().split("\\."));
-                                    }
-                                    return result.stream();
-                                })
-                                .filter(parts -> parts.length == 4)
-                                .filter(parts -> FIELD_JOBS.equals(parts[0]))
-                                .filter(parts -> jobId.equals(parts[1]))
-                                .filter(parts -> FIELD_OUTPUTS.equals(parts[2]))
-                                .map(parts -> parts[3])
-                                .toList();
-                        element.children().stream().filter(output -> output.key() != null).filter(output -> !usedOutputs.contains(output.key())).forEach(unusedOutput -> {
-                            final TextRange range = new TextRange(unusedOutput.startIndexAbs(), unusedOutput.children().stream().mapToInt(YamlElement::endIndexAbs).max().orElseGet(unusedOutput::endIndexAbs));
-                            create(
-                                    psiElement,
-                                    holder,
-                                    HighlightSeverity.WEAK_WARNING,
-                                    ProblemHighlightType.LIKE_UNUSED_SYMBOL,
-                                    List.of(new ReplaceTextIntentionAction(range, unusedOutput.key(), true, null)),
-                                    range,
-                                    "Unused [" + unusedOutput.key() + "]"
-                            );
-                        });
-                    });
-                }
-                // SHOW Output Env && Output Variable declaration
-                if (psiElement instanceof LeafElement && element.parent() != null && FIELD_RUN.equals(element.parent().key()) && hasText(psiElement.getText()) && (PATTERN_GITHUB_OUTPUT.matcher(psiElement.getText()).find() || PATTERN_GITHUB_ENV.matcher(psiElement.getText()).find())) {
-                    holder.newSilentAnnotation(INFORMATION).gutterIconRenderer(new IconRenderer(null, psiElement, AllIcons.Nodes.Gvariable)).create();
-                }
-            });
+                    }
+                    // SHOW Output Env && Output Variable declaration
+                    if (psiElement instanceof LeafElement && element.parent() != null && FIELD_RUN.equals(element.parent().key()) && hasText(psiElement.getText()) && (PATTERN_GITHUB_OUTPUT.matcher(psiElement.getText()).find() || PATTERN_GITHUB_ENV.matcher(psiElement.getText()).find())) {
+                        holder.newSilentAnnotation(INFORMATION).gutterIconRenderer(new IconRenderer(null, psiElement, AllIcons.Nodes.Gvariable)).create();
+                    }
+                });
+            }
         }
     }
 
