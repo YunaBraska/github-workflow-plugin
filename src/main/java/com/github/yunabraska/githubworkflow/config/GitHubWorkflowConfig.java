@@ -1,22 +1,20 @@
 package com.github.yunabraska.githubworkflow.config;
 
-import com.github.yunabraska.githubworkflow.model.GitHubAction;
-import com.github.yunabraska.githubworkflow.model.WorkflowContext;
 
 import java.util.HashMap;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Supplier;
 import java.util.regex.Pattern;
 
 @SuppressWarnings("java:S2386")
 public class GitHubWorkflowConfig {
 
-    public static final Pattern PATTERN_GITHUB_OUTPUT = Pattern.compile("echo\\s+\"(.*?)=(.*?)\"\\s*>>\\s*\"?\\$\\{?GITHUB_OUTPUT\\}?\"?");
-    public static final Pattern PATTERN_GITHUB_ENV = Pattern.compile("echo\\s+\"(.*?)=(.*?)\"\\s*>>\\s*\"?\\$\\{?GITHUB_ENV\\}?\"?");
+    public static final Pattern PATTERN_GITHUB_OUTPUT = Pattern.compile("echo\\s+\"(\\w+)=(.*?)\"\\s*>>\\s*\"?\\$\\w*:?\\{?GITHUB_OUTPUT\\}?\"?");
+    public static final Pattern PATTERN_GITHUB_ENV = Pattern.compile("echo\\s+\"(\\w+)=(.*?)\"\\s*>>\\s*\"?\\$\\w*:?\\{?GITHUB_ENV\\}?\"?");
     public static final long CACHE_ONE_DAY = 24L * 60 * 60 * 1000;
-    public static final long CACHE_TEN_MINUTES = 600000;
     public static final String FIELD_ON = "on";
+    public static final String FIELD_IF = "if";
+    public static final String FIELD_ID = "id";
     public static final String FIELD_ENVS = "env";
     public static final String FIELD_RUN = "run";
     public static final String FIELD_JOBS = "jobs";
@@ -32,8 +30,6 @@ public class GitHubWorkflowConfig {
     public static final String FIELD_OUTPUTS = "outputs";
     public static final String FIELD_SECRETS = "secrets";
     public static final Map<String, Supplier<Map<String, String>>> DEFAULT_VALUE_MAP = initProcessorMap();
-    public static final Map<String, GitHubAction> ACTION_CACHE = new ConcurrentHashMap<>();
-    public static final Map<String, WorkflowContext> WORKFLOW_CACHE = new ConcurrentHashMap<>();
 
     private static Map<String, Supplier<Map<String, String>>> initProcessorMap() {
         final Map<String, Supplier<Map<String, String>>> result = new HashMap<>();

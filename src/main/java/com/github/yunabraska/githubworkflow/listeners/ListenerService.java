@@ -11,6 +11,7 @@ public final class ListenerService implements Disposable {
     public void dispose() {
     }
 
+    @SuppressWarnings("unused")
     public static ListenerService getInstance() {
         return ApplicationManager.getApplication().getService(ListenerService.class);
     }

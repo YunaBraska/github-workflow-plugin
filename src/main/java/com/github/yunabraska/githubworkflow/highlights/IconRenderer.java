@@ -1,7 +1,6 @@
 package com.github.yunabraska.githubworkflow.highlights;
 
-import com.github.yunabraska.githubworkflow.quickfixes.CustomClickAction;
-import com.github.yunabraska.githubworkflow.quickfixes.QuickFix;
+import com.github.yunabraska.githubworkflow.config.NodeIcon;
 import com.intellij.openapi.actionSystem.AnAction;
 import com.intellij.openapi.editor.markup.GutterIconRenderer;
 import com.intellij.psi.PsiElement;
@@ -12,11 +11,11 @@ import javax.swing.*;
 
 public class IconRenderer extends GutterIconRenderer {
 
-    private final Icon icon;
-    private final QuickFix quickFix;
+    private final NodeIcon icon;
+    private final SyntaxAnnotation quickFix;
     private final PsiElement psiElement;
 
-    public IconRenderer(final QuickFix quickFix, final PsiElement psiElement, final Icon icon) {
+    public IconRenderer(final SyntaxAnnotation quickFix, final PsiElement psiElement, final NodeIcon icon) {
         this.icon = icon;
         this.quickFix = quickFix;
         this.psiElement = psiElement;
@@ -31,7 +30,7 @@ public class IconRenderer extends GutterIconRenderer {
     @NotNull
     @Override
     public Icon getIcon() {
-        return icon; // Replace this with your custom icon
+        return icon.icon();
     }
 
     @Override

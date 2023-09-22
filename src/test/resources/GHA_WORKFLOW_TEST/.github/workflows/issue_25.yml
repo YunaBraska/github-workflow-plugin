@@ -1,0 +1,20 @@
+# URL:         https://github.com/YunaBraska/github-workflow-plugin/issues/25
+# Description: `steps.version` was not recognized
+# Description: 'GitHub output `$env:GITHUB_OUTPUT` was not recognised
+on:
+  workflow_dispatch:
+
+jobs:
+  docker-push:
+    runs-on: 'ubuntu-20.04'
+    steps:
+      - name: Read version from ref
+        id: version
+        shell: pwsh
+        run: echo "version=$(./Scripts/Get-Version.ps1 -RefName $env:GITHUB_REF)" >> $env:GITHUB_OUTPUT
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v4
+        with:
+          push: true
+          tags: test:v${{ steps.version.outputs.version }}

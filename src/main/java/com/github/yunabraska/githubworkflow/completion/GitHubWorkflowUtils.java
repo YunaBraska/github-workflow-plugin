@@ -1,9 +1,7 @@
 package com.github.yunabraska.githubworkflow.completion;
 
 import com.github.yunabraska.githubworkflow.config.NodeIcon;
-import com.github.yunabraska.githubworkflow.model.GitHubAction;
-import com.github.yunabraska.githubworkflow.model.YamlElement;
-import com.github.yunabraska.githubworkflow.model.YamlElementHelper;
+import com.github.yunabraska.githubworkflow.model.PsiElementHelper;
 import com.intellij.codeInsight.completion.CompletionParameters;
 import com.intellij.codeInsight.completion.CompletionResultSet;
 import com.intellij.codeInsight.completion.PrioritizedLookupElement;
@@ -32,8 +30,6 @@ import org.jetbrains.plugins.github.util.GHCompatibilityUtil;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
-import java.nio.charset.Charset;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.HashMap;
@@ -42,11 +38,11 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.Future;
-import java.util.concurrent.atomic.AtomicReference;
 import java.util.regex.Matcher;
 
 import static com.github.yunabraska.githubworkflow.completion.AutoPopupInsertHandler.addSuffix;
-import static com.github.yunabraska.githubworkflow.config.GitHubWorkflowConfig.CACHE_ONE_DAY;
+import static com.github.yunabraska.githubworkflow.config.GitHubActionCache.getActionCache;
+import static com.github.yunabraska.githubworkflow.config.GitHubWorkflowConfig.FIELD_IF;
 import static com.github.yunabraska.githubworkflow.config.GitHubWorkflowConfig.PATTERN_GITHUB_ENV;
 import static com.github.yunabraska.githubworkflow.config.GitHubWorkflowConfig.PATTERN_GITHUB_OUTPUT;
 import static com.github.yunabraska.githubworkflow.schema.GitHubActionSchemaProvider.isActionYaml;
@@ -58,15 +54,15 @@ public class GitHubWorkflowUtils {
     public static final Path TMP_DIR = Paths.get(System.getProperty("java.io.tmpdir"), "ide_github_workflow_plugin");
     private static final Logger LOG = Logger.getInstance(GitHubWorkflowUtils.class);
 
-    public static Optional<String[]> getCaretBracketItem(final YamlElement element, final int offset, final String[] prefix) {
-        final String wholeText = element.text();
-        if (wholeText == null || offset - element.startIndexAbs() < 1) {
+    public static Optional<String[]> getCaretBracketItem(final PsiElement position, final int offset, final String[] prefix) {
+        final String wholeText = position.getText();
+        if (wholeText == null) {
             return Optional.empty();
         }
-        final int cursorRel = offset - element.startIndexAbs();
+        final int cursorRel = offset - position.getTextRange().getStartOffset();
         final String offsetText = wholeText.substring(0, cursorRel);
         final int bracketStart = offsetText.lastIndexOf("${{");
-        if (cursorRel > 2 && isInBrackets(offsetText, bracketStart) || ofNullable(element.parent()).filter(parent -> "if".equals(parent.key())).isPresent()) {
+        if (cursorRel > 2 && isInBrackets(offsetText, bracketStart) || PsiElementHelper.getKvParent(position, FIELD_IF).isPresent()) {
             return getCaretBracketItem(prefix, wholeText, cursorRel);
         }
         return Optional.empty();
@@ -136,15 +132,9 @@ public class GitHubWorkflowUtils {
         return ofNullable(text).orElse("");
     }
 
-    public static String getDescription(final YamlElement n) {
-        return "r[" + n.required() + "]"
-                + ofNullable(n.childDefault()).map(def -> " def[" + def + "]").orElse("")
-                + ofNullable(n.description()).map(desc -> " " + desc).orElse("");
-    }
-
     public static Map<String, String> toGithubOutputs(final String text) {
         final Map<String, String> variables = new HashMap<>();
-        if (text.contains("$GITHUB_OUTPUT") || text.contains("${GITHUB_OUTPUT}")) {
+        if (text.contains("GITHUB_OUTPUT")) {
             final Matcher matcher = PATTERN_GITHUB_OUTPUT.matcher(text);
             while (matcher.find()) {
                 if (matcher.groupCount() >= 2) {
@@ -157,7 +147,7 @@ public class GitHubWorkflowUtils {
 
     public static Map<String, String> toGithubEnvs(final String text) {
         final Map<String, String> variables = new HashMap<>();
-        if (text.contains("GITHUB_ENV") || text.contains("${GITHUB_ENV}")) {
+        if (text.contains("GITHUB_ENV")) {
             final Matcher matcher = PATTERN_GITHUB_ENV.matcher(text);
             while (matcher.find()) {
                 if (matcher.groupCount() >= 2) {
@@ -194,36 +184,14 @@ public class GitHubWorkflowUtils {
         return c == '\n' || c == '\r';
     }
 
-    public static VirtualFile downloadSchema(final String url, final String name) {
+    public static VirtualFile getSchema(final String url, final String name) {
         try {
-            final Path path = TMP_DIR.resolve(name + "_schema.json");
-            final VirtualFile newVirtualFile = new LightVirtualFile("github_workflow_plugin_" + path.getFileName().toString(), JsonFileType.INSTANCE, "");
-            //FIXME: how to use the intellij idea cache?
-            VfsUtil.saveText(newVirtualFile, getOrDownloadContent(url, path, CACHE_ONE_DAY * 30, false));
+            final VirtualFile newVirtualFile = new LightVirtualFile("github_workflow_plugin_" + name + "_schema.json", JsonFileType.INSTANCE, "");
+            VfsUtil.saveText(newVirtualFile, getActionCache().getSchema(url));
             return newVirtualFile;
         } catch (final Exception ignored) {
             return null;
         }
-    }
-
-    public static String downloadAction(final String url, final GitHubAction gitHubAction) {
-        return getOrDownloadContent(url, cachePath(gitHubAction), CACHE_ONE_DAY * 14, true);
-    }
-
-    @NotNull
-    public static Path cachePath(final GitHubAction gitHubAction) {
-        return TMP_DIR.resolve(
-                clearString(gitHubAction.actionName())
-                        + ofNullable(gitHubAction.slug()).map(GitHubWorkflowUtils::clearString).orElse("")
-                        + ofNullable(gitHubAction.sub()).map(GitHubWorkflowUtils::clearString).orElse("")
-                        + ofNullable(gitHubAction.ref()).map(GitHubWorkflowUtils::clearString).orElse("")
-                        + ofNullable(gitHubAction.actionName()).map(GitHubWorkflowUtils::clearString).orElse("")
-                        + "_schema.json"
-        );
-    }
-
-    private static String clearString(final String input) {
-        return input == null ? "" : "_" + input.replace("/", "_").replace("\\", "_");
     }
 
     public static String downloadFileFromGitHub(final String downloadUrl) {
@@ -240,7 +208,6 @@ public class GitHubWorkflowUtils {
     private static String downloadFromGitHub(final String downloadUrl, final GithubAccount account) throws IOException {
         final String token = GHCompatibilityUtil.getOrRequestToken(account, ProjectUtil.getActiveProject());
         return GithubApiRequestExecutor.Factory.getInstance().create(token).execute(new GithubApiRequest.Get<>(downloadUrl) {
-            @SuppressWarnings("BlockingMethodInNonBlockingContext")
             @Override
             public String extractResult(final @NotNull GithubApiResponse response) {
                 try {
@@ -261,63 +228,8 @@ public class GitHubWorkflowUtils {
         });
     }
 
-    @SuppressWarnings("BlockingMethodInNonBlockingContext")
-    private static String getOrDownloadContent(final String url, final Path path, final long expirationTime, final boolean usingGithub) {
-        try {
-            final AtomicReference<String> content = new AtomicReference<>(null);
-            if (Files.exists(path) && Files.getLastModifiedTime(path).toMillis() > System.currentTimeMillis() - expirationTime) {
-                ofNullable(readFileAsync(path, expirationTime)).filter(YamlElementHelper::hasText).ifPresent(content::set);
-            }
-            if (content.get() != null || downloadContent(url, path, usingGithub, content)) {
-                return content.get();
-            }
-        } catch (final Exception e) {
-            LOG.warn("Cache failed for [" + url + "] message [" + (e instanceof NullPointerException ? null : e.getMessage()) + "]");
-        }
-        return "";
-    }
-
-    private static boolean downloadContent(final String url, final Path path, final boolean usingGithub, final AtomicReference<String> content) throws IOException {
-        if (!Files.exists(path.getParent())) {
-            Files.createDirectories(path.getParent());
-        }
-        Optional.of(usingGithub)
-                .filter(withGH -> withGH)
-                .map(withGH -> downloadFileFromGitHub(url))
-                .or(() -> ofNullable(downloadContent(url)))
-                .filter(YamlElementHelper::hasText)
-                .ifPresent(content::set);
-        if (content.get() != null) {
-            Files.write(path, content.get().getBytes());
-            return true;
-        }
-        return false;
-    }
-
-    @SuppressWarnings("BlockingMethodInNonBlockingContext")
-    public static String readFileAsync(final Path path, final long expirationTime) {
-        LOG.info("Cache load [" + path + "] expires in [" + (System.currentTimeMillis() - expirationTime) + "ms]");
-        try (final BufferedReader reader = Files.newBufferedReader(path, Charset.defaultCharset())) {
-            final StringBuilder contentBuilder = new StringBuilder();
-            String line;
-            while ((line = reader.readLine()) != null) {
-                contentBuilder.append(line).append(System.lineSeparator());
-            }
-            return contentBuilder.toString();
-        } catch (final Exception e) {
-            try {
-                Files.deleteIfExists(path);
-            } catch (final Exception ignored) {
-                // ignored
-            }
-            LOG.warn("Failed to read file [" + path + "] message [" + e.getMessage() + "]");
-            return null;
-        }
-    }
-
-
-    @SuppressWarnings({"java:S2142", "BlockingMethodInNonBlockingContext"})
-    private static String downloadContent(final String urlString) {
+    @SuppressWarnings({"java:S2142"})
+    public static String downloadContent(final String urlString) {
         LOG.info("Download [" + urlString + "]");
         try {
             final ApplicationInfo applicationInfo = ApplicationInfo.getInstance();

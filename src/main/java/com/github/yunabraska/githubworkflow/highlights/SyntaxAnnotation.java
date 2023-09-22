@@ -9,17 +9,21 @@ import com.intellij.lang.annotation.AnnotationHolder;
 import com.intellij.lang.annotation.HighlightSeverity;
 import com.intellij.openapi.editor.Editor;
 import com.intellij.openapi.project.Project;
+import com.intellij.openapi.util.TextRange;
 import com.intellij.psi.PsiElement;
 import com.intellij.psi.PsiFile;
 import com.intellij.util.IncorrectOperationException;
 import org.jetbrains.annotations.NotNull;
 
 import javax.swing.*;
+import java.util.List;
 import java.util.Objects;
 import java.util.function.Consumer;
+import java.util.stream.Collectors;
 
 import static java.util.Optional.ofNullable;
 
+@SuppressWarnings("OptionalOfNullableMisuse")
 public class SyntaxAnnotation implements IntentionAction {
 
     private final String text;
@@ -47,27 +51,50 @@ public class SyntaxAnnotation implements IntentionAction {
         ofNullable(execute).ifPresent(projectConsumer -> projectConsumer.accept(new QuickFixExecution(this, project, editor, file)));
     }
 
-    @SuppressWarnings("ResultOfMethodCallIgnored")
     public void createAnnotation(
             final PsiElement psiElement,
             final AnnotationHolder holder
     ) {
-        if (holder != null && psiElement != null && psiElement.isValid()) {
-            final AnnotationBuilder annotation = holder.newAnnotation(level, text);
-            final AnnotationBuilder silentAnnotation = holder.newSilentAnnotation(level);
-            ofNullable(psiElement.getTextRange()).ifPresent(silentAnnotation::range);
-            ofNullable(psiElement.getTextRange()).ifPresent(annotation::range);
-            ofNullable(type).ifPresent(annotation::highlightType);
-            ofNullable(text).ifPresent(annotation::tooltip);
-            ofNullable(icon).map(i -> new IconRenderer2(this, psiElement, icon)).ifPresent(annotation::gutterIconRenderer);
-            ofNullable(execute).ifPresent(fix -> annotation.withFix(this));
-            ofNullable(execute).ifPresent(fix -> silentAnnotation.withFix(this));
+        createAnnotation(psiElement, psiElement.getTextRange(), holder);
+    }
 
-            annotation.create();
-            silentAnnotation.create();
+    public void createAnnotation(
+            final PsiElement psiElement,
+            final TextRange range,
+            final AnnotationHolder holder
+    ) {
+        createAnnotation(psiElement, range, holder, List.of(this));
+    }
+
+    @SuppressWarnings("ResultOfMethodCallIgnored")
+    public static void createAnnotation(
+            final PsiElement psiElement,
+            final TextRange range,
+            final AnnotationHolder holder,
+            final List<SyntaxAnnotation> fixes
+    ) {
+        if (fixes != null && !fixes.isEmpty() && holder != null && psiElement != null && psiElement.isValid()) {
+            fixes.stream().collect(Collectors.groupingBy(f -> f.level)).forEach((level, group) -> {
+                final SyntaxAnnotation firstItem = group.get(0);
+                final AnnotationBuilder annotation = holder.newAnnotation(level, firstItem.text);
+                final AnnotationBuilder silentAnnotation = holder.newSilentAnnotation(level);
+                ofNullable(range != null ? range : psiElement.getTextRange()).ifPresent(silentAnnotation::range);
+                ofNullable(range != null ? range : psiElement.getTextRange()).ifPresent(annotation::range);
+                ofNullable(firstItem.type).ifPresent(annotation::highlightType);
+                ofNullable(firstItem.text).ifPresent(annotation::tooltip);
+                ofNullable(firstItem.icon).map(i -> new IconRenderer(firstItem, psiElement, firstItem.icon)).ifPresent(annotation::gutterIconRenderer);
+                group.forEach(fix -> {
+                    ofNullable(fix.execute).ifPresent(exec -> annotation.withFix(fix));
+                    ofNullable(fix.execute).ifPresent(exec -> silentAnnotation.withFix(fix));
+
+                });
+                annotation.create();
+                silentAnnotation.create();
+            });
         }
     }
 
+    @SuppressWarnings("unused")
     public Icon icon() {
         return icon.icon();
     }

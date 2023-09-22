@@ -13,7 +13,7 @@ import java.nio.file.Paths;
 import java.util.Optional;
 import java.util.function.Predicate;
 
-import static com.github.yunabraska.githubworkflow.completion.GitHubWorkflowUtils.downloadSchema;
+import static com.github.yunabraska.githubworkflow.completion.GitHubWorkflowUtils.getSchema;
 import static com.github.yunabraska.githubworkflow.schema.GitHubSchemaProviderFactory.GITHUB_SCHEMA_CACHE;
 
 public class GitHubActionSchemaProvider implements JsonSchemaFileProvider {
@@ -50,7 +50,7 @@ public class GitHubActionSchemaProvider implements JsonSchemaFileProvider {
     @Nullable
     @Override
     public VirtualFile getSchemaFile() {
-        return GITHUB_SCHEMA_CACHE.computeIfAbsent(SCHEMA_URL, key -> downloadSchema(SCHEMA_URL, NAME));
+        return GITHUB_SCHEMA_CACHE.computeIfAbsent(SCHEMA_URL, key -> getSchema(SCHEMA_URL, NAME));
     }
 
     @NotNull

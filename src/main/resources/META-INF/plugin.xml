@@ -12,9 +12,6 @@
     <depends>org.jetbrains.plugins.yaml</depends>
 
     <extensions defaultExtensionNs="com.intellij">
-        <!-- Crash Reporter -->
-        <errorHandler implementation="com.github.yunabraska.githubworkflow.quickfixes.GhwPluginErrorReportSubmitter"/>
-
         <!-- Auto Completion -->
         <completion.contributor language="yaml"
                                 implementationClass="com.github.yunabraska.githubworkflow.completion.CodeCompletionService"/>
@@ -22,11 +19,18 @@
         <annotator language="yaml"
                    implementationClass="com.github.yunabraska.githubworkflow.highlights.HighlightAnnotator"/>
 
-        <!-- Register Events -->
-        <postStartupActivity implementation="com.github.yunabraska.githubworkflow.listeners.ApplicationStartup"/>
+        <!-- ProjectStartup -->
+        <postStartupActivity implementation="com.github.yunabraska.githubworkflow.listeners.ProjectStartup"/>
+
+        <!-- Cache [Workflows, Actions, Schemas] -->
+        <applicationService serviceImplementation="com.github.yunabraska.githubworkflow.config.GitHubActionCache"
+                            configurationSchemaKey="GitHubActionCache"/>
 
         <!-- Schema Icon provider -->
         <iconProvider implementation="com.github.yunabraska.githubworkflow.schema.GitHubActionIconProvider"/>
+
+        <!-- Crash Reporter -->
+        <errorHandler implementation="com.github.yunabraska.githubworkflow.quickfixes.GhwPluginErrorReportSubmitter"/>
     </extensions>
 
     <extensions defaultExtensionNs="JavaScript.JsonSchema">
