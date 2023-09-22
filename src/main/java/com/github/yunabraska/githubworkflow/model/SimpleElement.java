@@ -1,7 +1,6 @@
 package com.github.yunabraska.githubworkflow.model;
 
-import com.github.yunabraska.githubworkflow.completion.GitHubWorkflowUtils;
-import com.github.yunabraska.githubworkflow.config.NodeIcon;
+import com.github.yunabraska.githubworkflow.utils.GitHubWorkflowUtils;
 import com.intellij.codeInsight.lookup.LookupElement;
 import com.intellij.openapi.util.TextRange;
 
@@ -11,8 +10,8 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.stream.Collectors;
 
-import static com.github.yunabraska.githubworkflow.completion.GitHubWorkflowUtils.orEmpty;
-import static com.github.yunabraska.githubworkflow.model.PsiElementHelper.removeQuotes;
+import static com.github.yunabraska.githubworkflow.utils.GitHubWorkflowUtils.orEmpty;
+import static com.github.yunabraska.githubworkflow.utils.PsiElementHelper.removeQuotes;
 import static java.util.Optional.ofNullable;
 
 public record SimpleElement(String key, String text, TextRange range, NodeIcon icon) {

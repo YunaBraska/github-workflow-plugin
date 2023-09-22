@@ -1,0 +1,17 @@
+# URL:      https://github.com/YunaBraska/github-workflow-plugin/issues/24
+jobs:
+  build_number:
+    name: Generate next Build Number
+    runs-on: Ubuntu-latest
+    concurrency: generate_build_number-${{ inputs.concurrency-suffix }}
+    outputs:
+      # Issue 1: `steps.buildnumber` was not recognized
+      <weak_warning descr="null"><weak_warning descr="Unused [build_number]">build_number: ${{ steps.buildnumber.outputs.build_number }}</weak_warning></weak_warning>
+    permissions:
+      contents: write
+    steps:
+      - id: buildnumber
+        name: Generate Build Number
+        uses: onyxmueller/build-tag-number@v1
+        with:
+          token: ${{ secrets.github_token }}

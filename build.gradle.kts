@@ -121,4 +121,9 @@ tasks {
             )
         })
     }
+
+    withType<Test> {
+        systemProperty("idea.test.execution.policy", "com.github.yunabraska.githubworkflow.services.PluginExecutionPolicy")
+        systemProperty("PLUGIN_HOME_PATH", rootProject.file("src/test/resources"))
+    }
 }

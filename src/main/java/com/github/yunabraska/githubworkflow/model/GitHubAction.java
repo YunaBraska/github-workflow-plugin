@@ -1,13 +1,18 @@
 package com.github.yunabraska.githubworkflow.model;
 
+import com.github.yunabraska.githubworkflow.utils.PsiElementHelper;
+import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.project.ProjectManager;
 import com.intellij.openapi.project.ProjectUtil;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.psi.PsiElement;
+import com.intellij.psi.PsiFile;
+import com.intellij.psi.PsiFileFactory;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
+import org.jetbrains.yaml.YAMLFileType;
 import org.jetbrains.yaml.psi.YAMLKeyValue;
 
 import java.io.IOException;
@@ -20,17 +25,17 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
-import static com.github.yunabraska.githubworkflow.completion.GitHubWorkflowUtils.downloadContent;
-import static com.github.yunabraska.githubworkflow.completion.GitHubWorkflowUtils.downloadFileFromGitHub;
-import static com.github.yunabraska.githubworkflow.config.GitHubWorkflowConfig.CACHE_ONE_DAY;
-import static com.github.yunabraska.githubworkflow.config.GitHubWorkflowConfig.FIELD_INPUTS;
-import static com.github.yunabraska.githubworkflow.config.GitHubWorkflowConfig.FIELD_ON;
-import static com.github.yunabraska.githubworkflow.config.GitHubWorkflowConfig.FIELD_OUTPUTS;
-import static com.github.yunabraska.githubworkflow.model.PsiElementHelper.getChildWithKey;
-import static com.github.yunabraska.githubworkflow.model.PsiElementHelper.hasText;
-import static com.github.yunabraska.githubworkflow.model.PsiElementHelper.readPsiElement;
+import static com.github.yunabraska.githubworkflow.utils.GitHubWorkflowUtils.downloadContent;
+import static com.github.yunabraska.githubworkflow.utils.GitHubWorkflowUtils.downloadFileFromGitHub;
+import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.CACHE_ONE_DAY;
+import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.FIELD_INPUTS;
+import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.FIELD_ON;
+import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.FIELD_OUTPUTS;
+import static com.github.yunabraska.githubworkflow.utils.PsiElementHelper.getChildWithKey;
+import static com.github.yunabraska.githubworkflow.utils.PsiElementHelper.hasText;
 import static java.lang.Boolean.parseBoolean;
 import static java.util.Collections.unmodifiableMap;
 import static java.util.Optional.of;
@@ -342,6 +347,16 @@ public class GitHubAction implements Serializable {
                 .map(PsiElementHelper::getKvChildren)
                 .map(children -> children.stream().collect(Collectors.toMap(YAMLKeyValue::getKeyText, PsiElementHelper::getDescription)))
                 .orElseGet(Collections::emptyMap);
+    }
+
+    private static void readPsiElement(final Project project, final String fileName, final String fileContent, final Consumer<PsiFile> action) {
+        ApplicationManager.getApplication().runReadAction(() -> {
+            try {
+                ofNullable(action).ifPresent(consumer -> consumer.accept(PsiFileFactory.getInstance(project).createFileFromText(fileName, YAMLFileType.YML, fileContent.replaceAll("\r?\\n|\\r", "\n"))));
+            } catch (final Exception ignored) {
+                // ignored
+            }
+        });
     }
 
     @Override
