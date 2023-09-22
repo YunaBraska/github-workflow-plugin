@@ -23,7 +23,10 @@ Steps to reproduce the behavior:
 **Operating System**
 > N/A
 
-**Project Version**
+**Plugin Version**
+> N/A
+
+**IDE Name and Version**
 > N/A
 
 **Expected behavior**
