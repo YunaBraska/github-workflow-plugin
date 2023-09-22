@@ -1,0 +1,116 @@
+name: "PUBLISH"
+# Screenshots made with 960 x 575 - but should be at least 1280px
+
+on:
+  workflow_call:
+    inputs:
+      input_1:
+        type: string
+        description: "Input Description 1"
+        required: false
+      input_2:
+        type: string
+        description: " "
+        required: false
+    secrets:
+      SECRET_1:
+        required: false
+      SECRET_2:
+        required: false
+  workflow_dispatch:
+    inputs:
+      input_1:
+        type: string
+        description: "Alternative"
+      input_2:
+        type: string
+        description: "Input Description 2"
+
+env:
+  day: "monday"
+
+jobs:
+  my_job_1:
+    runs-on: ubuntu-latest
+    outputs:
+      JAVA_VERSION: "${{steps.java_info.outputs.java_version}}"
+      <weak_warning descr="null"><weak_warning descr="Unused [IS_MAVEN]">IS_MAVEN: "${{steps.java_info.outputs.is_maven}}"</weak_warning></weak_warning>
+      IS_GRADLE: "${{steps.java_info.outputs.is_gradle}}"
+    steps:
+      - name: "Checkout"
+        uses: actions/checkout@main
+        with:
+          ref: ${{ github.ref_name || github.head_ref }}
+      - name: "READ JAVA"
+        id: "java_info"
+        uses: YunaBraska/java-info-action@main
+        with:
+          <error descr="null"><error descr="Delete invalid input [INVALID]">INVALID: ${{ secrets.SECRET_1 }}</error></error>
+      - name: "Invalid step 1"
+        <weak_warning descr="null"><weak_warning descr="Unresolved [invalid\action1] - you may need to connect your GitHub">uses: invalid\action1</weak_warning></weak_warning>
+        with:
+          java-version: ${{ steps.java_info.outputs.java_version }}
+          distribution: 'adopt'
+      - name: "Invalid step 2"
+        <weak_warning descr="null"><weak_warning descr="Unresolved [invalid\action2] - you may need to connect your GitHub">uses: invalid\action2</weak_warning></weak_warning>
+        with:
+          java-version: ${{ steps.java_info.outputs.java_version }}
+          distribution: 'adopt'
+      - name: "BUILD & TEST ${{steps.java_info.outputs.builder_name}}"
+        run: ${{ steps.java_info.outputs.cmd_test_build }}
+  my_job_2:
+    needs: my_job_1
+    runs-on: ubuntu-latest
+    env:
+      job_env_1: "My Job Env 1"
+      job_env_2: "My Job Env 2"
+    steps:
+      - name: "Set Variables"
+        id: "my_variables"
+        run: |
+          echo "${{ needs.my_job_1.outputs.IS_GRADLE }}"
+          echo "custom_output_key=custom_output_value" >> $GITHUB_OUTPUT
+          echo "custom_env_key=custom_env_value" >> $GITHUB_ENV
+      - name: "Print Variables"
+        run: |-
+          echo "java version  [${{ needs.my_job_1.outputs.JAVA_VERSION }}]"
+          echo "custom_output [${{ steps.my_variables.outputs.custom_output_key }}]"
+          echo "custom_env    [${{ env.custom_env_key }}]"
+          echo "input_1       [${{ inputs.input_1 }}]"
+          echo "SECRET_1      [${{ secrets.SECRET_1 }}]"
+        env:
+          step_env_1: "My Step Env 1"
+          step_env_2: "My Step Env 2"
+  my_job_3:
+    needs: [ my_job_1, my_job_2, <error descr="null"><error descr="Remove invalid jobId [my_job_3] - this jobId doesn't match any previous job">my_job_3</error></error> ]
+    runs-on: ubuntu-latest
+    env:
+      job_env_1: "My Job Env 1"
+      job_env_2: "My Job Env 2"
+    steps:
+      - name: "SETUP JAVA"
+        id: "setup_java"
+        uses: actions/setup-java@main
+        with:
+          <error descr="null"><error descr="Delete invalid input [INVALID]">INVALID: ${{ secrets.SECRET_1 }}</error></error>
+          java-version: ${{ steps.INVALID.outputs.java_version }}
+          distribution: 'adopt'
+      - name: "Set Variables"
+        id: "my_variables"
+        run: |
+          echo "${{ needs.my_job_1.outputs.IS_GRADLE }}"
+          echo "custom_output_key=custom_output_value" >> $GITHUB_OUTPUT
+          echo "custom_env_key=custom_env_value" >> $GITHUB_ENV
+      - name: "Print Variables"
+        env:
+          step_env_1: "My Step Env 1"
+          step_env_2: "My Step Env 2"
+        run: |-
+          echo "java version  [${{ needs.<error descr="null"><error descr="Replace with [my_job_1]">INVALID_JOB</error></error>.outputs.JAVA_VERSION  }} ${{ needs.my_job_1.outputs.<error descr="null"><error descr="Replace with [JAVA_VERSION]">INVALID_VAR</error></error> }} ${{ <error descr="null"><error descr="Incomplete statement [needs.INCOMPLETE]">needs.INCOMPLETE</error></error> }}  ${{ needs.my_job_1.outputs.JAVA_VERSION<error descr="null"><error descr="Remove invalid suffix [.TOO_LONG]">.TOO_LONG</error></error> }}  ${{ needs.my_job_1.outputs.JAVA_VERSION }}]"
+          echo "input_1       [${{ inputs.<error descr="null"><error descr="Replace with [input_1]">INVALID_INPUT</error></error> }} ${{ inputs. }} ${{ inputs.input_1<error descr="null"><error descr="Remove invalid suffix [.TOO_LONG]">.TOO_LONG</error></error> }} ${{ inputs.input_1 }}]"
+          echo "custom_output [${{ steps.<error descr="null"><error descr="Replace with [setup_java]">INVALID_STEP</error></error>.outputs.custom_output_key }}, ${{ steps.my_variables.outputs.<error descr="null"><error descr="Replace with [custom_output_key]">INVALID_VAR</error></error> }} ${{ <error descr="null"><error descr="Incomplete statement [steps.my_variables.INCOMPLETE]">steps.my_variables.INCOMPLETE</error></error> }} ${{ steps.my_variables.outputs.custom_output_key<error descr="null"><error descr="Remove invalid suffix [.TOO_LONG]">.TOO_LONG</error></error> }}] ${{ steps.setup_java.outputs.cache-hit }} ${{ steps.my_variables.outputs.custom_output_key }}"
+          echo "custom_env    [${{ env.<error descr="null"><error descr="Replace with [custom_env_key]">INVALID</error></error> }} ${{ env.custom_env_key.payload }} ${{ env.custom_env_key }}]"
+          echo "custom_env    [${{ github.<error descr="null"><error descr="Replace with [action_repository]">INVALID</error></error> }} ${{ github.repository_owner.payload }} ${{ github.repository_owner }}]"
+          echo "SECRET_1      [${{ secrets.<weak_warning descr="null"><weak_warning descr="Replace [SECRET_3] with [SECRET_1] - if it is not provided at runtime">SECRET_3</weak_warning></weak_warning> }} ${{ secrets.SECRET_1 }}]"
+          echo "step_env_1    [${{ env.<error descr="null"><error descr="Replace with [custom_env_key]">step_env_3</error></error> }} ${{ env.step_env_1 }}]"
+        

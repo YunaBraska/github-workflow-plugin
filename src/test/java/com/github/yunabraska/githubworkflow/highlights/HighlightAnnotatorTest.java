@@ -1,26 +1,16 @@
 package com.github.yunabraska.githubworkflow.highlights;
 
+import com.intellij.testFramework.TestDataPath;
 import com.intellij.testFramework.fixtures.BasePlatformTestCase;
 
-import java.nio.file.Path;
-
+@TestDataPath("\\$CONTENT_ROOT/src/test/data/editor/highlighting")
 public class HighlightAnnotatorTest extends BasePlatformTestCase {
-
     @Override
-    protected void setUp() throws Exception {
-        super.setUp();
-        myFixture.copyDirectoryToProject("src/test/resources/GHA_WORKFLOW_TEST", ".");
-        myFixture.setTestDataPath(getTestDataPath());
+    protected String getBasePath() {
+        return "editor/highlighting";
     }
 
     public void testHighlighting() {
-        final String pathToTestFile = ".github/workflows/show_case.yml";
-        myFixture.configureFromTempProjectFile(pathToTestFile);
-        myFixture.checkHighlighting(true, false, true);
-    }
-
-    @Override
-    protected String getTestDataPath() {
-        return Path.of(System.getProperty("user.dir"), "src/test/resources/GHA_WORKFLOW_TEST").toString();
+        myFixture.testHighlighting(true, false, true, "show_case.yml");
     }
 }
