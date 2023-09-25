@@ -1,25 +1,59 @@
 # GitHub Workflow Plugin
 
+<!-- Plugin description -->
+*Your Ultimate Wingman for GitHub Workflows and Actions! 🚀*
+
 ![Build](https://github.com/YunaBraska/github-workflow-plugin/workflows/Build/badge.svg)
 [![Version](https://img.shields.io/jetbrains/plugin/v/21396-github-workflow.svg)](https://plugins.jetbrains.com/plugin/21396-github-workflow)
 [![Downloads](https://img.shields.io/jetbrains/plugin/d/21396-github-workflow.svg)](https://plugins.jetbrains.com/plugin/21396-github-workflow)
 [![](https://img.shields.io/static/v1?label=Sponsor&message=%E2%9D%A4&logo=GitHub&color=%23fe8e86)](https://github.com/sponsors/YunaBraska)
 
-<!-- Plugin description -->
-Autocompletion for GitHub workflows
-Enjoy lightning-fast autocompletion for
+## Why Choose GitHub Workflow Plugin?
 
-* actions
-* workflows
-* inputs
-* envs
-* secrets
-* jobs
+Say goodbye to tedious trial and error! Experience seamless GitHub workflow management like never before. Create
+pipelines at the speed of thought with this JetBrains plugin that extends support for GitHub Actions and Workflows.
+_[See Screenshots](https://plugins.jetbrains.com/plugin/21396-github-workflow)_
 
-### GitHub repository access
+## Key Features
 
-Add your GitHub account to access private repositories:
-> File | Settings | Version Control | GitHub
+* 🌈 Autocomplete & Syntax Highlighting: Write workflow YAML files with confidence. Autocomplete suggestions and clear
+  syntax highlighting will make your code look and feel pristine.
+* 🚀 Repository Access: Integrate with your private GitHub repositories for those secret projects you're working on.
+* 🗺️ Local Path Resolution: Navigate effortlessly with one-click access to local paths.
+* ✅ Validation Engine: Validates linked local actions and workflows, but hey, you can turn this off too.
+* 🛡️ Security: We respect your privacy! The plugin doesn't use or store your personal data; it only accesses remote
+  actions and workflows when necessary.
+* 🧩 Extensive Schema Support: Covers Depentabot, Actions, Workflows, Founding, Issue Config, Issue Forms, and Workflow
+  Templates for comprehensive project management.
+
+## Getting Started
+
+* **Installation**: Download the plugin
+  from [JetBrains Marketplace](https://plugins.jetbrains.com/plugin/21396-github-workflow).
+* **Configuration**: Add your GitHub account via `File > Settings > Version Control > GitHub`.
+* **Usage**: Enjoy autocomplete, syntax highlighting, and much more as you code your GitHub Workflows and Actions.
+
+## Dependencies
+
+This plugin depends on:
+
+* GitHub API integration
+* YAML parser
+
+## Unsupported Products
+
+*There is no way to increase the product support until the dependencies are compatible with these products.*
+
+* [JetBrains Client](https://www.jetbrains.com/help/idea/code-with-me-guest-ui-overview.html)
+* [Code With Me Guest](https://www.jetbrains.com/help/idea/code-with-me.html)
+* [JetBrains Gateway](https://www.jetbrains.com/de-de/remote-development/gateway/)
+
+## Maintainer
+
+Yuna Morgenstern, your GitHub Jedi.
+[GitHub Profile](https://github.com/YunaBraska/github-workflow-plugin)
+
+## Dive in and level up your GitHub game! 🌟
 
 <!-- Plugin description end -->
 
@@ -40,8 +74,8 @@ Add your GitHub account to access private repositories:
 - [ ] Refactor - less custom elements == less memory leaks
 - [ ] Auto Complete Uses with local action files
 - [ ] Auto Complete Uses field with Tags & Branches
-- [ ] Link local files action files aka find usages 
-- [ ] implement CMD+B 
+- [ ] Link local files action files aka find usages
+- [ ] implement CMD+B
 - [x] Create a new [IntelliJ Platform Plugin Template][template] project.
 - [x] Get familiar with the [template documentation][template].
 - [x] Adjust the [pluginGroup](./gradle.properties), [plugin ID](./src/main/resources/META-INF/plugin.xml).
