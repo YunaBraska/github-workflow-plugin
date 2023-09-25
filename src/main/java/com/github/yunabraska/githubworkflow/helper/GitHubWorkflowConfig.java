@@ -17,6 +17,7 @@ public class GitHubWorkflowConfig {
     public static final String FIELD_ID = "id";
     public static final String FIELD_ENVS = "env";
     public static final String FIELD_RUN = "run";
+    public static final String FIELD_RUNS = "runs";
     public static final String FIELD_JOBS = "jobs";
     public static final String FIELD_VARS = "vars";
     public static final String FIELD_WITH = "with";

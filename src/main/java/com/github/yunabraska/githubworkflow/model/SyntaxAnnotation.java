@@ -16,12 +16,12 @@ import org.jetbrains.annotations.NotNull;
 import javax.swing.*;
 import java.util.List;
 import java.util.Objects;
+import java.util.StringJoiner;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
 import static java.util.Optional.ofNullable;
 
-@SuppressWarnings("OptionalOfNullableMisuse")
 public class SyntaxAnnotation implements IntentionAction {
 
     private final String text;
@@ -29,6 +29,15 @@ public class SyntaxAnnotation implements IntentionAction {
     private final HighlightSeverity level;
     private final ProblemHighlightType type;
     private final Consumer<QuickFixExecution> execute;
+    private final boolean showToolTip;
+
+    public SyntaxAnnotation(
+            final String text,
+            final NodeIcon icon,
+            final Consumer<QuickFixExecution> execute
+    ) {
+        this(text, icon, HighlightSeverity.ERROR, ProblemHighlightType.GENERIC_ERROR, execute);
+    }
 
     public SyntaxAnnotation(
             final String text,
@@ -37,11 +46,23 @@ public class SyntaxAnnotation implements IntentionAction {
             final ProblemHighlightType type,
             final Consumer<QuickFixExecution> execute
     ) {
+        this(text, icon, level, type, execute, true);
+    }
+
+    public SyntaxAnnotation(
+            final String text,
+            final NodeIcon icon,
+            final HighlightSeverity level,
+            final ProblemHighlightType type,
+            final Consumer<QuickFixExecution> execute,
+            final boolean showToolTip
+    ) {
         this.text = text;
         this.icon = icon;
         this.level = level;
         this.type = type;
         this.execute = execute;
+        this.showToolTip = showToolTip;
     }
 
     @Override
@@ -74,20 +95,13 @@ public class SyntaxAnnotation implements IntentionAction {
         if (fixes != null && !fixes.isEmpty() && holder != null && psiElement != null && psiElement.isValid()) {
             fixes.stream().collect(Collectors.groupingBy(f -> f.level)).forEach((level, group) -> {
                 final SyntaxAnnotation firstItem = group.get(0);
-                final AnnotationBuilder annotation = holder.newAnnotation(level, firstItem.text);
-                final AnnotationBuilder silentAnnotation = holder.newSilentAnnotation(level);
-                ofNullable(range != null ? range : psiElement.getTextRange()).ifPresent(silentAnnotation::range);
+                final AnnotationBuilder annotation = holder.newAnnotation(level, firstItem.showToolTip ? firstItem.text : "");
                 ofNullable(range != null ? range : psiElement.getTextRange()).ifPresent(annotation::range);
                 ofNullable(firstItem.type).ifPresent(annotation::highlightType);
-                ofNullable(firstItem.text).ifPresent(annotation::tooltip);
+                ofNullable(firstItem.text).filter(text -> firstItem.showToolTip).ifPresent(annotation::tooltip);
                 ofNullable(firstItem.icon).map(i -> new IconRenderer(firstItem, psiElement, firstItem.icon)).ifPresent(annotation::gutterIconRenderer);
-                group.forEach(fix -> {
-                    ofNullable(fix.execute).ifPresent(exec -> annotation.withFix(fix));
-                    ofNullable(fix.execute).ifPresent(exec -> silentAnnotation.withFix(fix));
-
-                });
+                group.forEach(fix -> ofNullable(fix.execute).ifPresent(exec -> annotation.withFix(fix)));
                 annotation.create();
-                silentAnnotation.create();
             });
         }
     }
@@ -130,5 +144,17 @@ public class SyntaxAnnotation implements IntentionAction {
     @Override
     public int hashCode() {
         return Objects.hash(getText());
+    }
+
+    @Override
+    public String toString() {
+        return new StringJoiner(", ", SyntaxAnnotation.class.getSimpleName() + "[", "]")
+                .add("text='" + text + "'")
+                .add("icon=" + icon)
+                .add("level=" + level)
+                .add("type=" + type)
+                .add("execute=" + execute)
+                .add("showToolTip=" + showToolTip)
+                .toString();
     }
 }

@@ -10,9 +10,9 @@ import org.jetbrains.annotations.Nullable;
 
 import javax.swing.*;
 
-import static com.github.yunabraska.githubworkflow.model.schema.GitHubSchemaProviderFactory.SCHEMA_FILE_PROVIDERS;
+import static com.github.yunabraska.githubworkflow.services.SchemaProvider.SCHEMA_FILE_PROVIDERS;
 
-public class GitHubActionIconProvider extends IconProvider {
+public class FileIconProvider extends IconProvider {
 
     @Nullable
     @Override

@@ -1,13 +1,16 @@
 package com.github.yunabraska.githubworkflow.services;
 
-import com.github.yunabraska.githubworkflow.model.IconRenderer;
-import com.github.yunabraska.githubworkflow.model.SyntaxAnnotation;
+import com.github.yunabraska.githubworkflow.helper.PsiElementHelper;
 import com.github.yunabraska.githubworkflow.model.GitHubAction;
+import com.github.yunabraska.githubworkflow.model.IconRenderer;
 import com.github.yunabraska.githubworkflow.model.SimpleElement;
+import com.github.yunabraska.githubworkflow.model.SyntaxAnnotation;
 import com.intellij.codeInspection.ProblemHighlightType;
 import com.intellij.lang.annotation.AnnotationHolder;
 import com.intellij.lang.annotation.Annotator;
 import com.intellij.lang.annotation.HighlightSeverity;
+import com.intellij.openapi.editor.DefaultLanguageHighlighterColors;
+import com.intellij.openapi.keymap.KeymapUtil;
 import com.intellij.openapi.util.TextRange;
 import com.intellij.psi.PsiElement;
 import org.jetbrains.annotations.NotNull;
@@ -28,17 +31,16 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.*;
+import static com.github.yunabraska.githubworkflow.helper.HighlightAnnotatorHelper.*;
+import static com.github.yunabraska.githubworkflow.helper.PsiElementHelper.*;
 import static com.github.yunabraska.githubworkflow.model.NodeIcon.ICON_TEXT_VARIABLE;
-import static com.github.yunabraska.githubworkflow.utils.HighlightAnnotatorHelper.*;
 import static com.github.yunabraska.githubworkflow.model.SyntaxAnnotation.createAnnotation;
-import static com.github.yunabraska.githubworkflow.utils.PsiElementHelper.*;
 import static com.intellij.lang.annotation.HighlightSeverity.INFORMATION;
 import static java.util.Optional.ofNullable;
 
 public class HighlightAnnotator implements Annotator {
 
     public static final Pattern CARET_BRACKET_ITEM_PATTERN = Pattern.compile("[\\s|\\t^{]\\b(\\w++(?:\\.\\w++)++)[\\s|\\t$}]");
-    //    public static final Pattern CARET_BRACKET_ITEM_PATTERN = Pattern.compile("\\b(\\w++(?:\\.\\w++)++)\\b");
 
     @Override
     public void annotate(@NotNull final PsiElement psiElement, @NotNull final AnnotationHolder holder) {
@@ -60,6 +62,19 @@ public class HighlightAnnotator implements Annotator {
                 }
             }
         });
+
+        // action.yaml
+//        ofNullable(psiElement)
+//                .filter(LeafPsiElement.class::isInstance)
+//                .map(LeafPsiElement.class::cast)
+//                .map(PsiElement::getParent)
+//                .filter(YAMLKeyValue.class::isInstance)
+//                .map(YAMLKeyValue.class::cast)
+//                .filter(with -> FIELD_WITH.equals(with.getKeyText()))
+//                .filter(with -> psiElement.getText().equals(FIELD_WITH))
+//                .ifPresent(with -> withHandler(holder, psiElement));
+
+        // GENERAL
         variableHandler(holder, psiElement);
     }
 
@@ -76,6 +91,7 @@ public class HighlightAnnotator implements Annotator {
         ));
     }
 
+
     @SuppressWarnings("DataFlowIssue")
     private static void usesHandler(final AnnotationHolder holder, final YAMLKeyValue element) {
         final List<SyntaxAnnotation> result = new ArrayList<>();
@@ -84,15 +100,24 @@ public class HighlightAnnotator implements Annotator {
                 .ifPresentOrElse(action -> {
                     if (action.isResolved() && !action.isLocal()) {
                         result.add(newReloadAction(action));
-                        result.add(newOpenInBrowserFix("Open in Browser [" + action.name() + "]", action.githubUrl()));
                     }
                     if (action.isResolved() && action.isLocal()) {
+                        final String tooltip = String.format("Open declaration (%s)", Arrays.stream(KeymapUtil.getActiveKeymapShortcuts("GotoDeclaration").getShortcuts())
+                                .limit(2)
+                                .map(KeymapUtil::getShortcutText)
+                                .collect(Collectors.joining(", "))
+                        );
+                        holder.newAnnotation(HighlightSeverity.INFORMATION, tooltip)
+                                .range(getTextElement(element).orElse(null))
+                                .textAttributes(DefaultLanguageHighlighterColors.HIGHLIGHTED_REFERENCE)
+                                .tooltip(tooltip)
+                                .create();
                         result.add(newJumpToFile(action));
                     }
                     if (!action.isResolved()) {
                         result.add(newSuppressAction(action));
                         if (!action.isSuppressed()) {
-                            result.add(newUnresolvedAction(element));
+                            result.add(action.isLocal() ? deleteInvalidAction(element) : newUnresolvedAction(element));
                         }
                     }
                 }, () -> result.add(newUnresolvedAction(element))); //FIXME: is this a valid state?
@@ -111,8 +136,6 @@ public class HighlightAnnotator implements Annotator {
                     addAnnotation(holder, neededJob, new SyntaxAnnotation(
                             "Remove invalid jobId [" + jobId + "] - this jobId doesn't match any previous job",
                             null,
-                            HighlightSeverity.ERROR,
-                            ProblemHighlightType.GENERIC_ERROR,
                             deleteElementAction(neededJob.getTextRange())
                     ));
                 }
@@ -122,22 +145,19 @@ public class HighlightAnnotator implements Annotator {
 
     }
 
-    private static void withHandler(final AnnotationHolder holder, final YAMLKeyValue element) {
+    private static void withHandler(final AnnotationHolder holder, final PsiElement element) {
         getParentStepOrJob(element)
-                .flatMap(step -> getChildWithKey(step, FIELD_USES))
+                .flatMap(step -> PsiElementHelper.getChild(step, FIELD_USES))
                 .map(GitHubActionCache::getAction)
                 .filter(GitHubAction::isResolved)
                 .map(GitHubAction::freshInputs)
                 .map(Map::keySet)
-                .ifPresent(inputs -> getKvChildren(element).forEach(kvInput -> {
+                .ifPresent(inputs -> PsiElementHelper.getChildren(element).forEach(kvInput -> {
                     if (!inputs.contains(kvInput.getKeyText())) {
-                        final TextRange textRange = kvInput.getTextRange();
                         addAnnotation(holder, kvInput, new SyntaxAnnotation(
                                 "Delete invalid input [" + kvInput.getKeyText() + "]",
                                 null,
-                                HighlightSeverity.ERROR,
-                                ProblemHighlightType.GENERIC_ERROR,
-                                deleteElementAction(textRange)
+                                deleteElementAction(kvInput.getTextRange())
                         ));
                     }
                 }));
@@ -146,11 +166,11 @@ public class HighlightAnnotator implements Annotator {
 
     private static void outputsHandler(final AnnotationHolder holder, final PsiElement psiElement) {
         getParentJob(psiElement).ifPresent(job -> {
-            final List<YAMLKeyValue> outputs = getKvChildren(psiElement).stream().toList();
-            final String workflowText = getChildWithKey(psiElement.getContainingFile(), FIELD_JOBS).map(PsiElement::getText).orElse("");
-            final List<String> workflowOutputs = getChildWithKey(psiElement.getContainingFile(), FIELD_ON)
+            final List<YAMLKeyValue> outputs = PsiElementHelper.getChildren(psiElement).stream().toList();
+            final String workflowText = PsiElementHelper.getChild(psiElement.getContainingFile(), FIELD_JOBS).map(PsiElement::getText).orElse("");
+            final List<String> workflowOutputs = PsiElementHelper.getChild(psiElement.getContainingFile(), FIELD_ON)
                     .map(on -> getAllElements(on, FIELD_OUTPUTS))
-                    .map(list -> list.stream().flatMap(keyValue -> getKvChildren(keyValue).stream().map(output -> getText(output, "value").orElse(""))).toList())
+                    .map(list -> list.stream().flatMap(keyValue -> PsiElementHelper.getChildren(keyValue).stream().map(output -> getText(output, "value").orElse(""))).toList())
                     .orElseGet(Collections::emptyList);
             outputs.stream().filter(output -> {
                 final String outputKey = output.getKeyText();
@@ -162,7 +182,8 @@ public class HighlightAnnotator implements Annotator {
                     null,
                     HighlightSeverity.WEAK_WARNING,
                     ProblemHighlightType.LIKE_UNUSED_SYMBOL,
-                    deleteElementAction(output.getTextRange())
+                    deleteElementAction(output.getTextRange()),
+                    true
             ).createAnnotation(output, output.getTextRange(), holder));
 
         });
@@ -198,7 +219,8 @@ public class HighlightAnnotator implements Annotator {
                                             null,
                                             HighlightSeverity.WEAK_WARNING,
                                             ProblemHighlightType.WEAK_WARNING,
-                                            replaceAction(textRange, secret)
+                                            replaceAction(textRange, secret),
+                                            true
                                     )).toList());
                                 }
                             });

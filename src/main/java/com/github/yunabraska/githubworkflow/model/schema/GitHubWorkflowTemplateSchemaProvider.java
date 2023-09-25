@@ -1,6 +1,6 @@
 package com.github.yunabraska.githubworkflow.model.schema;
 
-import com.github.yunabraska.githubworkflow.utils.GitHubWorkflowUtils;
+import com.github.yunabraska.githubworkflow.helper.GitHubWorkflowHelper;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.jetbrains.jsonSchema.extension.JsonSchemaFileProvider;
 import com.jetbrains.jsonSchema.extension.SchemaType;
@@ -13,9 +13,9 @@ import java.nio.file.Paths;
 import java.util.Optional;
 import java.util.function.Predicate;
 
-import static com.github.yunabraska.githubworkflow.utils.GitHubWorkflowUtils.getSchema;
-import static com.github.yunabraska.githubworkflow.utils.GitHubWorkflowUtils.isYamlFile;
-import static com.github.yunabraska.githubworkflow.model.schema.GitHubSchemaProviderFactory.GITHUB_SCHEMA_CACHE;
+import static com.github.yunabraska.githubworkflow.services.SchemaProvider.GITHUB_SCHEMA_CACHE;
+import static com.github.yunabraska.githubworkflow.services.SchemaProvider.getSchema;
+import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowHelper.isYamlFile;
 
 public class GitHubWorkflowTemplateSchemaProvider implements JsonSchemaFileProvider {
 
@@ -27,7 +27,7 @@ public class GitHubWorkflowTemplateSchemaProvider implements JsonSchemaFileProvi
         return Optional.of(file)
                 .map(VirtualFile::getPath)
                 .map(Paths::get)
-                .filter(GitHubWorkflowUtils::isYamlFile)
+                .filter(GitHubWorkflowHelper::isYamlFile)
                 .filter(validatePath()).isPresent();
     }
 

@@ -6,7 +6,7 @@ jobs:
     concurrency: generate_build_number-${{ inputs.concurrency-suffix }}
     outputs:
       # Issue 1: `steps.buildnumber` was not recognized
-      <weak_warning descr="null"><weak_warning descr="Unused [build_number]">build_number: ${{ steps.buildnumber.outputs.build_number }}</weak_warning></weak_warning>
+      <weak_warning descr="Unused [build_number]">build_number: ${{ steps.buildnumber.outputs.build_number }}</weak_warning>
     permissions:
       contents: write
     steps:

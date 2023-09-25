@@ -1,6 +1,6 @@
 package com.github.yunabraska.githubworkflow.model;
 
-import com.github.yunabraska.githubworkflow.utils.GitHubWorkflowUtils;
+import com.github.yunabraska.githubworkflow.helper.GitHubWorkflowHelper;
 import com.intellij.codeInsight.lookup.LookupElement;
 import com.intellij.openapi.util.TextRange;
 
@@ -10,8 +10,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.stream.Collectors;
 
-import static com.github.yunabraska.githubworkflow.utils.GitHubWorkflowUtils.orEmpty;
-import static com.github.yunabraska.githubworkflow.utils.PsiElementHelper.removeQuotes;
+import static com.github.yunabraska.githubworkflow.helper.PsiElementHelper.removeQuotes;
 import static java.util.Optional.ofNullable;
 
 public record SimpleElement(String key, String text, TextRange range, NodeIcon icon) {
@@ -42,7 +41,7 @@ public record SimpleElement(String key, String text, TextRange range, NodeIcon i
     }
 
     public LookupElement toLookupElement() {
-        return GitHubWorkflowUtils.toLookupElement(icon, Character.MIN_VALUE, key, text);
+        return GitHubWorkflowHelper.toLookupElement(icon, Character.MIN_VALUE, key, text);
     }
 
     public static List<SimpleElement> completionItemsOf(final Map<String, String> map, final NodeIcon icon) {
@@ -55,4 +54,9 @@ public record SimpleElement(String key, String text, TextRange range, NodeIcon i
     public static SimpleElement completionItemOf(final String key, final String text, final NodeIcon icon) {
         return key == null ? null : new SimpleElement(key, orEmpty(text), icon);
     }
+
+    private static String orEmpty(final String text) {
+        return ofNullable(text).orElse("");
+    }
+
 }

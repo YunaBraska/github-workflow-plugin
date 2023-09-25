@@ -5,7 +5,7 @@ import com.intellij.openapi.actionSystem.AnActionEvent;
 import com.intellij.psi.PsiElement;
 import org.jetbrains.annotations.NotNull;
 
-import static com.github.yunabraska.githubworkflow.utils.PsiElementHelper.getProject;
+import static com.github.yunabraska.githubworkflow.helper.PsiElementHelper.getProject;
 
 
 public class CustomClickAction extends AnAction {

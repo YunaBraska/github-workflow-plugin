@@ -1,4 +1,4 @@
-package com.github.yunabraska.githubworkflow.utils;
+package com.github.yunabraska.githubworkflow.helper;
 
 import com.github.yunabraska.githubworkflow.model.GitHubAction;
 import com.github.yunabraska.githubworkflow.model.SimpleElement;
@@ -24,6 +24,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.function.Function;
 import java.util.function.Predicate;
+import java.util.regex.Matcher;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -44,14 +45,14 @@ import static java.util.Optional.ofNullable;
 public class PsiElementHelper {
 
     private PsiElementHelper() {
-        // static class
+        // static helper class
     }
 
     public static List<SimpleElement> listJobOutputs(final YAMLKeyValue job) {
         //JOB OUTPUTS
         final List<SimpleElement> jobOutputs = ofNullable(job)
-                .flatMap(j -> getChildWithKey(j, FIELD_OUTPUTS)
-                        .map(PsiElementHelper::getKvChildren)
+                .flatMap(j -> getChild(j, FIELD_OUTPUTS)
+                        .map(PsiElementHelper::getChildren)
                         .map(children -> children.stream().map(child -> getText(child).map(value -> completionItemOf(child.getKeyText(), value, ICON_OUTPUT)).orElse(null)).filter(Objects::nonNull).toList())
                 ).orElseGet(Collections::emptyList);
 
@@ -61,7 +62,7 @@ public class PsiElementHelper {
 
     public static List<SimpleElement> listStepOutputs(final YAMLSequenceItem step) {
         //STEP RUN OUTPUTS
-        final List<SimpleElement> stepOutputs = ofNullable(step).flatMap(s -> getChildWithKey(s, FIELD_RUN)
+        final List<SimpleElement> stepOutputs = ofNullable(step).flatMap(s -> getChild(s, FIELD_RUN)
                 .map(PsiElementHelper::parseOutputVariables)
                 .map(outputs -> outputs.stream().map(output -> completionItemOf(output.key(), output.text(), ICON_TEXT_VARIABLE)).toList())
         ).orElseGet(Collections::emptyList);
@@ -85,7 +86,7 @@ public class PsiElementHelper {
     public static List<String> listJobNeeds(final PsiElement psiElement) {
         return ofNullable(psiElement)
                 .flatMap(PsiElementHelper::getParentJob)
-                .flatMap(job -> getChildWithKey(job, FIELD_NEEDS))
+                .flatMap(job -> getChild(job, FIELD_NEEDS))
                 .map(needs -> getTextElements(needs)
                         .stream().map(PsiElement::getText)
                         .map(PsiElementHelper::removeQuotes)
@@ -95,13 +96,20 @@ public class PsiElementHelper {
     }
 
     public static List<YAMLSequenceItem> listSteps(final PsiElement psiElement) {
-        //StepList position == step?    list previous steps in current job
-        //StepList position == outputs? list all      steps in current job
+        // StepList position == step?    list previous steps in current job
+        // StepList position == outputs? list all      steps in current job
         return getParentJob(psiElement).map(job -> {
             final YAMLSequenceItem currentStep = getParentStep(psiElement).orElse(null);
             final boolean isOutput = getParent(psiElement, FIELD_OUTPUTS).isPresent();
             return getChildSteps(job).stream().takeWhile(step -> isOutput || step != currentStep).toList();
-        }).orElseGet(Collections::emptyList);
+        }).orElseGet(() -> getParent(psiElement, FIELD_OUTPUTS)
+                //Action.yaml [runs.steps]
+                .map(outputs -> psiElement.getContainingFile())
+                .flatMap(psiFile -> PsiElementHelper.getChild(psiFile, FIELD_RUNS))
+                .flatMap(runs -> PsiElementHelper.getChild(runs, FIELD_STEPS))
+                .map(PsiElementHelper::getChildSteps)
+                .orElseGet(Collections::emptyList)
+        );
     }
 
     public static Optional<YAMLKeyValue> getParentJob(final PsiElement psiElement) {
@@ -109,7 +117,7 @@ public class PsiElementHelper {
     }
 
     public static List<SimpleElement> listEnvs(final PsiElement psiElement) {
-        //CURRENT STEP TEXT ENVS [jobs.job_id.steps.step_id.run:key=value]
+        // CURRENT STEP TEXT ENVS [jobs.job_id.steps.step_id.run:key=value]
         final TextRange currentRange = psiElement.getTextRange();
         final List<SimpleElement> result = new ArrayList<>(completionItemsOf(
                 getAllElements(psiElement.getContainingFile(), FIELD_RUN).stream()
@@ -121,26 +129,26 @@ public class PsiElementHelper {
                 , ICON_TEXT_VARIABLE
         ));
 
-        //CURRENT STEP ENVS [step.env.env_key:env_value]
+        // CURRENT STEP ENVS [step.env.env_key:env_value]
         getParentStep(psiElement)
-                .flatMap(step -> getChildWithKey(step, FIELD_ENVS))
-                .map(PsiElementHelper::getKvChildren)
+                .flatMap(step -> getChild(step, FIELD_ENVS))
+                .map(PsiElementHelper::getChildren)
                 .map(toMapWithKeyAndText())
                 .map(map -> completionItemsOf(map, ICON_ENV_STEP))
                 .ifPresent(result::addAll);
 
-        //CURRENT JOB ENVS [jobs.job_id.envs.env_id:env_value]
+        // CURRENT JOB ENVS [jobs.job_id.envs.env_id:env_value]
         getParentJob(psiElement)
-                .flatMap(job -> getChildWithKey(job, FIELD_ENVS))
-                .map(PsiElementHelper::getKvChildren)
+                .flatMap(job -> getChild(job, FIELD_ENVS))
+                .map(PsiElementHelper::getChildren)
                 .map(toMapWithKeyAndText())
                 .map(map -> completionItemsOf(map, ICON_ENV_JOB))
                 .ifPresent(result::addAll);
 
 
-        //WORKFLOW ENVS
-        getChildWithKey(psiElement.getContainingFile(), FIELD_ENVS)
-                .map(PsiElementHelper::getKvChildren)
+        // WORKFLOW ENVS
+        getChild(psiElement.getContainingFile(), FIELD_ENVS)
+                .map(PsiElementHelper::getChildren)
                 .map(toMapWithKeyAndText())
                 .map(map -> completionItemsOf(map, ICON_ENV_ROOT))
                 .ifPresent(result::addAll);
@@ -153,9 +161,9 @@ public class PsiElementHelper {
 
     public static List<SimpleElement> listSecrets(final PsiElement psiElement) {
         //WORKFLOW SECRETS
-        return getChildWithKey(psiElement.getContainingFile(), FIELD_ON)
+        return getChild(psiElement.getContainingFile(), FIELD_ON)
                 .map(on -> getAllElements(on, FIELD_SECRETS))
-                .map(secrets -> secrets.stream().flatMap(secret -> getKvChildren(secret).stream()).collect(Collectors.toMap(YAMLKeyValue::getKeyText, keyValue -> getText(keyValue, "description").orElse(""), (existing, replacement) -> existing)))
+                .map(secrets -> secrets.stream().flatMap(secret -> getChildren(secret).stream()).collect(Collectors.toMap(YAMLKeyValue::getKeyText, keyValue -> getText(keyValue, "description").orElse(""), (existing, replacement) -> existing)))
                 .map(map -> completionItemsOf(map, ICON_SECRET_WORKFLOW))
                 .orElseGet(ArrayList::new);
     }
@@ -164,7 +172,7 @@ public class PsiElementHelper {
     public static List<SimpleElement> listInputs(final PsiElement psiElement) {
         final Map<String, String> result = new HashMap<>();
         getAllElements(psiElement.getContainingFile(), FIELD_INPUTS).stream()
-                .map(PsiElementHelper::getKvChildren)
+                .map(PsiElementHelper::getChildren)
                 .flatMap(Collection::stream)
                 .forEach(input -> {
                     final String description = getText(psiElement, "description").orElse("");
@@ -177,11 +185,11 @@ public class PsiElementHelper {
     }
 
     public static List<SimpleElement> parseEnvVariables(final PsiElement psiElement) {
-        return psiElement == null ? Collections.emptyList() : parseVariables(psiElement, GitHubWorkflowUtils::toGithubEnvs);
+        return psiElement == null ? Collections.emptyList() : parseVariables(psiElement, PsiElementHelper::toGithubEnvs);
     }
 
     public static List<SimpleElement> parseOutputVariables(final PsiElement psiElement) {
-        return psiElement == null ? Collections.emptyList() : parseVariables(psiElement, GitHubWorkflowUtils::toGithubOutputs);
+        return psiElement == null ? Collections.emptyList() : parseVariables(psiElement, PsiElementHelper::toGithubOutputs);
     }
 
     public static <T> Optional<T> getChild(final PsiElement psiElement, final Class<T> clazz) {
@@ -203,13 +211,13 @@ public class PsiElementHelper {
             return;
         }
         if (element instanceof final YAMLKeyValue keyValue && FIELD_JOBS.equals(keyValue.getKeyText())) {
-            result.addAll(getKvChildren(keyValue));
+            result.addAll(getChildren(keyValue));
         } else {
             Arrays.stream(element.getChildren()).forEach(child -> getAllJobs(result, child));
         }
     }
 
-    public static List<YAMLKeyValue> getKvChildren(final PsiElement psiElement) {
+    public static List<YAMLKeyValue> getChildren(final PsiElement psiElement) {
         return getChildren(psiElement, YAMLKeyValue.class);
     }
 
@@ -218,7 +226,7 @@ public class PsiElementHelper {
     }
 
     public static Optional<String> getText(final PsiElement psiElement, final String key) {
-        return getChildWithKey(psiElement, key).flatMap(PsiElementHelper::getText);
+        return getChild(psiElement, key).flatMap(PsiElementHelper::getText);
     }
 
 
@@ -235,7 +243,7 @@ public class PsiElementHelper {
 
     public static void getTextElements(final List<PsiElement> result, final PsiElement psiElement) {
         ofNullable(psiElement).ifPresent(element -> {
-            if (element instanceof YAMLPlainTextImpl || element instanceof YAMLQuotedText) {
+            if (isTextElement(element)) {
                 if (hasText(element.getText())) {
                     result.add(element);
                 }
@@ -243,6 +251,10 @@ public class PsiElementHelper {
                 Arrays.stream(element.getChildren()).forEach(child -> getTextElements(result, child));
             }
         });
+    }
+
+    public static boolean isTextElement(final PsiElement element) {
+        return element instanceof YAMLPlainTextImpl || element instanceof YAMLQuotedText;
     }
 
     public static List<YAMLKeyValue> getAllElements(final PsiElement psiElement, final String keyName) {
@@ -269,7 +281,7 @@ public class PsiElementHelper {
         return getElementUnderParent(psiElement, FIELD_STEPS, YAMLSequenceItem.class);
     }
 
-    //TOTO: getChildWithKey(psiElement, FIELD_STEPS)???
+    //TOTO: getChild(psiElement, FIELD_STEPS)???
     public static List<YAMLSequenceItem> getChildSteps(final PsiElement psiElement) {
         return ofNullable(psiElement)
                 .map(element -> element instanceof final YAMLKeyValue keyValue && FIELD_STEPS.equals(keyValue.getKeyText()) ? List.of(keyValue) : getAllElements(element, FIELD_STEPS))
@@ -289,9 +301,9 @@ public class PsiElementHelper {
                 .orElseGet(Collections::emptyList);
     }
 
-    public static Optional<YAMLKeyValue> getChildWithKey(final PsiElement psiElement, final String childKey) {
+    public static Optional<YAMLKeyValue> getChild(final PsiElement psiElement, final String childKey) {
         return psiElement == null || childKey == null ? Optional.empty() : Optional.of(psiElement)
-                .map(PsiElementHelper::getKvChildren)
+                .map(PsiElementHelper::getChildren)
                 .flatMap(children -> children.stream()
                         .filter(Objects::nonNull)
                         .filter(child -> childKey.equals(child.getKeyText()))
@@ -343,6 +355,32 @@ public class PsiElementHelper {
         return (str != null && !str.isEmpty() && containsText(str));
     }
 
+    private static Map<String, String> toGithubOutputs(final String text) {
+        final Map<String, String> variables = new HashMap<>();
+        if (text.contains("GITHUB_OUTPUT")) {
+            final Matcher matcher = PATTERN_GITHUB_OUTPUT.matcher(text);
+            while (matcher.find()) {
+                if (matcher.groupCount() >= 2) {
+                    variables.put(matcher.group(1), matcher.group(2));
+                }
+            }
+        }
+        return variables;
+    }
+
+    private static Map<String, String> toGithubEnvs(final String text) {
+        final Map<String, String> variables = new HashMap<>();
+        if (text.contains("GITHUB_ENV")) {
+            final Matcher matcher = PATTERN_GITHUB_ENV.matcher(text);
+            while (matcher.find()) {
+                if (matcher.groupCount() >= 2) {
+                    variables.put(matcher.group(1), matcher.group(2));
+                }
+            }
+        }
+        return variables;
+    }
+
     private static String removeBrackets(final String text, final char... chars) {
         if (text != null && text.length() > 1) {
             for (final char c : chars) {
@@ -356,7 +394,7 @@ public class PsiElementHelper {
 
     private static List<SimpleElement> getUsesOutputs(final PsiElement psiElement) {
         return ofNullable(psiElement)
-                .flatMap(element -> getChildWithKey(element, FIELD_USES))
+                .flatMap(element -> getChild(element, FIELD_USES))
                 .map(GitHubActionCache::getAction)
                 .map(GitHubAction::freshOutputs)
                 .map(map -> completionItemsOf(map, ICON_OUTPUT))

@@ -2,9 +2,9 @@ package com.github.yunabraska.githubworkflow.services;
 
 import com.github.yunabraska.githubworkflow.helper.ListenerService;
 import com.github.yunabraska.githubworkflow.helper.PsiElementChangeListener;
-import com.github.yunabraska.githubworkflow.utils.GitHubWorkflowUtils;
+import com.github.yunabraska.githubworkflow.helper.GitHubWorkflowHelper;
 import com.github.yunabraska.githubworkflow.model.GitHubAction;
-import com.github.yunabraska.githubworkflow.utils.PsiElementHelper;
+import com.github.yunabraska.githubworkflow.helper.PsiElementHelper;
 import com.intellij.openapi.Disposable;
 import com.intellij.openapi.actionSystem.ex.ActionManagerEx;
 import com.intellij.openapi.application.ApplicationManager;
@@ -69,7 +69,7 @@ public class ProjectStartup implements ProjectActivity {
 
 
     private static void asyncInitAllActions(final Project project, final VirtualFile virtualFile) {
-        if (virtualFile != null && (GitHubWorkflowUtils.isWorkflowPath(toPath(virtualFile.getPath())))) {
+        if (virtualFile != null && (GitHubWorkflowHelper.isWorkflowPath(toPath(virtualFile.getPath())))) {
             final List<GitHubAction> actions = new ArrayList<>();
 
             // READ CONTEXT

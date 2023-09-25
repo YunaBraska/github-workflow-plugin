@@ -14,10 +14,13 @@
     <extensions defaultExtensionNs="com.intellij">
         <!-- Auto Completion -->
         <completion.contributor language="yaml"
-                                implementationClass="com.github.yunabraska.githubworkflow.services.CodeCompletionService"/>
+                                implementationClass="com.github.yunabraska.githubworkflow.services.CodeCompletion"/>
         <!-- Syntax Highlighting -->
         <annotator language="yaml"
                    implementationClass="com.github.yunabraska.githubworkflow.services.HighlightAnnotator"/>
+
+        <!-- Jump to position-->
+        <psi.referenceContributor language="yaml" implementation="com.github.yunabraska.githubworkflow.services.ActionReferenceContributor"/>
 
         <!-- ProjectStartup -->
         <postStartupActivity implementation="com.github.yunabraska.githubworkflow.services.ProjectStartup"/>
@@ -27,14 +30,14 @@
                             configurationSchemaKey="GitHubActionCache"/>
 
         <!-- Schema Icon provider -->
-        <iconProvider implementation="com.github.yunabraska.githubworkflow.services.GitHubActionIconProvider"/>
+        <iconProvider implementation="com.github.yunabraska.githubworkflow.services.FileIconProvider"/>
 
         <!-- Crash Reporter -->
-        <errorHandler implementation="com.github.yunabraska.githubworkflow.services.GhwPluginErrorReportSubmitter"/>
+        <errorHandler implementation="com.github.yunabraska.githubworkflow.services.PluginErrorReportSubmitter"/>
     </extensions>
 
     <extensions defaultExtensionNs="JavaScript.JsonSchema">
         <!-- Schema Registry -->
-        <ProviderFactory implementation="com.github.yunabraska.githubworkflow.model.schema.GitHubSchemaProviderFactory"/>
+        <ProviderFactory implementation="com.github.yunabraska.githubworkflow.services.SchemaProvider"/>
     </extensions>
 </idea-plugin>

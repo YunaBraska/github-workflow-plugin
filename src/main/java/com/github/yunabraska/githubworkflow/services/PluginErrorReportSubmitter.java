@@ -21,7 +21,7 @@ import java.util.Optional;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static java.util.Optional.ofNullable;
 
-final class GhwPluginErrorReportSubmitter extends ErrorReportSubmitter {
+final class PluginErrorReportSubmitter extends ErrorReportSubmitter {
 
     @NonNls
     private static final String REPORT_URL = "https://github.com/YunaBraska/github-workflow-plugin/issues/new?labels=bug&template=---bug-report.md";

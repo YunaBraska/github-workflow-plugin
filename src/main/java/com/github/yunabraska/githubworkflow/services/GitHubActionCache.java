@@ -1,8 +1,8 @@
 package com.github.yunabraska.githubworkflow.services;
 
-import com.github.yunabraska.githubworkflow.utils.GitHubWorkflowUtils;
+import com.github.yunabraska.githubworkflow.helper.GitHubWorkflowHelper;
+import com.github.yunabraska.githubworkflow.helper.PsiElementHelper;
 import com.github.yunabraska.githubworkflow.model.GitHubAction;
-import com.github.yunabraska.githubworkflow.utils.PsiElementHelper;
 import com.intellij.codeInsight.daemon.DaemonCodeAnalyzer;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.components.PersistentStateComponent;
@@ -23,7 +23,6 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.yaml.psi.YAMLKeyValue;
 
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Collection;
@@ -33,12 +32,12 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Stream;
 
-import static com.github.yunabraska.githubworkflow.utils.GitHubWorkflowUtils.downloadContent;
+import static com.github.yunabraska.githubworkflow.helper.FileDownloader.downloadContent;
 import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.CACHE_ONE_DAY;
 import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.FIELD_USES;
+import static com.github.yunabraska.githubworkflow.helper.PsiElementHelper.getProject;
 import static com.github.yunabraska.githubworkflow.model.GitHubAction.createGithubAction;
 import static com.github.yunabraska.githubworkflow.model.GitHubAction.findActionYaml;
-import static com.github.yunabraska.githubworkflow.utils.PsiElementHelper.getProject;
 import static java.util.Optional.ofNullable;
 
 @SuppressWarnings("UnusedReturnValue")
@@ -107,15 +106,15 @@ public class GitHubActionCache implements PersistentStateComponent<GitHubActionC
         return usesValue;
     }
 
-
-    // !!! Performs Network and File Operations !!!
     public GitHubAction reloadAsync(final Project project, final String usesValue) {
         return project == null ? null : ofNullable(usesValue)
                 .map(this::remove)
                 .map(uses -> get(project, uses))
                 .map(action -> {
-                    action.resolve();
-                    triggerSyntaxHighlightingForActiveFiles();
+                    ApplicationManager.getApplication().executeOnPooledThread(() -> {
+                        action.resolve();
+                        triggerSyntaxHighlightingForActiveFiles();
+                    });
                     return action;
                 })
                 .orElse(null);
@@ -153,7 +152,7 @@ public class GitHubActionCache implements PersistentStateComponent<GitHubActionC
     public static void triggerSyntaxHighlightingForActiveFiles() {
         ApplicationManager.getApplication().invokeLater(() ->
                 Stream.of(ProjectManager.getInstance().getOpenProjects()).forEach(project -> Stream.of(FileEditorManager.getInstance(project).getSelectedFiles()).filter(VirtualFile::isValid)
-                        .filter(virtualFile -> Optional.of(virtualFile.getPath()).map(Paths::get).map(GitHubWorkflowUtils::isWorkflowPath).orElse(false))
+                        .filter(virtualFile -> Optional.of(virtualFile.getPath()).map(Paths::get).map(GitHubWorkflowHelper::isWorkflowPath).orElse(false))
                         .forEach(virtualFile -> ofNullable(PsiManager.getInstance(project).findFile(virtualFile))
                                 .filter(PsiFile::isValid)
                                 .ifPresent(psiFile -> DaemonCodeAnalyzer.getInstance(project).restart(psiFile)))
@@ -189,14 +188,20 @@ public class GitHubActionCache implements PersistentStateComponent<GitHubActionC
         return usesValue;
     }
 
+    public static Optional<YAMLKeyValue> isUseElement(final PsiElement psiElement) {
+        return ofNullable(psiElement)
+                .filter(PsiElement::isValid)
+                .filter(YAMLKeyValue.class::isInstance)
+                .map(YAMLKeyValue.class::cast)
+                .filter(keyValue -> FIELD_USES.equals(keyValue.getKeyText()));
+    }
+
     private String getAbsolutePath(final boolean isLocal, final String subPath, final Project project) {
         return !isLocal ? subPath : ofNullable(project)
                 .map(ProjectUtil::guessProjectDir)
                 .map(projectDir -> findActionYaml(subPath, projectDir))
                 .map(VirtualFile::getPath)
                 .map(Paths::get)
-                .filter(Files::exists)
-                .filter(Files::isRegularFile)
                 .map(Path::toString)
                 .orElse(subPath);
     }
@@ -208,16 +213,11 @@ public class GitHubActionCache implements PersistentStateComponent<GitHubActionC
     }
 
     private static Optional<String> getUsesValue(final PsiElement psiElement) {
-        return ofNullable(psiElement)
-                .filter(PsiElement::isValid)
-                .filter(YAMLKeyValue.class::isInstance)
-                .map(YAMLKeyValue.class::cast)
-                .filter(keyValue -> FIELD_USES.equals(keyValue.getKeyText()))
-                .flatMap(PsiElementHelper::getText);
+        return isUseElement(psiElement).flatMap(PsiElementHelper::getText);
     }
 
     private static Optional<String> getChildWithUsesValue(final PsiElement psiElement) {
-        return ofNullable(psiElement).filter(PsiElement::isValid).flatMap(element -> PsiElementHelper.getChildWithKey(element, FIELD_USES)).flatMap(PsiElementHelper::getText);
+        return ofNullable(psiElement).filter(PsiElement::isValid).flatMap(element -> PsiElementHelper.getChild(element, FIELD_USES)).flatMap(PsiElementHelper::getText);
     }
 
     private static boolean isUnresolvedAndOlderThen30Min(final Map.Entry<String, GitHubAction> entry, final long currentTime) {

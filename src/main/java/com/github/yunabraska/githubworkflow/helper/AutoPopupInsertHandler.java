@@ -7,8 +7,6 @@ import com.intellij.codeInsight.lookup.LookupElement;
 import com.intellij.openapi.editor.Document;
 import org.jetbrains.annotations.NotNull;
 
-import static com.github.yunabraska.githubworkflow.utils.GitHubWorkflowUtils.isLineBreak;
-
 public class AutoPopupInsertHandler<T extends LookupElement> implements InsertHandler<T> {
     public static final AutoPopupInsertHandler<LookupElement> INSTANCE = new AutoPopupInsertHandler<>();
 
@@ -50,6 +48,11 @@ public class AutoPopupInsertHandler<T extends LookupElement> implements InsertHa
             }
         }
         return result;
+    }
+
+    @SuppressWarnings("BooleanMethodIsAlwaysInverted")
+    private static boolean isLineBreak(final char c) {
+        return c == '\n' || c == '\r';
     }
 
     @NotNull

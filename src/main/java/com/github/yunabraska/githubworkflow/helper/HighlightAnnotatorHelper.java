@@ -1,9 +1,9 @@
-package com.github.yunabraska.githubworkflow.utils;
+package com.github.yunabraska.githubworkflow.helper;
 
-import com.github.yunabraska.githubworkflow.model.SyntaxAnnotation;
-import com.github.yunabraska.githubworkflow.services.GitHubActionCache;
 import com.github.yunabraska.githubworkflow.model.GitHubAction;
 import com.github.yunabraska.githubworkflow.model.QuickFixExecution;
+import com.github.yunabraska.githubworkflow.model.SyntaxAnnotation;
+import com.github.yunabraska.githubworkflow.services.GitHubActionCache;
 import com.intellij.codeInspection.ProblemHighlightType;
 import com.intellij.ide.BrowserUtil;
 import com.intellij.ide.util.PsiNavigationSupport;
@@ -14,6 +14,7 @@ import com.intellij.openapi.application.ModalityState;
 import com.intellij.openapi.command.WriteCommandAction;
 import com.intellij.openapi.editor.Document;
 import com.intellij.openapi.options.ShowSettingsUtil;
+import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.TextRange;
 import com.intellij.openapi.vfs.LocalFileSystem;
 import com.intellij.psi.PsiDocumentManager;
@@ -25,19 +26,18 @@ import org.jetbrains.yaml.psi.YAMLKeyValue;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
-import java.util.Optional;
 import java.util.function.Consumer;
 import java.util.regex.Matcher;
 
-import static com.github.yunabraska.githubworkflow.services.GitHubActionCache.triggerSyntaxHighlightingForActiveFiles;
 import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.FIELD_OUTPUTS;
 import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.FIELD_USES;
+import static com.github.yunabraska.githubworkflow.helper.PsiElementHelper.removeQuotes;
 import static com.github.yunabraska.githubworkflow.model.NodeIcon.JUMP_TO_IMPLEMENTATION;
 import static com.github.yunabraska.githubworkflow.model.NodeIcon.RELOAD;
 import static com.github.yunabraska.githubworkflow.model.NodeIcon.SETTINGS;
 import static com.github.yunabraska.githubworkflow.model.NodeIcon.SUPPRESS_OFF;
 import static com.github.yunabraska.githubworkflow.model.SyntaxAnnotation.createAnnotation;
-import static com.github.yunabraska.githubworkflow.utils.PsiElementHelper.removeQuotes;
+import static com.github.yunabraska.githubworkflow.services.GitHubActionCache.triggerSyntaxHighlightingForActiveFiles;
 import static java.util.Optional.ofNullable;
 
 public class HighlightAnnotatorHelper {
@@ -71,8 +71,6 @@ public class HighlightAnnotatorHelper {
             new SyntaxAnnotation(
                     "Incomplete statement [" + unfinishedStatement + "]",
                     null,
-                    HighlightSeverity.ERROR,
-                    ProblemHighlightType.GENERIC_ERROR,
                     null
             ).createAnnotation(psiElement, textRange, holder);
         } else if (max != -1 && parts.length > max) {
@@ -84,8 +82,6 @@ public class HighlightAnnotatorHelper {
             new SyntaxAnnotation(
                     "Remove invalid suffix [" + longPart + "]",
                     null,
-                    HighlightSeverity.ERROR,
-                    ProblemHighlightType.GENERIC_ERROR,
                     deleteElementAction(textRange)
             ).createAnnotation(psiElement, textRange, holder);
         } else {
@@ -94,13 +90,13 @@ public class HighlightAnnotatorHelper {
     }
 
     public static boolean isDefinedItem0(@NotNull final PsiElement psiElement, @NotNull final AnnotationHolder holder, final Matcher matcher, final String itemId, final Collection<String> items) {
-        if (!items.contains(itemId)) {
+        if (isEmpty(items, itemId, psiElement, holder, matcher, false)) {
+            return false;
+        } else if (!items.contains(itemId)) {
             final TextRange textRange = simpleTextRange(psiElement, matcher, itemId);
             createAnnotation(psiElement, textRange, holder, items.stream().map(item -> new SyntaxAnnotation(
                     "Replace with [" + item + "]",
                     null,
-                    HighlightSeverity.ERROR,
-                    ProblemHighlightType.GENERIC_ERROR,
                     replaceAction(textRange, item)
             )).toList());
             return false;
@@ -114,8 +110,6 @@ public class HighlightAnnotatorHelper {
             new SyntaxAnnotation(
                     "Remove invalid [" + itemId + "]",
                     null,
-                    HighlightSeverity.ERROR,
-                    ProblemHighlightType.GENERIC_ERROR,
                     deleteElementAction(textRange)
             ).createAnnotation(psiElement, textRange, holder);
             return false;
@@ -124,22 +118,11 @@ public class HighlightAnnotatorHelper {
     }
 
     public static void isValidItem3(@NotNull final PsiElement psiElement, @NotNull final AnnotationHolder holder, final Matcher matcher, final String itemId, final List<String> outputs) {
-        if (itemId != null && outputs.isEmpty()) {
-            final TextRange textRange = simpleTextRange(psiElement, matcher, itemId, true);
-            createAnnotation(psiElement, textRange, holder, List.of(new SyntaxAnnotation(
-                    "Delete invalid [" + itemId + "]",
-                    null,
-                    HighlightSeverity.ERROR,
-                    ProblemHighlightType.GENERIC_ERROR,
-                    deleteElementAction(textRange)
-            )));
-        } else if (itemId != null && !outputs.contains(itemId)) {
+        if (!isEmpty(outputs, itemId, psiElement, holder, matcher, true) && itemId != null && !outputs.contains(itemId)) {
             final TextRange textRange = simpleTextRange(psiElement, matcher, itemId, true);
             createAnnotation(psiElement, textRange, holder, outputs.stream().map(item -> new SyntaxAnnotation(
                     "Replace with [" + item + "]",
                     null,
-                    HighlightSeverity.ERROR,
-                    ProblemHighlightType.GENERIC_ERROR,
                     replaceAction(textRange, item)
             )).toList());
         }
@@ -170,6 +153,17 @@ public class HighlightAnnotatorHelper {
         );
     }
 
+    public static SyntaxAnnotation deleteInvalidAction(final YAMLKeyValue element) {
+        final TextRange textRange = ofNullable(element.getValue()).map(PsiElement::getTextRange).orElseGet(element::getTextRange);
+        return new SyntaxAnnotation(
+                "Remove invalid [" + element.getValueText() + "]",
+                null,
+                HighlightSeverity.WEAK_WARNING,
+                ProblemHighlightType.WEAK_WARNING,
+                deleteElementAction(textRange)
+        );
+    }
+
     @NotNull
     public static SyntaxAnnotation newSuppressAction(final GitHubAction action) {
         final boolean suppressed = action.isSuppressed();
@@ -193,26 +187,18 @@ public class HighlightAnnotatorHelper {
                 JUMP_TO_IMPLEMENTATION,
                 HighlightSeverity.INFORMATION,
                 ProblemHighlightType.INFORMATION,
-                f -> Optional.of(action)
-                        .flatMap(a -> a.getLocalPath(f.project()))
-                        .map(path -> LocalFileSystem.getInstance().findFileByPath(path))
-                        .map(target -> PsiManager.getInstance(f.project()).findFile(target))
-                        .ifPresent(psiFile -> {
-                            // Navigate to PsiElement
-                            PsiNavigationSupport.getInstance().createNavigatable(f.project(), psiFile.getVirtualFile(), 0).navigate(true);
-                        })
+                f -> jumpToFile(action, f.project()),
+                false
         );
     }
 
-    @NotNull
-    public static SyntaxAnnotation newOpenInBrowserFix(final String text, final String url) {
-        return new SyntaxAnnotation(
-                text,
-                null,
-                HighlightSeverity.INFORMATION,
-                ProblemHighlightType.INFORMATION,
-                quickFixExecution -> BrowserUtil.browse(url)
-        );
+    public static void jumpToFile(final GitHubAction action, final Project project) {
+        ofNullable(project)
+                .map(p -> action)
+                .flatMap(a -> a.getLocalPath(project))
+                .map(path -> LocalFileSystem.getInstance().findFileByPath(path))
+                .map(target -> PsiManager.getInstance(project).findFile(target))
+                .ifPresent(psiFile -> PsiNavigationSupport.getInstance().createNavigatable(project, psiFile.getVirtualFile(), 0).navigate(true));
     }
 
 
@@ -238,13 +224,26 @@ public class HighlightAnnotatorHelper {
         return simpleTextRange(psiElement, matcher, itemId, false);
     }
 
-    public static TextRange simpleTextRange(@NotNull final PsiElement psiElement, final Matcher matcher, final String itemId, final boolean lastIndex) {
+    public static <T> T getFirstChild(final List<T> children) {
+        return children != null && !children.isEmpty() ? children.get(0) : null;
+    }
+
+    private static TextRange simpleTextRange(@NotNull final PsiElement psiElement, final Matcher matcher, final String itemId, final boolean lastIndex) {
         final int start = psiElement.getTextRange().getStartOffset() + (lastIndex ? psiElement.getText().lastIndexOf(itemId, matcher.end(0)) : psiElement.getText().indexOf(itemId, matcher.start(0)));
         return new TextRange(start, start + itemId.length());
     }
 
-    public static <T> T getFirstChild(final List<T> children) {
-        return children != null && !children.isEmpty() ? children.get(0) : null;
+    private static boolean isEmpty(final Collection<String> items, final String itemId, @NotNull final PsiElement psiElement, @NotNull final AnnotationHolder holder, final Matcher matcher, final boolean lastIndex) {
+        if (itemId != null && items.isEmpty()) {
+            final TextRange textRange = simpleTextRange(psiElement, matcher, itemId, lastIndex);
+            createAnnotation(psiElement, textRange, holder, List.of(new SyntaxAnnotation(
+                    "Delete invalid [" + itemId + "]",
+                    null,
+                    deleteElementAction(textRange)
+            )));
+            return true;
+        }
+        return false;
     }
 
     private static void resolveAction(final YAMLKeyValue element) {
