@@ -1,19 +1,22 @@
 package com.github.yunabraska.githubworkflow.services;
 
+import com.github.yunabraska.githubworkflow.helper.GitHubWorkflowHelper;
 import com.github.yunabraska.githubworkflow.helper.ListenerService;
 import com.github.yunabraska.githubworkflow.helper.PsiElementChangeListener;
-import com.github.yunabraska.githubworkflow.helper.GitHubWorkflowHelper;
-import com.github.yunabraska.githubworkflow.model.GitHubAction;
 import com.github.yunabraska.githubworkflow.helper.PsiElementHelper;
+import com.github.yunabraska.githubworkflow.model.GitHubAction;
 import com.intellij.openapi.Disposable;
 import com.intellij.openapi.actionSystem.ex.ActionManagerEx;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.fileEditor.FileEditorManager;
+import com.intellij.openapi.fileEditor.FileEditorManagerListener;
+import com.intellij.openapi.project.DumbService;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.startup.ProjectActivity;
 import com.intellij.openapi.util.Disposer;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.psi.PsiManager;
+import com.intellij.util.messages.MessageBusConnection;
 import kotlin.Unit;
 import kotlin.coroutines.Continuation;
 import org.jetbrains.annotations.NotNull;
@@ -26,8 +29,8 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
-import static com.github.yunabraska.githubworkflow.services.GitHubActionCache.getActionCache;
 import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.FIELD_USES;
+import static com.github.yunabraska.githubworkflow.services.GitHubActionCache.getActionCache;
 import static com.intellij.openapi.util.io.NioFiles.toPath;
 
 
@@ -45,8 +48,17 @@ public class ProjectStartup implements ProjectActivity {
         // AFTER STARTUP
         final FileEditorManager fileEditorManager = FileEditorManager.getInstance(project);
         for (final VirtualFile openedFile : fileEditorManager.getOpenFiles()) {
-            asyncInitAllActions(project, openedFile);
+            asyncInitAllActionsAfterInit(project, openedFile);
         }
+
+        final MessageBusConnection connection = project.getMessageBus().connect();
+        connection.subscribe(FileEditorManagerListener.FILE_EDITOR_MANAGER, new FileEditorManagerListener() {
+            @Override
+            public void fileOpened(@NotNull final FileEditorManager source, @NotNull final VirtualFile file) {
+                asyncInitAllActionsAfterInit(project, file);
+            }
+        });
+
 
         // CLEANUP ACTION CACHE SCHEDULER
         final ScheduledExecutorService executorService = Executors.newSingleThreadScheduledExecutor();
@@ -68,15 +80,22 @@ public class ProjectStartup implements ProjectActivity {
     }
 
 
+    public static void asyncInitAllActionsAfterInit(final Project project, final VirtualFile virtualFile) {
+        if (!DumbService.isDumb(project)) {
+            asyncInitAllActions(project, virtualFile);
+        } else {
+            DumbService.getInstance(project).runWhenSmart(() -> asyncInitAllActions(project, virtualFile));
+        }
+    }
+
     private static void asyncInitAllActions(final Project project, final VirtualFile virtualFile) {
         if (virtualFile != null && (GitHubWorkflowHelper.isWorkflowPath(toPath(virtualFile.getPath())))) {
             final List<GitHubAction> actions = new ArrayList<>();
-
             // READ CONTEXT
             ApplicationManager.getApplication().runReadAction(() -> Optional.of(PsiManager.getInstance(project))
                     .map(psiManager -> psiManager.findFile(virtualFile))
                     .map(psiFile -> PsiElementHelper.getAllElements(psiFile, FIELD_USES))
-                    .ifPresent(usesList -> usesList.stream().map(GitHubActionCache::getAction).filter(action -> !action.isLocal()).filter(action -> !action.isResolved()).forEach(actions::add))
+                    .ifPresent(usesList -> usesList.stream().map(GitHubActionCache::getAction).filter(action -> !action.isSuppressed()).filter(action -> !action.isResolved()).forEach(actions::add))
             );
 
             // ASYNC HTTP CONTEXT

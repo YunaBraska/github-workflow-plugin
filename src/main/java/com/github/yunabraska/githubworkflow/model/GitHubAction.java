@@ -117,7 +117,7 @@ public class GitHubAction implements Serializable {
     // !!! Performs Network and File Operations !!!
     //TODO: get Tags for autocompletion
     public synchronized GitHubAction resolve() {
-        if (!isResolved() && !isLocal()) {
+        if (!isResolved() && !isSuppressed()) {
             extractParameters();
         }
         return this;
