@@ -12,25 +12,32 @@
     <depends>org.jetbrains.plugins.yaml</depends>
 
     <extensions defaultExtensionNs="com.intellij">
-        <!-- Crash Reporter -->
-        <errorHandler implementation="com.github.yunabraska.githubworkflow.quickfixes.GhwPluginErrorReportSubmitter"/>
-
         <!-- Auto Completion -->
         <completion.contributor language="yaml"
-                                implementationClass="com.github.yunabraska.githubworkflow.completion.CodeCompletionService"/>
+                                implementationClass="com.github.yunabraska.githubworkflow.services.CodeCompletion"/>
         <!-- Syntax Highlighting -->
         <annotator language="yaml"
-                   implementationClass="com.github.yunabraska.githubworkflow.highlights.HighlightAnnotator"/>
+                   implementationClass="com.github.yunabraska.githubworkflow.services.HighlightAnnotator"/>
 
-        <!-- Register Events -->
-        <postStartupActivity implementation="com.github.yunabraska.githubworkflow.listeners.ApplicationStartup"/>
+        <!-- Jump to position-->
+        <psi.referenceContributor language="yaml" implementation="com.github.yunabraska.githubworkflow.services.ActionReferenceContributor"/>
+
+        <!-- ProjectStartup -->
+        <postStartupActivity implementation="com.github.yunabraska.githubworkflow.services.ProjectStartup"/>
+
+        <!-- Cache [Workflows, Actions, Schemas] -->
+        <applicationService serviceImplementation="com.github.yunabraska.githubworkflow.services.GitHubActionCache"
+                            configurationSchemaKey="GitHubActionCache"/>
 
         <!-- Schema Icon provider -->
-        <iconProvider implementation="com.github.yunabraska.githubworkflow.schema.GitHubActionIconProvider"/>
+        <iconProvider implementation="com.github.yunabraska.githubworkflow.services.FileIconProvider"/>
+
+        <!-- Crash Reporter -->
+        <errorHandler implementation="com.github.yunabraska.githubworkflow.services.PluginErrorReportSubmitter"/>
     </extensions>
 
     <extensions defaultExtensionNs="JavaScript.JsonSchema">
         <!-- Schema Registry -->
-        <ProviderFactory implementation="com.github.yunabraska.githubworkflow.schema.GitHubSchemaProviderFactory"/>
+        <ProviderFactory implementation="com.github.yunabraska.githubworkflow.services.SchemaProvider"/>
     </extensions>
 </idea-plugin>

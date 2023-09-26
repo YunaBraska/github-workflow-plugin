@@ -1,0 +1,116 @@
+name: "PUBLISH"
+# Screenshots made with 960 x 575 - but should be at least 1280px
+
+on:
+  workflow_call:
+    inputs:
+      input_1:
+        type: string
+        description: "Input Description 1"
+        required: false
+      input_2:
+        type: string
+        description: " "
+        required: false
+    secrets:
+      SECRET_1:
+        required: false
+      SECRET_2:
+        required: false
+  workflow_dispatch:
+    inputs:
+      input_1:
+        type: string
+        description: "Alternative"
+      input_2:
+        type: string
+        description: "Input Description 2"
+
+env:
+  day: "monday"
+
+jobs:
+  my_job_1:
+    runs-on: ubuntu-latest
+    outputs:
+      JAVA_VERSION: "${{steps.java_info.outputs.java_version}}"
+      IS_MAVEN: "${{steps.java_info.outputs.is_maven}}"
+      IS_GRADLE: "${{steps.java_info.outputs.is_gradle}}"
+    steps:
+      - name: "Checkout"
+        uses: actions/checkout@main
+        with:
+          ref: ${{ github.ref_name || github.head_ref }}
+      - name: "READ JAVA"
+        id: "java_info"
+        uses: YunaBraska/java-info-action@main
+        with:
+          INVALID: ${{ secrets.SECRET_1 }}
+      - name: "Invalid step 1"
+        uses: invalid\action1
+        with:
+          java-version: ${{ steps.java_info.outputs.java_version }}
+          distribution: 'adopt'
+      - name: "Invalid step 2"
+        uses: invalid\action2
+        with:
+          java-version: ${{ steps.java_info.outputs.java_version }}
+          distribution: 'adopt'
+      - name: "BUILD & TEST ${{steps.java_info.outputs.builder_name}}"
+        run: ${{ steps.java_info.outputs.cmd_test_build }}
+  my_job_2:
+    needs: my_job_1
+    runs-on: ubuntu-latest
+    env:
+      job_env_1: "My Job Env 1"
+      job_env_2: "My Job Env 2"
+    steps:
+      - name: "Set Variables"
+        id: "my_variables"
+        run: |
+          echo "${{ needs.my_job_1.outputs.IS_GRADLE }}"
+          echo "custom_output_key=custom_output_value" >> $GITHUB_OUTPUT
+          echo "custom_env_key=custom_env_value" >> $GITHUB_ENV
+      - name: "Print Variables"
+        run: |-
+          echo "java version  [${{ needs.my_job_1.outputs.JAVA_VERSION }}]"
+          echo "custom_output [${{ steps.my_variables.outputs.custom_output_key }}]"
+          echo "custom_env    [${{ env.custom_env_key }}]"
+          echo "input_1       [${{ inputs.input_1 }}]"
+          echo "SECRET_1      [${{ secrets.SECRET_1 }}]"
+        env:
+          step_env_1: "My Step Env 1"
+          step_env_2: "My Step Env 2"
+  my_job_3:
+    needs: [ my_job_1, my_job_2, my_job_3 ]
+    runs-on: ubuntu-latest
+    env:
+      job_env_1: "My Job Env 1"
+      job_env_2: "My Job Env 2"
+    steps:
+      - name: "SETUP JAVA"
+        id: "setup_java"
+        uses: actions/setup-java@main
+        with:
+          INVALID: ${{ secrets.SECRET_1 }}
+          java-version: ${{ steps.INVALID.outputs.java_version }}
+          distribution: 'adopt'
+      - name: "Set Variables"
+        id: "my_variables"
+        run: |
+          echo "${{ needs.my_job_1.outputs.IS_GRADLE }}"
+          echo "custom_output_key=custom_output_value" >> $GITHUB_OUTPUT
+          echo "custom_env_key=custom_env_value" >> $GITHUB_ENV
+      - name: "Print Variables"
+        env:
+          step_env_1: "My Step Env 1"
+          step_env_2: "My Step Env 2"
+        run: |-
+          echo "java version  [${{ needs.INVALID_JOB.outputs.JAVA_VERSION  }} ${{ needs.my_job_1.outputs.INVALID_VAR }} ${{ needs.INCOMPLETE }}  ${{ needs.my_job_1.outputs.JAVA_VERSION.TOO_LONG }}  ${{ needs.my_job_1.outputs.JAVA_VERSION }}]"
+          echo "input_1       [${{ inputs.INVALID_INPUT }} ${{ inputs. }} ${{ inputs.input_1.TOO_LONG }} ${{ inputs.input_1 }}]"
+          echo "custom_output [${{ steps.INVALID_STEP.outputs.custom_output_key }}, ${{ steps.my_variables.outputs.INVALID_VAR }} ${{ steps.my_variables.INCOMPLETE }} ${{ steps.my_variables.outputs.custom_output_key.TOO_LONG }}] ${{ steps.setup_java.outputs.cache-hit }} ${{ steps.my_variables.outputs.custom_output_key }}"
+          echo "custom_env    [${{ env.INVALID }} ${{ env.custom_env_key.payload }} ${{ env.custom_env_key }}]"
+          echo "custom_env    [${{ github.INVALID }} ${{ github.repository_owner.payload }} ${{ github.repository_owner }}]"
+          echo "SECRET_1      [${{ secrets.SECRET_3 }} ${{ secrets.SECRET_1 }}]"
+          echo "step_env_1    [${{ env.step_env_3 }} ${{ env.step_env_1 }}]"
+        

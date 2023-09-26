@@ -1,0 +1,39 @@
+name: "DEPLOY [JAVA]"
+#type: Workflow Trigger
+
+on:
+  workflow_dispatch:
+
+jobs:
+  local_0:
+    name: "Tests Java"
+    uses: ./
+    with:
+      deep: ${{ inputs.ref }}
+      jv-fallback: ${{ inputs.skip_test }}
+      INVALID: ${{ inputs.skip_test }}
+    secrets: inherit
+  local_1:
+    name: "Tests Java"
+    uses: ./action.yml
+    with:
+      deep: ${{ inputs.ref }}
+      jv-fallback: ${{ inputs.skip_test }}
+      INVALID: ${{ inputs.skip_test }}
+    secrets: inherit
+  local_2:
+    name: "Tests Java"
+    uses: ./.github/my_action
+    with:
+      deep: ${{ inputs.ref }}
+      jv-fallback: ${{ inputs.skip_test }}
+    secrets: inherit
+  local_3:
+    name: "Tests Java"
+    uses: ./.github/my_action/action.yml
+    with:
+      deep: ${{ inputs.ref }}
+      jv-fallback: ${{ inputs.skip_test }}
+    secrets: inherit
+    INVALID: ${{ inputs.skip_test }}
+

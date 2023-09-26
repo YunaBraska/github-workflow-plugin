@@ -1,0 +1,86 @@
+name: 'Java Info Action'
+description: 'Fast Maven/Gradle parser detects and extracts info such as Java version, project version, encoding, build cmd and props,...'
+inputs:
+  deep:
+    description: 'folder scan deep (-1 == endless)'
+    required: false
+    default: '-1'
+  work-dir:
+    description: 'folder scan ("." == current)'
+    required: false
+    default: '.'
+  jv-fallback:
+    description: 'java version fallback if no java version was found'
+    required: false
+    default: '17'
+  pv-fallback:
+    description: 'project version fallback if no project version was found'
+    required: false
+    default: 'null'
+  pe-fallback:
+    description: 'project encoding fallback if no project encoding was found'
+    required: false
+    default: 'null'
+  custom-gradle-cmd:
+    required: false
+    description: 'custom command for output "cmd_custom" which adds automatically gradle/maven prefix'
+  custom-maven-cmd:
+    required: false
+    description: 'custom command for output "cmd_custom" which adds automatically gradle/maven prefix'
+  null-to-empty:
+    description: 'converts null to empty string'
+    required: false
+    default: 'true'
+outputs:
+  java_version:
+    description: 'java version - parsed from build files e.g. 6,7,8,9,10,11'
+  java_version_legacy:
+    description: 'java version - parsed from build files e.g. 1.6,1.7,1.8,1.9,10,11'
+  project_version:
+    description: 'project version - parsed from build files e.g. 1.2.3'
+  project_encoding:
+    description: 'project encoding - parsed from build files e.g. utf-8'
+  has_wrapper:
+    description: 'if a wrapper exists - e.g. gradlew, mvnw,...'
+  builder_name:
+    description: 'Name of the builder [Gradle, Maven, null]'
+  builder_version:
+    description: 'version of the wrapper'
+  is_gradle:
+    description: 'true if a gradle build was found'
+  is_maven:
+    description: 'true if a maven build was found'
+  artifact_name:
+    description: 'artifact name if defined e.g. "archiveFileName, baseName, finalName"'
+  artifact_name_jar:
+    description: 'artifact name ending with ".jar" if defined e.g. "archiveFileName, baseName, finalName"'
+  artifact_names:
+    description: 'artifact names if defined e.g. "archiveFileName, baseName, finalName"'
+  artifact_names_jar:
+    description: 'artifact names ending with ".jar" if defined e.g. "archiveFileName, baseName, finalName"'
+  cmd:
+    description: 'build command e.g. gradle, gradlew, gradle.bat, mvn, mvnw, mvn.bat'
+  cmd_custom:
+    description: "Concatenation of 'cmd' + 'custom-gradle-cmd' or 'custom-maven-cmd'"
+  cmd_test:
+    description: 'build command e.g. gradle, gradlew, gradle.bat, mvn, mvnw, mvn.bat'
+  cmd_build:
+    description: 'test command e.g. gradle clean build -x test / maven clean package -DskipTests'
+  cmd_test_build:
+    description: 'test command e.g. gradle clean build / maven clean package'
+  cmd_update_deps:
+    description: 'test command e.g. gradle check / maven versions:use-latest-versions -B -q -DgenerateBackupPoms=false'
+  cmd_update_plugs:
+    description: 'test command e.g. gradle check / maven versions:use-latest-versions -B -q -DgenerateBackupPoms=false'
+  cmd_update_props:
+    description: 'test command e.g. gradle check / maven versions:update-properties -B -q -DgenerateBackupPoms=false'
+  cmd_update_parent:
+    description: 'test command e.g. gradle check / maven versions:update-parent -B -q -DgenerateBackupPoms=false'
+  cmd_update_wrapper:
+    description: 'test command e.g. gradle gradle wrapper --gradle-version latest / maven -B -q -N io.takari:maven:wrapper'
+runs:
+  using: 'node16'
+  main: 'dist/index.js'
+branding:
+  icon: file-text
+  color: purple

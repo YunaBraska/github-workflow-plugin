@@ -4,6 +4,21 @@
 
 ## [Unreleased]
 
+## [3.0.0] - 2023-09-25
+
+### Refactoring
+
+- Feature: [#20 Code Completion for action.yml](https://github.com/YunaBraska/github-workflow-plugin/issues/20)
+- Feature: [#22 Disable checks](https://github.com/YunaBraska/github-workflow-plugin/issues/22)
+- Fix: [#24 Cannot resolve step-id in job outputs](https://github.com/YunaBraska/github-workflow-plugin/issues/24)
+- Fix: [#25 Cache Steps with no uses arend recognised](https://github.com/YunaBraska/github-workflow-plugin/issues/25)
+- Fix: [#21 Cache NullPointerException](https://github.com/YunaBraska/github-workflow-plugin/issues/21)
+- Fix: [#26 Cache NullPointerException](https://github.com/YunaBraska/github-workflow-plugin/issues/26)
+- Chore: [#18 Cleanup Memory Leaks](https://github.com/YunaBraska/github-workflow-plugin/issues/18)
+- Chore: [#17 Add Tests](https://github.com/YunaBraska/github-workflow-plugin/issues/17)
+- Chore: Exchanged custom Objects with JetBrains Objects
+- Chore: Moved IO cache to Application Scoped cache
+
 ## [2.2.7] - 2023-08-26
 
 ### Maintenance
