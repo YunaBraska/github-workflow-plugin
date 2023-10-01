@@ -308,6 +308,12 @@ public class PsiElementHelper {
                         .filter(Objects::nonNull)
                         .filter(child -> childKey.equals(child.getKeyText()))
                         .findFirst()
+                        .or(() -> children.stream()
+                                .filter(Objects::nonNull)
+                                .map(child -> getChild(child, childKey))
+                                .filter(Optional::isPresent)
+                                .map(Optional::get)
+                                .findFirst())
                 );
     }
 

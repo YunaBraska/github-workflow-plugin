@@ -4,6 +4,12 @@
 
 ## [Unreleased]
 
+## [3.0.1] - 2023-10-01
+
+### Refactoring
+
+- Fix: [#29 Unresolved workflow outputs](https://github.com/YunaBraska/github-workflow-plugin/issues/29)
+
 ## [3.0.0] - 2023-09-25
 
 ### Refactoring

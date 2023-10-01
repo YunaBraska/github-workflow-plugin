@@ -23,5 +23,6 @@ public class HighlightAnnotatorTest extends BasePlatformTestCase {
         myFixture.testHighlighting(true, false, true, "issue_10.yml");
         myFixture.testHighlighting(true, false, true, "issue_24.yml");
         myFixture.testHighlighting(true, false, true, "issue_25.yml");
+        myFixture.testHighlighting(true, false, true, "issue_29.yml");
     }
 }
