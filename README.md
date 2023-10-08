@@ -1,6 +1,5 @@
 # GitHub Workflow Plugin
 
-<!-- Plugin description -->
 *Your Ultimate Wingman for GitHub Workflows and Actions! 🚀*
 
 ![Build](https://github.com/YunaBraska/github-workflow-plugin/workflows/Build/badge.svg)
@@ -10,6 +9,7 @@
 
 ## Why Choose GitHub Workflow Plugin?
 
+<!-- Plugin description -->
 Say goodbye to tedious trial and error! Experience seamless GitHub workflow management like never before. Create
 pipelines at the speed of thought with this JetBrains plugin that extends support for GitHub Actions and Workflows.
 _[See Screenshots](https://plugins.jetbrains.com/plugin/21396-github-workflow)_

@@ -23,6 +23,10 @@ public record SimpleElement(String key, String text, TextRange range, NodeIcon i
         this(key, text, range, null);
     }
 
+    public SimpleElement(final String text, final TextRange range) {
+        this(null, text, range, null);
+    }
+
     @SuppressWarnings("unused")
     public NodeIcon icon() {
         return icon != null ? icon : NodeIcon.ICON_NODE;

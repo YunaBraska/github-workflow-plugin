@@ -1,9 +1,9 @@
 package com.github.yunabraska.githubworkflow.services;
 
+import com.github.yunabraska.githubworkflow.helper.PsiElementHelper;
 import com.github.yunabraska.githubworkflow.model.GitHubAction;
 import com.github.yunabraska.githubworkflow.model.NodeIcon;
 import com.github.yunabraska.githubworkflow.model.SimpleElement;
-import com.github.yunabraska.githubworkflow.helper.PsiElementHelper;
 import com.intellij.codeInsight.completion.CompletionContributor;
 import com.intellij.codeInsight.completion.CompletionParameters;
 import com.intellij.codeInsight.completion.CompletionProvider;
@@ -27,6 +27,11 @@ import java.util.Optional;
 import java.util.function.Supplier;
 
 import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.*;
+import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowHelper.getCaretBracketItem;
+import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowHelper.getStartIndex;
+import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowHelper.getWorkflowFile;
+import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowHelper.toLookupElement;
+import static com.github.yunabraska.githubworkflow.helper.PsiElementHelper.*;
 import static com.github.yunabraska.githubworkflow.model.NodeIcon.ICON_ENV;
 import static com.github.yunabraska.githubworkflow.model.NodeIcon.ICON_JOB;
 import static com.github.yunabraska.githubworkflow.model.NodeIcon.ICON_NEEDS;
@@ -36,11 +41,6 @@ import static com.github.yunabraska.githubworkflow.model.NodeIcon.ICON_RUNNER;
 import static com.github.yunabraska.githubworkflow.model.NodeIcon.ICON_STEP;
 import static com.github.yunabraska.githubworkflow.model.SimpleElement.completionItemOf;
 import static com.github.yunabraska.githubworkflow.model.SimpleElement.completionItemsOf;
-import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowHelper.getCaretBracketItem;
-import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowHelper.getStartIndex;
-import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowHelper.getWorkflowFile;
-import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowHelper.toLookupElement;
-import static com.github.yunabraska.githubworkflow.helper.PsiElementHelper.*;
 import static java.util.Collections.singletonList;
 import static java.util.Optional.ofNullable;
 
@@ -83,7 +83,11 @@ public class CodeCompletion extends CompletionContributor {
                     });
                     //ACTIONS && WORKFLOWS
                     if (caretBracketItem.isEmpty()) {
-                        if (getParent(position, FIELD_NEEDS).isPresent()) {
+                        if (getParent(position, FIELD_RUN).isPresent() && position.getText().contains("$IntellijIdeaRulezzz")) {
+                            // AUTO COMPLETE [$GITHUB_ENV, $GITHUB_OUTPUT]
+                            final Map<String, String> defaults = ofNullable(DEFAULT_VALUE_MAP.get(FIELD_DEFAULT)).map(Supplier::get).orElseGet(Collections::emptyMap);
+                            addLookupElements(resultSet.withPrefixMatcher(prefix[0]), Map.of("GITHUB_ENV", defaults.getOrDefault(FIELD_ENVS, ""), "GITHUB_OUTPUT", defaults.getOrDefault(FIELD_GITHUB, "")), NodeIcon.ICON_ENV, Character.MIN_VALUE);
+                        } else if (getParent(position, FIELD_NEEDS).isPresent()) {
                             //[jobs.job_name.needs] list previous jobs
                             Optional.of(getJobNeeds(position)).filter(cil -> !cil.isEmpty())
                                     .map(CodeCompletion::toLookupItems)
@@ -159,6 +163,8 @@ public class CodeCompletion extends CompletionContributor {
     public static List<SimpleElement> getJobNeeds(final PsiElement psiElement) {
         final List<YAMLKeyValue> jobs = getParentJob(psiElement).map(job -> listAllJobs(psiElement).stream().takeWhile(j -> !j.getKeyText().equals(job.getKeyText())).toList()).orElseGet(Collections::emptyList);
         return listJobNeeds(psiElement).stream()
+                .map(need -> need.replace("IntellijIdeaRulezzz ", ""))
+                .map(need -> need.replace("IntellijIdeaRulezzz", ""))
                 .map(need -> jobs.stream().filter(job -> job.getKeyText().equals(need)).findFirst().orElse(null))
                 .filter(Objects::nonNull)
                 .map(need -> jobToCompletionItem(need, ICON_NEEDS))
@@ -196,17 +202,16 @@ public class CodeCompletion extends CompletionContributor {
                 if (isOnOutput) {
                     completionItemMap.put(i, singletonList(completionItemOf(FIELD_JOBS, DEFAULT_VALUE_MAP.get(FIELD_DEFAULT).get().get(FIELD_JOBS), ICON_JOB)));
                 } else if (getParent(position, "runs-on").isEmpty() && getParent(position, "os").isEmpty()) {
-                    //DEFAULT
+                    // DEFAULT
                     ofNullable(DEFAULT_VALUE_MAP.getOrDefault(FIELD_DEFAULT, null))
                             .map(Supplier::get)
                             .map(map -> {
                                 final Map<String, String> copyMap = new HashMap<>(map);
-                                //'JOBS' HAS ONLY ONE PLACE
-                                copyMap.remove(FIELD_JOBS);
-                                //IF NO 'NEEDS' IS DEFINED
-                                if (getParentJob(position).flatMap(job -> PsiElementHelper.getChild(job, FIELD_NEEDS)).isEmpty()) {
-                                    copyMap.remove(FIELD_NEEDS);
-                                }
+                                Optional.of(listInputs(position)).filter(List::isEmpty).ifPresent(empty -> copyMap.remove(FIELD_INPUTS));
+                                Optional.of(listSecrets(position)).filter(List::isEmpty).ifPresent(empty -> copyMap.remove(FIELD_SECRETS));
+                                Optional.of(listJobs(position)).filter(List::isEmpty).ifPresent(empty -> copyMap.remove(FIELD_JOBS));
+                                Optional.of(listSteps(position)).filter(List::isEmpty).ifPresent(empty -> copyMap.remove(FIELD_STEPS));
+                                Optional.of(listJobNeeds(position)).filter(List::isEmpty).ifPresent(empty -> copyMap.remove(FIELD_NEEDS));
                                 return copyMap;
                             })
                             .map(map -> completionItemsOf(map, ICON_NODE))

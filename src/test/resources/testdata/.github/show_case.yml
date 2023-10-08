@@ -101,14 +101,15 @@ jobs:
           echo "${{ needs.my_job_1.outputs.IS_GRADLE }}"
           echo "custom_output_key=custom_output_value" >> $GITHUB_OUTPUT
           echo "custom_env_key=custom_env_value" >> $GITHUB_ENV
-      - name: "Print Variables"
+      - name:
+        if: <error descr="Remove [secrets.SECRET_1] - Secrets are not valid in `if` statements">secrets.SECRET_1</error> != ''
         env:
           step_env_1: "My Step Env 1"
           step_env_2: "My Step Env 2"
         run: |-
-          echo "java version  [${{ needs.<error descr="Replace with [my_job_1]">INVALID_JOB</error>.outputs.JAVA_VERSION  }} ${{ needs.my_job_1.outputs.<error descr="Replace with [JAVA_VERSION]">INVALID_VAR</error> }} ${{ <error descr="Incomplete statement [needs.INCOMPLETE]">needs.INCOMPLETE</error> }}  ${{ needs.my_job_1.outputs.JAVA_VERSION<error descr="Remove invalid suffix [.TOO_LONG]">.TOO_LONG</error> }}  ${{ needs.my_job_1.outputs.JAVA_VERSION }}]"
-          echo "input_1       [${{ inputs.<error descr="Replace with [input_1]">INVALID_INPUT</error> }} ${{ inputs. }} ${{ inputs.input_1<error descr="Remove invalid suffix [.TOO_LONG]">.TOO_LONG</error> }} ${{ inputs.input_1 }}]"
-          echo "custom_output [${{ steps.<error descr="Replace with [setup_java]">INVALID_STEP</error>.outputs.custom_output_key }}, ${{ steps.my_variables.outputs.<error descr="Replace with [custom_output_key]">INVALID_VAR</error> }} ${{ <error descr="Incomplete statement [steps.my_variables.INCOMPLETE]">steps.my_variables.INCOMPLETE</error> }} ${{ steps.my_variables.outputs.custom_output_key<error descr="Remove invalid suffix [.TOO_LONG]">.TOO_LONG</error> }}] ${{ steps.setup_java.outputs.cache-hit }} ${{ steps.my_variables.outputs.custom_output_key }}"
+          echo "java version  [${{ needs.<error descr="Replace with [my_job_1]">INVALID_JOB</error>.outputs.JAVA_VERSION  }} ${{ needs.my_job_1.outputs.<error descr="Replace with [JAVA_VERSION]">INVALID_VAR</error> }} ${{ <error descr="Incomplete statement [needs.INCOMPLETE]">needs.INCOMPLETE</error> }}  ${{ needs.my_job_1.outputs.JAVA_VERSION.<error descr="Remove invalid suffix [TOO_LONG]">TOO_LONG</error> }}  ${{ needs.my_job_1.outputs.JAVA_VERSION }}]"
+          echo "input_1       [${{ inputs.<error descr="Replace with [input_1]">INVALID_INPUT</error> }} ${{ <error descr="Incomplete statement [inputs]">inputs</error>. }} ${{ inputs.<error descr="Replace with [input_1]">input_1TOO_LONG</error> }} ${{ inputs.input_1 }}]"
+          echo "custom_output [${{ steps.<error descr="Replace with [setup_java]">INVALID_STEP</error>.outputs.custom_output_key }}, ${{ steps.my_variables.outputs.<error descr="Replace with [custom_output_key]">INVALID_VAR</error> }} ${{ <error descr="Incomplete statement [steps.my_variables.INCOMPLETE]">steps.my_variables.INCOMPLETE</error> }} ${{ steps.my_variables.outputs.<error descr="Replace with [custom_output_key]">custom_output_keyTOO_LONG</error> }}] ${{ steps.setup_java.outputs.cache-hit }} ${{ steps.my_variables.outputs.custom_output_key }}"
           echo "custom_env    [${{ env.<error descr="Replace with [custom_env_key]">INVALID</error> }} ${{ env.custom_env_key.payload }} ${{ env.custom_env_key }}]"
           echo "custom_env    [${{ github.<error descr="Replace with [action_repository]">INVALID</error> }} ${{ github.repository_owner.payload }} ${{ github.repository_owner }}]"
           echo "SECRET_1      [${{ secrets.<weak_warning descr="Replace [SECRET_3] with [SECRET_1] - if it is not provided at runtime">SECRET_3</weak_warning> }} ${{ secrets.SECRET_1 }}]"

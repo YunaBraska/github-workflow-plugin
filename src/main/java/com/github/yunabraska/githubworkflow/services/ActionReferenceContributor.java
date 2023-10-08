@@ -17,6 +17,7 @@ import org.jetbrains.annotations.NotNull;
 import java.util.Optional;
 
 import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.FIELD_USES;
+import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowHelper.getWorkflowFile;
 
 public class ActionReferenceContributor extends PsiReferenceContributor {
 
@@ -33,21 +34,34 @@ public class ActionReferenceContributor extends PsiReferenceContributor {
                             @NotNull final PsiElement psiElement,
                             @NotNull final ProcessingContext context
                     ) {
-                        return Optional.of(psiElement)
+                        return getWorkflowFile(psiElement).isEmpty() ? PsiReference.EMPTY_ARRAY : Optional.of(psiElement)
                                 .filter(PsiElementHelper::isTextElement)
                                 .flatMap(element -> PsiElementHelper.getParent(psiElement, FIELD_USES).map(GitHubActionCache::getAction))
                                 .filter(GitHubAction::isResolved)
                                 .filter(action -> !action.isSuppressed())
                                 .map(action -> {
                                     psiElement.putUserData(ACTION_KEY, action);
-                                    return action.isLocal()
-                                            ? new PsiReference[]{new LocalReferenceResolver(psiElement)}
-                                            : new WebReference[]{new WebReference(psiElement, action.githubUrl())};
+                                    return getPsiReferences(psiElement, action);
                                 })
-                                .map(webReferences -> (PsiReference[]) webReferences)
+                                //TODO: future - need to work on own elements
+//                                .or(() -> Optional.of(psiElement)
+//                                        .filter(isElementWithVariables(getParent(psiElement, FIELD_IF).orElse(null)))
+//                                        .map(HighlightAnnotator::toSimpleElements)
+//                                        .map(simpleElements -> {
+//                                            psiElement.putUserData(VARIABLE_ELEMENTS, simpleElements.toArray(new SimpleElement[0]));
+//                                            return new PsiReference[]{new VariableReferenceResolver(psiElement)};
+//                                        })
+//                                )
                                 .orElse(PsiReference.EMPTY_ARRAY);
                     }
                 }
         );
+    }
+
+    @NotNull
+    private static PsiReference[] getPsiReferences(final PsiElement psiElement, final GitHubAction action) {
+        return action.isLocal()
+                ? new PsiReference[]{new LocalReferenceResolver(psiElement)}
+                : new WebReference[]{new WebReference(psiElement, action.githubUrl())};
     }
 }

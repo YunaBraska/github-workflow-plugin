@@ -2,10 +2,10 @@ package com.github.yunabraska.githubworkflow.helper;
 
 import com.github.yunabraska.githubworkflow.model.GitHubAction;
 import com.github.yunabraska.githubworkflow.model.QuickFixExecution;
+import com.github.yunabraska.githubworkflow.model.SimpleElement;
 import com.github.yunabraska.githubworkflow.model.SyntaxAnnotation;
 import com.github.yunabraska.githubworkflow.services.GitHubActionCache;
 import com.intellij.codeInspection.ProblemHighlightType;
-import com.intellij.ide.BrowserUtil;
 import com.intellij.ide.util.PsiNavigationSupport;
 import com.intellij.lang.annotation.AnnotationHolder;
 import com.intellij.lang.annotation.HighlightSeverity;
@@ -27,7 +27,7 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
 import java.util.function.Consumer;
-import java.util.regex.Matcher;
+import java.util.stream.Collectors;
 
 import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.FIELD_OUTPUTS;
 import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.FIELD_USES;
@@ -59,28 +59,24 @@ public class HighlightAnnotatorHelper {
     public static void ifEnoughItems(
             final AnnotationHolder holder,
             final PsiElement psiElement,
-            final String[] parts,
+            final SimpleElement[] parts,
             final int min,
             final int max,
-            final Consumer<String> then
+            final Consumer<SimpleElement> then
     ) {
         if (parts.length < min || parts.length < 2) {
-            final String unfinishedStatement = String.join(".", parts);
-            final int startOffset = psiElement.getTextRange().getStartOffset() + psiElement.getText().indexOf(unfinishedStatement);
-            final TextRange textRange = new TextRange(startOffset, startOffset + unfinishedStatement.length());
+            final TextRange range = psiElement.getTextRange();
             new SyntaxAnnotation(
-                    "Incomplete statement [" + unfinishedStatement + "]",
+                    "Incomplete statement [" + Arrays.stream(parts).map(SimpleElement::text).collect(Collectors.joining(".")) + "]",
                     null,
                     null
-            ).createAnnotation(psiElement, textRange, holder);
+            ).createAnnotation(psiElement, new TextRange(range.getStartOffset() + parts[0].startIndexOffset(), range.getStartOffset() + parts[parts.length - 1].endIndexOffset()), holder);
         } else if (max != -1 && parts.length > max) {
-            final String fullStatement = String.join(".", parts);
-            final String longPart = "." + String.join(".", (Arrays.copyOfRange(parts, max, parts.length)));
-            final int statementStartIndex = psiElement.getText().indexOf(fullStatement);
-            final int startOffset = psiElement.getTextRange().getStartOffset() + statementStartIndex + fullStatement.lastIndexOf(longPart);
-            final TextRange textRange = new TextRange(startOffset, startOffset + longPart.length());
+            final TextRange range = psiElement.getTextRange();
+            final SimpleElement[] tooLongPart = Arrays.copyOfRange(parts, max, parts.length);
+            final TextRange textRange = new TextRange(range.getStartOffset() + tooLongPart[0].startIndexOffset(), range.getStartOffset() + tooLongPart[tooLongPart.length - 1].endIndexOffset());
             new SyntaxAnnotation(
-                    "Remove invalid suffix [" + longPart + "]",
+                    "Remove invalid suffix [" + Arrays.stream(tooLongPart).map(SimpleElement::text).collect(Collectors.joining(".")) + "]",
                     null,
                     deleteElementAction(textRange)
             ).createAnnotation(psiElement, textRange, holder);
@@ -89,11 +85,11 @@ public class HighlightAnnotatorHelper {
         }
     }
 
-    public static boolean isDefinedItem0(@NotNull final PsiElement psiElement, @NotNull final AnnotationHolder holder, final Matcher matcher, final String itemId, final Collection<String> items) {
-        if (isEmpty(items, itemId, psiElement, holder, matcher, false)) {
+    public static boolean isDefinedItem0(@NotNull final PsiElement psiElement, @NotNull final AnnotationHolder holder, @NotNull final SimpleElement itemId, final Collection<String> items) {
+        if (isEmpty(items, itemId, psiElement, holder)) {
             return false;
-        } else if (!items.contains(itemId)) {
-            final TextRange textRange = simpleTextRange(psiElement, matcher, itemId);
+        } else if (!items.contains(itemId.text())) {
+            final TextRange textRange = simpleTextRange(psiElement, itemId);
             createAnnotation(psiElement, textRange, holder, items.stream().map(item -> new SyntaxAnnotation(
                     "Replace with [" + item + "]",
                     null,
@@ -104,9 +100,9 @@ public class HighlightAnnotatorHelper {
         return true;
     }
 
-    public static boolean isField2Valid(@NotNull final PsiElement psiElement, @NotNull final AnnotationHolder holder, final Matcher matcher, final String itemId) {
-        if (!FIELD_OUTPUTS.equals(itemId)) {
-            final TextRange textRange = simpleTextRange(psiElement, matcher, itemId);
+    public static boolean isField2Valid(@NotNull final PsiElement psiElement, @NotNull final AnnotationHolder holder, final SimpleElement itemId) {
+        if (!FIELD_OUTPUTS.equals(itemId.text())) {
+            final TextRange textRange = simpleTextRange(psiElement, itemId);
             new SyntaxAnnotation(
                     "Remove invalid [" + itemId + "]",
                     null,
@@ -117,9 +113,9 @@ public class HighlightAnnotatorHelper {
         return true;
     }
 
-    public static void isValidItem3(@NotNull final PsiElement psiElement, @NotNull final AnnotationHolder holder, final Matcher matcher, final String itemId, final List<String> outputs) {
-        if (!isEmpty(outputs, itemId, psiElement, holder, matcher, true) && itemId != null && !outputs.contains(itemId)) {
-            final TextRange textRange = simpleTextRange(psiElement, matcher, itemId, true);
+    public static void isValidItem3(@NotNull final PsiElement psiElement, @NotNull final AnnotationHolder holder, final SimpleElement itemId, final List<String> outputs) {
+        if (!isEmpty(outputs, itemId, psiElement, holder) && itemId != null && !outputs.contains(itemId.text())) {
+            final TextRange textRange = simpleTextRange(psiElement, itemId);
             createAnnotation(psiElement, textRange, holder, outputs.stream().map(item -> new SyntaxAnnotation(
                     "Replace with [" + item + "]",
                     null,
@@ -220,24 +216,24 @@ public class HighlightAnnotatorHelper {
         };
     }
 
-    public static TextRange simpleTextRange(@NotNull final PsiElement psiElement, final Matcher matcher, final String itemId) {
-        return simpleTextRange(psiElement, matcher, itemId, false);
-    }
-
     public static <T> T getFirstChild(final List<T> children) {
         return children != null && !children.isEmpty() ? children.get(0) : null;
     }
 
-    private static TextRange simpleTextRange(@NotNull final PsiElement psiElement, final Matcher matcher, final String itemId, final boolean lastIndex) {
-        final int start = psiElement.getTextRange().getStartOffset() + (lastIndex ? psiElement.getText().lastIndexOf(itemId, matcher.end(0)) : psiElement.getText().indexOf(itemId, matcher.start(0)));
-        return new TextRange(start, start + itemId.length());
+    public static TextRange simpleTextRange(@NotNull final PsiElement psiElement, @NotNull final SimpleElement item) {
+        final TextRange textRange = psiElement.getTextRange();
+        final int startOffset = textRange.getStartOffset();
+        return new TextRange(
+                Math.max(startOffset + item.startIndexOffset(), startOffset),
+                Math.min(startOffset + item.endIndexOffset(), textRange.getEndOffset())
+        );
     }
 
-    private static boolean isEmpty(final Collection<String> items, final String itemId, @NotNull final PsiElement psiElement, @NotNull final AnnotationHolder holder, final Matcher matcher, final boolean lastIndex) {
+    private static boolean isEmpty(final Collection<String> items, final SimpleElement itemId, @NotNull final PsiElement psiElement, @NotNull final AnnotationHolder holder) {
         if (itemId != null && items.isEmpty()) {
-            final TextRange textRange = simpleTextRange(psiElement, matcher, itemId, lastIndex);
+            final TextRange textRange = simpleTextRange(psiElement, itemId);
             createAnnotation(psiElement, textRange, holder, List.of(new SyntaxAnnotation(
-                    "Delete invalid [" + itemId + "]",
+                    "Delete invalid [" + itemId.text() + "]",
                     null,
                     deleteElementAction(textRange)
             )));

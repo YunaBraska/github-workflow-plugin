@@ -84,7 +84,8 @@ public class GitHubAction implements Serializable {
         if (tagIndex != -1 && userNameIndex < tagIndex) {
             slug = usesValue.substring(0, repoNameIndex > 0 ? repoNameIndex : tagIndex);
             if (!isAction) {
-                tmpName = usesValue.substring(usesValue.lastIndexOf("/") + 1, tagIndex);
+                final int beginIndex = usesValue.lastIndexOf("/") + 1;
+                tmpName = beginIndex >= tagIndex? "InvalidAction" : usesValue.substring(beginIndex, tagIndex);
             } else {
                 tmpSub = repoNameIndex < tagIndex && repoNameIndex > 0 ? "/" + usesValue.substring(repoNameIndex + 1, tagIndex) : "";
                 tmpName = usesValue.substring(userNameIndex + 1, tagIndex);
