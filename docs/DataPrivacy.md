@@ -1,6 +1,6 @@
 # Documentation on Data Privacy in GitHub Workflow Plugin
 
-![Data Privacy Logo](images/data_privacy.jpg)
+![Data Privacy Logo](images/data_privacy.png)
 
 ### Introduction
 
