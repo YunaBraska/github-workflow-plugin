@@ -30,7 +30,7 @@ public class ActionReferenceContributor extends PsiReferenceContributor {
                 new PsiReferenceProvider() {
                     @NotNull
                     @Override
-                    public PsiReference[] getReferencesByElement(
+                    public PsiReference @NotNull [] getReferencesByElement(
                             @NotNull final PsiElement psiElement,
                             @NotNull final ProcessingContext context
                     ) {

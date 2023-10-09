@@ -4,6 +4,7 @@ import com.github.yunabraska.githubworkflow.helper.GitHubWorkflowHelper;
 import com.github.yunabraska.githubworkflow.helper.PsiElementHelper;
 import com.github.yunabraska.githubworkflow.model.GitHubAction;
 import com.intellij.codeInsight.daemon.DaemonCodeAnalyzer;
+import com.intellij.json.JsonFileType;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.components.PersistentStateComponent;
 import com.intellij.openapi.components.State;
@@ -14,10 +15,12 @@ import com.intellij.openapi.progress.Task;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.project.ProjectManager;
 import com.intellij.openapi.project.ProjectUtil;
+import com.intellij.openapi.vfs.VfsUtil;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.psi.PsiElement;
 import com.intellij.psi.PsiFile;
 import com.intellij.psi.PsiManager;
+import com.intellij.testFramework.LightVirtualFile;
 import com.intellij.util.xmlb.XmlSerializerUtil;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -87,6 +90,10 @@ public class GitHubActionCache implements PersistentStateComponent<GitHubActionC
                 });
     }
 
+    public boolean isAvailable(final String key){
+        return state.actions.containsKey(key);
+    }
+
     public String getSchema(final String url) {
         return ofNullable(url)
                 .map(state.actions::get)
@@ -99,6 +106,19 @@ public class GitHubActionCache implements PersistentStateComponent<GitHubActionC
                     state.actions.put(url, result);
                     return content;
                 })).orElse(null);
+    }
+
+    public VirtualFile getSchema(final String url, final String name) {
+        try {
+            final String fileName = "github_workflow_plugin_" + name + "_schema.json";
+
+            final VirtualFile newVirtualFile = new LightVirtualFile(fileName, JsonFileType.INSTANCE, "");
+            VfsUtil.saveText(newVirtualFile, getSchema(url));
+
+            return newVirtualFile;
+        } catch (final Exception ignored) {
+            return null;
+        }
     }
 
     public String remove(final String usesValue) {

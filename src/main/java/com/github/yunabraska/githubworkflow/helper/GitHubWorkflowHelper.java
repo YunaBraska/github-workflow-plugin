@@ -15,8 +15,6 @@ import java.util.Optional;
 
 import static com.github.yunabraska.githubworkflow.helper.AutoPopupInsertHandler.addSuffix;
 import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.FIELD_IF;
-import static com.github.yunabraska.githubworkflow.model.schema.GitHubActionSchemaProvider.isActionYaml;
-import static com.github.yunabraska.githubworkflow.model.schema.GitHubWorkflowSchemaProvider.isWorkflowYaml;
 
 public class GitHubWorkflowHelper {
 
@@ -112,11 +110,76 @@ public class GitHubWorkflowHelper {
                 .filter(GitHubWorkflowHelper::isWorkflowPath);
     }
 
+    public static Optional<Path> psiFileToPath(final PsiElement psiFile) {
+        return Optional.of(psiFile)
+                .filter(PsiFile.class::isInstance)
+                .map(PsiFile.class::cast)
+                .map(PsiFile::getVirtualFile)
+                .map(VirtualFile::getPath)
+                .map(Paths::get);
+    }
+
     public static boolean isWorkflowPath(final Path path) {
-        return path != null && (isActionYaml(path) || isWorkflowYaml(path));
+        return path != null && (isActionFile(path) || isWorkflowFile(path));
     }
 
     public static boolean isYamlFile(final Path path) {
         return path.getName(path.getNameCount() - 1).toString().toLowerCase().endsWith(".yml") || path.getName(path.getNameCount() - 1).toString().toLowerCase().endsWith(".yaml");
     }
+
+    public static boolean isActionFile(final Path path) {
+        return path.getNameCount() > 1
+                && (path.getName(path.getNameCount() - 1).toString().equalsIgnoreCase("action.yml")
+                || path.getName(path.getNameCount() - 1).toString().equalsIgnoreCase("action.yaml"));
+    }
+
+    public static boolean isWorkflowFile(final Path path) {
+        return path != null && path.getNameCount() > 2
+                && isYamlFile(path)
+                && path.getName(path.getNameCount() - 2).toString().equalsIgnoreCase("workflows")
+                && path.getName(path.getNameCount() - 3).toString().equalsIgnoreCase(".github");
+    }
+
+    public static boolean isWorkflowTemplatePropertiesFile(final Path path) {
+        return path.getNameCount() > 2
+                && path.getName(path.getNameCount() - 3).toString().equalsIgnoreCase(".github")
+                && path.getName(path.getNameCount() - 2).toString().equalsIgnoreCase("workflow-templates")
+                && isYamlFile(path);
+    }
+
+    public static boolean isIssueForms(final Path path) {
+        return path.getNameCount() > 2
+                && path.getName(path.getNameCount() - 3).toString().equalsIgnoreCase(".github")
+                && path.getName(path.getNameCount() - 2).toString().equalsIgnoreCase("ISSUE_TEMPLATE")
+                && isYamlFile(path);
+    }
+
+    public static boolean isIssueConfigFile(final Path path) {
+        return path.getNameCount() > 2
+                && path.getName(path.getNameCount() - 3).toString().equalsIgnoreCase(".github")
+                && path.getName(path.getNameCount() - 2).toString().equalsIgnoreCase("workflow-templates")
+                && (path.getName(path.getNameCount() - 1).toString().equalsIgnoreCase("config.yml")
+                || path.getName(path.getNameCount() - 1).toString().equalsIgnoreCase("config.yaml"));
+    }
+
+    public static boolean isFoundingFile(final Path path) {
+        return path.getNameCount() > 1
+                && (path.getName(path.getNameCount() - 1).toString().equalsIgnoreCase("FUNDING.yml")
+                || path.getName(path.getNameCount() - 1).toString().equalsIgnoreCase("FUNDING.yaml"));
+    }
+
+    public static boolean isDependabotFile(final Path path) {
+        return path.getNameCount() > 1
+                && path.getName(path.getNameCount() - 2).toString().equalsIgnoreCase(".github")
+                && (path.getName(path.getNameCount() - 1).toString().equalsIgnoreCase("dependabot.yml")
+                || path.getName(path.getNameCount() - 1).toString().equalsIgnoreCase("dependabot.yaml"));
+    }
+
+    public static boolean isDiscussionFile(final Path path) {
+        return path.getNameCount() > 2
+                && path.getName(path.getNameCount() - 3).toString().equalsIgnoreCase(".github")
+                && path.getName(path.getNameCount() - 2).toString().equalsIgnoreCase("DISCUSSION_TEMPLATE")
+                && isYamlFile(path);
+    }
+
 }

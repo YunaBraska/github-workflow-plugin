@@ -264,7 +264,7 @@ public class HighlightAnnotator implements Annotator {
                 .isPresent();
     }
 
-    public static Key<SimpleElement[]> VARIABLE_ELEMENTS = new Key<>("com.github.yunabraska.githubworkflow.VariableElements");
+    public static final Key<SimpleElement[]> VARIABLE_ELEMENTS = new Key<>("com.github.yunabraska.githubworkflow.VariableElements");
 
     @NotNull
     public static List<SimpleElement> toSimpleElements(final PsiElement element) {
