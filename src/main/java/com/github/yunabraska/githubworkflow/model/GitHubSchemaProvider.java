@@ -10,6 +10,7 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.function.Predicate;
@@ -40,7 +41,11 @@ public class GitHubSchemaProvider implements JsonSchemaFileProvider {
 
     @Override
     public boolean isAvailable(@NotNull final VirtualFile file) {
-        return getVirtualFile().isPresent();
+        return Optional.of(file).map(VirtualFile::getPath).map(Paths::get).filter(validatePath).isPresent();
+    }
+
+    public boolean isValidFile(final PsiElement element) {
+        return psiFileToPath(element).filter(validatePath).isPresent();
     }
 
     @Nullable
@@ -69,10 +74,6 @@ public class GitHubSchemaProvider implements JsonSchemaFileProvider {
     @Override
     public String getRemoteSource() {
         return schemaUrl;
-    }
-
-    public boolean isValidFile(final PsiElement element) {
-        return psiFileToPath(element).filter(validatePath).isPresent();
     }
 
     @Override
