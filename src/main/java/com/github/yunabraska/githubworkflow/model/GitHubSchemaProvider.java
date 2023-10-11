@@ -1,36 +1,41 @@
 package com.github.yunabraska.githubworkflow.model;
 
+import com.intellij.json.JsonFileType;
 import com.intellij.openapi.vfs.VirtualFile;
-import com.intellij.psi.PsiElement;
+import com.intellij.testFramework.LightVirtualFile;
 import com.jetbrains.jsonSchema.extension.JsonSchemaFileProvider;
 import com.jetbrains.jsonSchema.extension.SchemaType;
-import com.jetbrains.rd.util.AtomicReference;
-import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Scanner;
 import java.util.function.Predicate;
 
-import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowHelper.psiFileToPath;
-import static com.github.yunabraska.githubworkflow.services.GitHubActionCache.getActionCache;
+import static java.util.Optional.ofNullable;
 
 public class GitHubSchemaProvider implements JsonSchemaFileProvider {
 
     private final String displayName;
-    private final String schemaName;
-    private final String schemaUrl;
-    private final AtomicReference<VirtualFile> file = new AtomicReference<>(null);
+    private final VirtualFile schemaFile;
     private final Predicate<Path> validatePath;
 
     public GitHubSchemaProvider(final String schemaName, final String displayName, final Predicate<Path> validatePath) {
-        this.schemaName = schemaName;
         this.displayName = displayName;
         this.validatePath = validatePath;
-        this.schemaUrl = "https://json.schemastore.org/" + schemaName;
+
+        schemaFile = ofNullable(getClass().getResourceAsStream("/schemas/" + schemaName + ".json"))
+                .map(schemaStream -> {
+                    try (final Scanner scanner = new Scanner(schemaStream, StandardCharsets.UTF_8)) {
+                        final String schemaContent = scanner.useDelimiter("\\A").next();
+                        return new LightVirtualFile("github_workflow_plugin_" + schemaName + "_schema.json", JsonFileType.INSTANCE, schemaContent);
+                    }
+                })
+                .orElse(null);
     }
 
     @NotNull
@@ -44,36 +49,16 @@ public class GitHubSchemaProvider implements JsonSchemaFileProvider {
         return Optional.of(file).map(VirtualFile::getPath).map(Paths::get).filter(validatePath).isPresent();
     }
 
-    public boolean isValidFile(final PsiElement element) {
-        return psiFileToPath(element).filter(validatePath).isPresent();
-    }
-
     @Nullable
     @Override
     public VirtualFile getSchemaFile() {
-        return getVirtualFile().orElseGet(() -> {
-            final VirtualFile schema = getActionCache().getSchema(schemaUrl, schemaName);
-            file.getAndSet(schema);
-            return schema;
-        });
-    }
-
-    private Optional<VirtualFile> getVirtualFile() {
-        final VirtualFile result = file.get();
-        return result != null && result.isValid() ? Optional.of(result) : Optional.empty();
+        return schemaFile;
     }
 
     @NotNull
     @Override
     public SchemaType getSchemaType() {
         return SchemaType.schema;
-    }
-
-    @Nullable
-    @NonNls
-    @Override
-    public String getRemoteSource() {
-        return schemaUrl;
     }
 
     @Override

@@ -4,20 +4,29 @@
 
 ## [Unreleased]
 
+## [3.0.4] - 2023-10-10
+
+### Fix
+
+- Fix: [#34 Schema Cache](https://github.com/YunaBraska/github-workflow-plugin/issues/34) - embarrassing freezing UI
+  while downloading schema files. The Schema files are now preloaded.
+
 ## [3.0.3] - 2023-10-09
 
-### Refactoring
+### Fix
 
 - Fix: [#32 Schema Cache](https://github.com/YunaBraska/github-workflow-plugin/issues/32) - was still using the file
   system instead of the new IDE cache.
 
 ## [3.0.2] - 2023-10-08
 
-### Refactoring
+### Fix
 
 - Feat: Added autocompletion for `$GITHUB_OUTPUT` and `$GITHUB_ENV`
 -
+
 Fix: [#31 StringIndexOutOfBoundsException (GitHubAction.java:87)](https://github.com/YunaBraska/github-workflow-plugin/issues/31)
+
 - Fix: Secrets are unsupported on if statements
 - Fix: highlighting issues when workflow is very long
 - Fix: Code Completion shows only available items [inputs, secrets, jobs, steps, needs]
@@ -25,7 +34,7 @@ Fix: [#31 StringIndexOutOfBoundsException (GitHubAction.java:87)](https://github
 
 ## [3.0.1] - 2023-10-01
 
-### Refactoring
+### Fix
 
 - Fix: [#29 Unresolved workflow outputs](https://github.com/YunaBraska/github-workflow-plugin/issues/29)
 

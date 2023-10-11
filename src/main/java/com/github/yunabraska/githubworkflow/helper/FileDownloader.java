@@ -7,6 +7,7 @@ import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.project.ProjectManager;
 import com.intellij.util.io.HttpRequests;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 import org.jetbrains.plugins.github.api.GithubApiRequest;
 import org.jetbrains.plugins.github.api.GithubApiRequestExecutor;
 import org.jetbrains.plugins.github.api.GithubApiResponse;
@@ -45,20 +46,7 @@ public class FileDownloader {
         LOG.info("Download [" + urlString + "]");
         try {
             final ApplicationInfo applicationInfo = ApplicationInfo.getInstance();
-            final Future<String> future = ApplicationManager.getApplication().executeOnPooledThread(() -> {
-                try {
-                    return HttpRequests
-                            .request(urlString)
-                            .gzip(true)
-                            .readTimeout(5000)
-                            .connectTimeout(5000)
-                            .userAgent(applicationInfo.getBuild().getProductCode() + "/" + applicationInfo.getFullVersion())
-                            .tuner(request -> request.setRequestProperty("Client-Name", "GitHub Workflow Plugin"))
-                            .readString();
-                } catch (final Exception e) {
-                    return null;
-                }
-            });
+            final Future<String> future = ApplicationManager.getApplication().executeOnPooledThread(() -> downloadSync(urlString, applicationInfo.getBuild().getProductCode() + "/" + applicationInfo.getFullVersion()));
             return future.get();
         } catch (final Exception e) {
             LOG.warn("Execution failed for [" + urlString + "] message [" + (e instanceof NullPointerException ? null : e.getMessage()) + "]");
@@ -66,7 +54,22 @@ public class FileDownloader {
         return "";
     }
 
-    //    @SuppressWarnings("DataFlowIssue")
+    @Nullable
+    public static String downloadSync(final String urlString, final String userAgent) {
+        try {
+            return HttpRequests
+                    .request(urlString)
+                    .gzip(true)
+                    .readTimeout(5000)
+                    .connectTimeout(5000)
+                    .userAgent(userAgent)
+                    .tuner(request -> request.setRequestProperty("Client-Name", "GitHub Workflow Plugin"))
+                    .readString();
+        } catch (final Exception e) {
+            return null;
+        }
+    }
+
     private static String downloadFromGitHub(final String downloadUrl, final GithubAccount account) {
         return ofNullable(ProjectUtil.getActiveProject())
                 .or(() -> Optional.of(ProjectManager.getInstance().getDefaultProject()))

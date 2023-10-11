@@ -4,7 +4,6 @@ import com.github.yunabraska.githubworkflow.helper.GitHubWorkflowHelper;
 import com.github.yunabraska.githubworkflow.helper.PsiElementHelper;
 import com.github.yunabraska.githubworkflow.model.GitHubAction;
 import com.intellij.codeInsight.daemon.DaemonCodeAnalyzer;
-import com.intellij.json.JsonFileType;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.components.PersistentStateComponent;
 import com.intellij.openapi.components.State;
@@ -15,12 +14,10 @@ import com.intellij.openapi.progress.Task;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.project.ProjectManager;
 import com.intellij.openapi.project.ProjectUtil;
-import com.intellij.openapi.vfs.VfsUtil;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.psi.PsiElement;
 import com.intellij.psi.PsiFile;
 import com.intellij.psi.PsiManager;
-import com.intellij.testFramework.LightVirtualFile;
 import com.intellij.util.xmlb.XmlSerializerUtil;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -35,7 +32,6 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Stream;
 
-import static com.github.yunabraska.githubworkflow.helper.FileDownloader.downloadContent;
 import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.CACHE_ONE_DAY;
 import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.FIELD_USES;
 import static com.github.yunabraska.githubworkflow.helper.PsiElementHelper.getProject;
@@ -90,35 +86,8 @@ public class GitHubActionCache implements PersistentStateComponent<GitHubActionC
                 });
     }
 
-    public boolean isAvailable(final String key){
+    public boolean isAvailable(final String key) {
         return state.actions.containsKey(key);
-    }
-
-    public String getSchema(final String url) {
-        return ofNullable(url)
-                .map(state.actions::get)
-                .filter(GitHubAction::isSchema)
-                .filter(action -> System.currentTimeMillis() < action.expiryTime())
-                .map(GitHubAction::downloadUrl)
-                .filter(PsiElementHelper::hasText)
-                .or(() -> ofNullable(downloadContent(url)).filter(PsiElementHelper::hasText).map(content -> {
-                    final GitHubAction result = GitHubAction.createSchemaAction(url, content);
-                    state.actions.put(url, result);
-                    return content;
-                })).orElse(null);
-    }
-
-    public VirtualFile getSchema(final String url, final String name) {
-        try {
-            final String fileName = "github_workflow_plugin_" + name + "_schema.json";
-
-            final VirtualFile newVirtualFile = new LightVirtualFile(fileName, JsonFileType.INSTANCE, "");
-            VfsUtil.saveText(newVirtualFile, getSchema(url));
-
-            return newVirtualFile;
-        } catch (final Exception ignored) {
-            return null;
-        }
     }
 
     public String remove(final String usesValue) {

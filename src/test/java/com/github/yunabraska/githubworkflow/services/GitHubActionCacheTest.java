@@ -8,7 +8,6 @@ import org.junit.Test;
 import static com.github.yunabraska.githubworkflow.services.GitHubActionCache.getActionCache;
 import static org.assertj.core.api.Assertions.assertThat;
 
-@SuppressWarnings("ALL")
 public class GitHubActionCacheTest extends BasePlatformTestCase {
 
     @Test
