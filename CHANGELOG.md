@@ -4,6 +4,14 @@
 
 ## [Unreleased]
 
+## [3.1.0] - 2023-10-14
+
+### Feature
+
+- Feat: Code Completion for steps outcome &&
+  conclusion [#37 Schema Cache](https://github.com/YunaBraska/github-workflow-plugin/pull/37) Big thanks
+  to [Siketyan](https://github.com/siketyan)
+
 ## [3.0.4] - 2023-10-10
 
 ### Fix
