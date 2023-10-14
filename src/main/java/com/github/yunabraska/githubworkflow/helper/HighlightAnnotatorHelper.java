@@ -29,8 +29,7 @@ import java.util.List;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
-import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.FIELD_OUTPUTS;
-import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.FIELD_USES;
+import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.*;
 import static com.github.yunabraska.githubworkflow.helper.PsiElementHelper.removeQuotes;
 import static com.github.yunabraska.githubworkflow.model.NodeIcon.JUMP_TO_IMPLEMENTATION;
 import static com.github.yunabraska.githubworkflow.model.NodeIcon.RELOAD;
@@ -101,7 +100,7 @@ public class HighlightAnnotatorHelper {
     }
 
     public static boolean isField2Valid(@NotNull final PsiElement psiElement, @NotNull final AnnotationHolder holder, final SimpleElement itemId) {
-        if (!FIELD_OUTPUTS.equals(itemId.text())) {
+        if (!List.of(FIELD_OUTPUTS, FIELD_CONCLUSION, FIELD_OUTCOME).contains(itemId.text())) {
             final TextRange textRange = simpleTextRange(psiElement, itemId);
             new SyntaxAnnotation(
                     "Remove invalid [" + itemId + "]",

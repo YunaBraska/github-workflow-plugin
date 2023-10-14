@@ -78,6 +78,8 @@ jobs:
           echo "custom_env    [${{ env.custom_env_key }}]"
           echo "input_1       [${{ inputs.input_1 }}]"
           echo "SECRET_1      [${{ secrets.SECRET_1 }}]"
+          echo "outcome       [${{ steps.my_variables.outcome }}]"
+          echo "conclusion    [${{ steps.my_variables.conclusion }}]"
         env:
           step_env_1: "My Step Env 1"
           step_env_2: "My Step Env 2"

@@ -30,6 +30,8 @@ public class GitHubWorkflowConfig {
     public static final String FIELD_INPUTS = "inputs";
     public static final String FIELD_OUTPUTS = "outputs";
     public static final String FIELD_SECRETS = "secrets";
+    public static final String FIELD_CONCLUSION = "conclusion";
+    public static final String FIELD_OUTCOME = "outcome";
     public static final Map<String, Supplier<Map<String, String>>> DEFAULT_VALUE_MAP = initProcessorMap();
 
     private static Map<String, Supplier<Map<String, String>>> initProcessorMap() {
