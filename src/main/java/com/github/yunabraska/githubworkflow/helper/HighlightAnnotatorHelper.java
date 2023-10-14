@@ -29,6 +29,8 @@ import java.util.List;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
+import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.FIELD_CONCLUSION;
+import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.FIELD_OUTCOME;
 import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.FIELD_OUTPUTS;
 import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.FIELD_USES;
 import static com.github.yunabraska.githubworkflow.helper.PsiElementHelper.removeQuotes;
@@ -41,6 +43,9 @@ import static com.github.yunabraska.githubworkflow.services.GitHubActionCache.tr
 import static java.util.Optional.ofNullable;
 
 public class HighlightAnnotatorHelper {
+
+    public static final List<String> VALID_OUTPUT_FIELDS = List.of(FIELD_OUTPUTS);
+    public static final List<String> VALID_STEP_FIELDS = List.of(FIELD_OUTPUTS, FIELD_CONCLUSION, FIELD_OUTCOME);
 
     private HighlightAnnotatorHelper() {
         // static helper class
@@ -101,7 +106,11 @@ public class HighlightAnnotatorHelper {
     }
 
     public static boolean isField2Valid(@NotNull final PsiElement psiElement, @NotNull final AnnotationHolder holder, final SimpleElement itemId) {
-        if (!FIELD_OUTPUTS.equals(itemId.text())) {
+        return isField2Valid(psiElement, holder, itemId, VALID_OUTPUT_FIELDS);
+    }
+
+    public static boolean isField2Valid(@NotNull final PsiElement psiElement, @NotNull final AnnotationHolder holder, final SimpleElement itemId, final List<String> validFields) {
+        if (!validFields.contains(itemId.text())) {
             final TextRange textRange = simpleTextRange(psiElement, itemId);
             new SyntaxAnnotation(
                     "Remove invalid [" + itemId + "]",
