@@ -5,7 +5,6 @@ import com.github.yunabraska.githubworkflow.model.GitHubAction;
 import com.github.yunabraska.githubworkflow.model.IconRenderer;
 import com.github.yunabraska.githubworkflow.model.SimpleElement;
 import com.github.yunabraska.githubworkflow.model.SyntaxAnnotation;
-import com.google.common.collect.Iterables;
 import com.intellij.codeInspection.ProblemHighlightType;
 import com.intellij.lang.annotation.AnnotationHolder;
 import com.intellij.lang.annotation.Annotator;
@@ -224,17 +223,9 @@ public class HighlightAnnotator implements Annotator {
                                         ifEnoughItems(holder, element, parts, 2, 2, runnerId -> isDefinedItem0(element, holder, runnerId, new ArrayList<>(DEFAULT_VALUE_MAP.get(FIELD_RUNNER).get().keySet())));
                                 case FIELD_STEPS -> {
                                     if (parts.length > 2 && List.of(FIELD_CONCLUSION, FIELD_OUTCOME).contains(parts[2].text())) {
-                                        ifEnoughItems(holder, element, parts, 3, 3, __ -> {
-                                            isField2Valid(element, holder, parts[2]);
-                                        });
+                                        ifEnoughStepItems(holder, element, parts, 3, VALID_STEP_FIELDS);
                                     } else {
-                                        ifEnoughItems(holder, element, parts, 4, 4, stepId -> {
-                                            final List<YAMLSequenceItem> steps = listSteps(element);
-                                            if (isDefinedItem0(element, holder, stepId, steps.stream().map(step -> getText(step, FIELD_ID).orElse(null)).filter(Objects::nonNull).toList()) && isField2Valid(element, holder, parts[2])) {
-                                                final List<String> outputs = listStepOutputs(steps.stream().filter(step -> getText(step, FIELD_ID).filter(id -> id.equals(stepId.text())).isPresent()).findFirst().orElse(null)).stream().map(SimpleElement::key).toList();
-                                                isValidItem3(element, holder, parts[3], outputs);
-                                            }
-                                        });
+                                        ifEnoughStepItems(holder, element, parts, 4, VALID_OUTPUT_FIELDS);
                                     }
                                 }
                                 case FIELD_JOBS -> ifEnoughItems(holder, element, parts, 4, 4, jobId -> {
@@ -340,5 +331,17 @@ public class HighlightAnnotator implements Annotator {
         elementStart = -1;
         currentElement.setLength(0);
         return elementStart;
+    }
+
+    private static void ifEnoughStepItems(final AnnotationHolder holder, final PsiElement element, final SimpleElement[] parts, final int numberOfItems, final List<String> validFields) {
+        ifEnoughItems(holder, element, parts, numberOfItems, numberOfItems, stepId -> {
+            final List<YAMLSequenceItem> steps = listSteps(element);
+            if (isDefinedItem0(element, holder, stepId, steps.stream().map(step -> getText(step, FIELD_ID).orElse(null)).filter(Objects::nonNull).toList()) && isField2Valid(element, holder, parts[2], validFields)) {
+                final List<String> outputs = listStepOutputs(steps.stream().filter(step -> getText(step, FIELD_ID).filter(id -> id.equals(stepId.text())).isPresent()).findFirst().orElse(null)).stream().map(SimpleElement::key).toList();
+                if (parts.length > 3) {
+                    isValidItem3(element, holder, parts[3], outputs);
+                }
+            }
+        });
     }
 }

@@ -78,8 +78,6 @@ jobs:
           echo "custom_env    [${{ env.custom_env_key }}]"
           echo "input_1       [${{ inputs.input_1 }}]"
           echo "SECRET_1      [${{ secrets.SECRET_1 }}]"
-          echo "outcome       [${{ steps.my_variables.outcome }}]"
-          echo "conclusion    [${{ steps.my_variables.conclusion }}]"
         env:
           step_env_1: "My Step Env 1"
           step_env_2: "My Step Env 2"
@@ -103,6 +101,10 @@ jobs:
           echo "${{ needs.my_job_1.outputs.IS_GRADLE }}"
           echo "custom_output_key=custom_output_value" >> $GITHUB_OUTPUT
           echo "custom_env_key=custom_env_value" >> $GITHUB_ENV
+          echo "outcome       [${{ steps.<error descr="Replace with [setup_java]">my_variables</error>.outcome }}]"
+          echo "outcome       [${{ steps.<error descr="Replace with [setup_java]">my_variables</error>.conclusion }}]"
+          echo "conclusion    [${{ steps.setup_java.outcome }}]"
+          echo "conclusion    [${{ steps.setup_java.conclusion }}]"
       - name:
         if: <error descr="Remove [secrets.SECRET_1] - Secrets are not valid in `if` statements">secrets.SECRET_1</error> != ''
         env:

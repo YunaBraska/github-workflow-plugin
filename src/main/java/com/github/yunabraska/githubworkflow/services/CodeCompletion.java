@@ -137,13 +137,14 @@ public class CodeCompletion extends CompletionContributor {
 
     private static void handleSecondItem(final String[] cbi, final int i, final Map<Integer, List<SimpleElement>> completionItemMap) {
         switch (cbi[0]) {
-            case FIELD_JOBS, FIELD_NEEDS, FIELD_STEPS -> {
-                completionItemMap.put(i, List.of(
+            case FIELD_STEPS -> completionItemMap.put(i, List.of(
                     completionItemOf(FIELD_OUTPUTS, "The set of outputs defined for the step.", ICON_OUTPUT),
                     completionItemOf(FIELD_CONCLUSION, "The result of a completed step after continue-on-error is applied.", ICON_OUTPUT),
                     completionItemOf(FIELD_OUTCOME, "The result of a completed step before continue-on-error is applied.", ICON_OUTPUT)
-                ));
-            }
+            ));
+            case FIELD_JOBS, FIELD_NEEDS -> completionItemMap.put(i, List.of(
+                completionItemOf(FIELD_OUTPUTS, "The set of outputs defined for the step.", ICON_OUTPUT)
+            ));
             default -> {
                 // ignored
             }
