@@ -37,9 +37,7 @@ import static com.github.yunabraska.githubworkflow.helper.PsiElementHelper.remov
 import static com.github.yunabraska.githubworkflow.model.NodeIcon.JUMP_TO_IMPLEMENTATION;
 import static com.github.yunabraska.githubworkflow.model.NodeIcon.RELOAD;
 import static com.github.yunabraska.githubworkflow.model.NodeIcon.SETTINGS;
-import static com.github.yunabraska.githubworkflow.model.NodeIcon.SUPPRESS_OFF;
 import static com.github.yunabraska.githubworkflow.model.SyntaxAnnotation.createAnnotation;
-import static com.github.yunabraska.githubworkflow.services.GitHubActionCache.triggerSyntaxHighlightingForActiveFiles;
 import static java.util.Optional.ofNullable;
 
 public class HighlightAnnotatorHelper {
@@ -125,7 +123,7 @@ public class HighlightAnnotatorHelper {
     public static void isValidItem3(@NotNull final PsiElement psiElement, @NotNull final AnnotationHolder holder, final SimpleElement itemId, final List<String> outputs) {
         if (!isEmpty(outputs, itemId, psiElement, holder) && itemId != null && !outputs.contains(itemId.text())) {
             final TextRange textRange = simpleTextRange(psiElement, itemId);
-            createAnnotation(psiElement, textRange, holder, outputs.stream().map(item -> new SyntaxAnnotation(
+            createAnnotation(psiElement, textRange, holder, outputs.stream().filter(PsiElementHelper::hasText).map(item -> new SyntaxAnnotation(
                     "Replace with [" + item + "]",
                     null,
                     replaceAction(textRange, item)
@@ -166,21 +164,6 @@ public class HighlightAnnotatorHelper {
                 HighlightSeverity.WEAK_WARNING,
                 ProblemHighlightType.WEAK_WARNING,
                 deleteElementAction(textRange)
-        );
-    }
-
-    @NotNull
-    public static SyntaxAnnotation newSuppressAction(final GitHubAction action) {
-        final boolean suppressed = action.isSuppressed();
-        return new SyntaxAnnotation(
-                "Toggle warnings [" + (suppressed ? "on" : "off") + "] for [" + action.name() + "]",
-                suppressed ? SUPPRESS_OFF : null,
-                HighlightSeverity.INFORMATION,
-                suppressed ? ProblemHighlightType.WEAK_WARNING : ProblemHighlightType.INFORMATION,
-                f -> {
-                    action.isSuppressed(!suppressed);
-                    triggerSyntaxHighlightingForActiveFiles();
-                }
         );
     }
 

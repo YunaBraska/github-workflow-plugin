@@ -92,7 +92,8 @@ jobs:
         id: "setup_java"
         uses: actions/setup-java@main
         with:
-          INVALID: ${{ secrets.SECRET_1 }}
+          <error descr="Delete invalid input [INVALID_KEY]">INVALID_KEY: some_value</error>
+          <error descr="Delete invalid input [INVALID]">INVALID: ${{ secrets.SECRET_1 }}</error>
           java-version: ${{ steps.<error descr="Delete invalid [INVALID]">INVALID</error>.outputs.java_version }}
           distribution: 'adopt'
       - name: "Set Variables"
@@ -105,6 +106,7 @@ jobs:
           echo "outcome       [${{ steps.<error descr="Replace with [setup_java]">my_variables</error>.conclusion }}]"
           echo "conclusion    [${{ steps.setup_java.outcome }}]"
           echo "conclusion    [${{ steps.setup_java.conclusion }}]"
+          echo "invalid_key    [${{ steps.setup_java.outputs.<error descr="Replace with [path]"><error descr="Toggle warnings [off] for [invalid_key]">invalid_key</error></error> }}]"
       - name:
         if: <error descr="Remove [secrets.SECRET_1] - Secrets are not valid in `if` statements">secrets.SECRET_1</error> != ''
         env:

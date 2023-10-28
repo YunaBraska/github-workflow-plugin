@@ -20,14 +20,17 @@ import java.io.Serial;
 import java.io.Serializable;
 import java.nio.file.Files;
 import java.nio.file.Paths;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.StringJoiner;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import static com.github.yunabraska.githubworkflow.helper.FileDownloader.downloadContent;
 import static com.github.yunabraska.githubworkflow.helper.FileDownloader.downloadFileFromGitHub;
@@ -39,6 +42,7 @@ import static com.github.yunabraska.githubworkflow.helper.PsiElementHelper.getCh
 import static com.github.yunabraska.githubworkflow.helper.PsiElementHelper.hasText;
 import static java.lang.Boolean.parseBoolean;
 import static java.util.Collections.unmodifiableMap;
+import static java.util.Collections.unmodifiableSet;
 import static java.util.Optional.of;
 import static java.util.Optional.ofNullable;
 
@@ -53,6 +57,8 @@ public class GitHubAction implements Serializable {
     private final Map<String, String> metaData = new ConcurrentHashMap<>();
     private final Map<String, String> inputs = new ConcurrentHashMap<>();
     private final Map<String, String> outputs = new ConcurrentHashMap<>();
+    private final Set<String> ignoredInputs = ConcurrentHashMap.newKeySet();
+    private final Set<String> ignoredOutputs = ConcurrentHashMap.newKeySet();
     @Serial
     private static final long serialVersionUID = 135457798745235490L;
     private static final Logger LOG = Logger.getInstance(GitHubAction.class);
@@ -85,7 +91,7 @@ public class GitHubAction implements Serializable {
             slug = usesValue.substring(0, repoNameIndex > 0 ? repoNameIndex : tagIndex);
             if (!isAction) {
                 final int beginIndex = usesValue.lastIndexOf("/") + 1;
-                tmpName = beginIndex >= tagIndex? "InvalidAction" : usesValue.substring(beginIndex, tagIndex);
+                tmpName = beginIndex >= tagIndex ? "InvalidAction" : usesValue.substring(beginIndex, tagIndex);
             } else {
                 tmpSub = repoNameIndex < tagIndex && repoNameIndex > 0 ? "/" + usesValue.substring(repoNameIndex + 1, tagIndex) : "";
                 tmpName = usesValue.substring(userNameIndex + 1, tagIndex);
@@ -128,14 +134,18 @@ public class GitHubAction implements Serializable {
         if (isLocal()) {
             extractLocalParameters();
         }
-        return unmodifiableMap(inputs);
+        return concatMap(inputs, ignoredInputs.stream().filter(PsiElementHelper::hasText).collect(Collectors.toMap(key -> key, value -> "*** manual added input ***")));
     }
 
     public Map<String, String> freshOutputs() {
+        return freshOutputs(true);
+    }
+
+    public Map<String, String> freshOutputs(final boolean withIgnoredItems) {
         if (isLocal()) {
             extractLocalParameters();
         }
-        return unmodifiableMap(outputs);
+        return withIgnoredItems ? concatMap(outputs, ignoredOutputs.stream().filter(PsiElementHelper::hasText).collect(Collectors.toMap(key -> key, value -> "*** manual added output ***"))) : unmodifiableMap(outputs);
     }
 
     public String name() {
@@ -228,6 +238,35 @@ public class GitHubAction implements Serializable {
         return this;
     }
 
+    public GitHubAction suppressInput(final String id, final boolean supress) {
+        if (supress) {
+            ignoredInputs.add(id);
+        } else {
+            ignoredInputs.remove(id);
+        }
+        metaData.put("ignoredInputs", ignoredInputs.stream().filter(PsiElementHelper::hasText).collect(Collectors.joining(";")));
+        return this;
+    }
+
+    public GitHubAction suppressOutput(final String id, final boolean supress) {
+        if (supress) {
+            ignoredOutputs.add(id);
+        } else {
+            ignoredOutputs.remove(id);
+        }
+        metaData.put("ignoredOutputs", ignoredOutputs.stream().filter(PsiElementHelper::hasText).collect(Collectors.joining(";")));
+        return this;
+    }
+
+    public Set<String> ignoredInputs() {
+        return unmodifiableSet(ignoredInputs);
+    }
+
+    public Set<String> ignoredOutputs() {
+        return unmodifiableSet(ignoredOutputs);
+    }
+
+
     public Map<String, String> getInputs() {
         return unmodifiableMap(inputs);
     }
@@ -252,9 +291,10 @@ public class GitHubAction implements Serializable {
 
     public GitHubAction setMetaData(final Map<String, String> metaData) {
         this.metaData.putAll(metaData);
+        this.ignoredInputs.addAll(Arrays.stream(metaData.getOrDefault("ignoredInputs", "").split(";")).toList());
+        this.ignoredOutputs.addAll(Arrays.stream(metaData.getOrDefault("ignoredOutputs", "").split(";")).toList());
         return this;
     }
-
 
     public static VirtualFile findActionYaml(final String subPath, final VirtualFile projectDir) {
         return ofNullable(projectDir.findFileByRelativePath(subPath)).filter(p -> !p.isDirectory())
@@ -340,7 +380,7 @@ public class GitHubAction implements Serializable {
     private static Map<String, String> readActionParameters(final PsiElement psiElement, final String fieldName) {
         return getChild(psiElement.getContainingFile(), fieldName)
                 .map(PsiElementHelper::getChildren)
-                .map(children -> children.stream().collect(Collectors.toMap(YAMLKeyValue::getKeyText, PsiElementHelper::getDescription)))
+                .map(children -> children.stream().collect(Collectors.toMap(YAMLKeyValue::getKeyText, field -> PsiElementHelper.getDescription(field, FIELD_INPUTS.equals(fieldName)) )))
                 .orElseGet(Collections::emptyMap);
     }
 
@@ -349,7 +389,7 @@ public class GitHubAction implements Serializable {
         return getChild(psiElement.getContainingFile(), FIELD_ON)
                 .flatMap(keyValue -> getChild(psiElement.getContainingFile(), fieldName))
                 .map(PsiElementHelper::getChildren)
-                .map(children -> children.stream().collect(Collectors.toMap(YAMLKeyValue::getKeyText, PsiElementHelper::getDescription)))
+                .map(children -> children.stream().collect(Collectors.toMap(YAMLKeyValue::getKeyText, field -> PsiElementHelper.getDescription(field, FIELD_INPUTS.equals(fieldName)))))
                 .orElseGet(Collections::emptyMap);
     }
 
@@ -361,6 +401,10 @@ public class GitHubAction implements Serializable {
                 // ignored
             }
         });
+    }
+
+    private static <K, V> Map<K, V> concatMap(final Map<K, V> map1, final Map<K, V> map2) {
+        return Stream.concat(map1.entrySet().stream(), map2.entrySet().stream()).collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue, (v1, v2) -> v1));
     }
 
     @Override
@@ -380,8 +424,8 @@ public class GitHubAction implements Serializable {
     public String toString() {
         return new StringJoiner(", ", GitHubAction.class.getSimpleName() + "[", "]")
                 .add("metaData=" + metaData)
-                .add("inputs=" + inputs.size())
-                .add("outputs=" + outputs.size())
+                .add("inputs=" + (inputs.size() + ignoredInputs.size()))
+                .add("outputs=" + (outputs.size() + ignoredOutputs.size()))
                 .toString();
     }
 }

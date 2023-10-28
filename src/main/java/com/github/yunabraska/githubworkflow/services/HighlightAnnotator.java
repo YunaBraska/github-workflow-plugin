@@ -1,7 +1,6 @@
 package com.github.yunabraska.githubworkflow.services;
 
 import com.github.yunabraska.githubworkflow.helper.PsiElementHelper;
-import com.github.yunabraska.githubworkflow.model.GitHubAction;
 import com.github.yunabraska.githubworkflow.model.IconRenderer;
 import com.github.yunabraska.githubworkflow.model.SimpleElement;
 import com.github.yunabraska.githubworkflow.model.SyntaxAnnotation;
@@ -9,23 +8,18 @@ import com.intellij.codeInspection.ProblemHighlightType;
 import com.intellij.lang.annotation.AnnotationHolder;
 import com.intellij.lang.annotation.Annotator;
 import com.intellij.lang.annotation.HighlightSeverity;
-import com.intellij.openapi.editor.DefaultLanguageHighlighterColors;
-import com.intellij.openapi.keymap.KeymapUtil;
 import com.intellij.openapi.util.Key;
 import com.intellij.openapi.util.TextRange;
 import com.intellij.psi.PsiElement;
 import com.intellij.psi.impl.source.tree.LeafPsiElement;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.yaml.psi.YAMLKeyValue;
-import org.jetbrains.yaml.psi.YAMLSequenceItem;
 
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
-import java.util.Map;
-import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Predicate;
@@ -33,10 +27,21 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.*;
-import static com.github.yunabraska.githubworkflow.helper.HighlightAnnotatorHelper.*;
+import static com.github.yunabraska.githubworkflow.helper.HighlightAnnotatorHelper.addAnnotation;
+import static com.github.yunabraska.githubworkflow.helper.HighlightAnnotatorHelper.deleteElementAction;
+import static com.github.yunabraska.githubworkflow.helper.HighlightAnnotatorHelper.getFirstChild;
 import static com.github.yunabraska.githubworkflow.helper.PsiElementHelper.*;
+import static com.github.yunabraska.githubworkflow.logic.Action.highLightAction;
+import static com.github.yunabraska.githubworkflow.logic.Action.highlightActionInput;
+import static com.github.yunabraska.githubworkflow.logic.Envs.highLightEnvs;
+import static com.github.yunabraska.githubworkflow.logic.GitHub.highLightGitHub;
+import static com.github.yunabraska.githubworkflow.logic.Inputs.highLightInputs;
+import static com.github.yunabraska.githubworkflow.logic.Jobs.highLightJobs;
+import static com.github.yunabraska.githubworkflow.logic.Needs.highlightNeeds;
+import static com.github.yunabraska.githubworkflow.logic.Runner.highlightRunner;
+import static com.github.yunabraska.githubworkflow.logic.Secrets.highLightSecrets;
+import static com.github.yunabraska.githubworkflow.logic.Steps.highlightSteps;
 import static com.github.yunabraska.githubworkflow.model.NodeIcon.ICON_TEXT_VARIABLE;
-import static com.github.yunabraska.githubworkflow.model.SyntaxAnnotation.createAnnotation;
 import static com.intellij.lang.annotation.HighlightSeverity.INFORMATION;
 import static java.util.Optional.ofNullable;
 
@@ -44,18 +49,21 @@ public class HighlightAnnotator implements Annotator {
 
     @Override
     public void annotate(@NotNull final PsiElement psiElement, @NotNull final AnnotationHolder holder) {
+        //it's needed to handle single elements instead of bulk wise from parent. Parent elements are doesn't update so often.
         if (psiElement.isValid()) {
             processPsiElement(holder, psiElement);
             variableElementHandler(holder, psiElement);
             highlightRunOutputs(holder, psiElement);
+            // HIGHLIGHT ACTION INPUTS
+            highlightActionInput(holder, psiElement);
         }
     }
 
+    //TODO: handle single elements instead of bulk updates for more reliability
     public static void processPsiElement(final AnnotationHolder holder, final PsiElement psiElement) {
         toYAMLKeyValue(psiElement).ifPresent(element -> {
             switch (element.getKeyText()) {
-                case FIELD_USES -> usesHandler(holder, element);
-                case FIELD_WITH -> withHandler(holder, element);
+                case FIELD_USES -> highLightAction(holder, element);
                 case FIELD_NEEDS -> needsHandler(holder, element);
                 case FIELD_OUTPUTS -> outputsHandler(holder, element);
                 default -> {
@@ -82,38 +90,6 @@ public class HighlightAnnotator implements Annotator {
                 )));
     }
 
-    @SuppressWarnings("DataFlowIssue")
-    private static void usesHandler(final AnnotationHolder holder, final YAMLKeyValue element) {
-        final List<SyntaxAnnotation> result = new ArrayList<>();
-        ofNullable(element)
-                .map(GitHubActionCache::getAction)
-                .ifPresentOrElse(action -> {
-                    if (action.isResolved() && !action.isLocal()) {
-                        result.add(newReloadAction(action));
-                    }
-                    if (action.isResolved() && action.isLocal()) {
-                        final String tooltip = String.format("Open declaration (%s)", Arrays.stream(KeymapUtil.getActiveKeymapShortcuts("GotoDeclaration").getShortcuts())
-                                .limit(2)
-                                .map(KeymapUtil::getShortcutText)
-                                .collect(Collectors.joining(", "))
-                        );
-                        holder.newAnnotation(HighlightSeverity.INFORMATION, tooltip)
-                                .range(getTextElement(element).orElse(null))
-                                .textAttributes(DefaultLanguageHighlighterColors.HIGHLIGHTED_REFERENCE)
-                                .tooltip(tooltip)
-                                .create();
-                        result.add(newJumpToFile(action));
-                    }
-                    if (!action.isResolved()) {
-                        result.add(newSuppressAction(action));
-                        if (!action.isSuppressed()) {
-                            result.add(action.isLocal() ? deleteInvalidAction(element) : newUnresolvedAction(element));
-                        }
-                    }
-                }, () -> result.add(newUnresolvedAction(element))); //FIXME: is this a valid state?
-        addAnnotation(holder, element, result);
-    }
-
     private static void needsHandler(final AnnotationHolder holder, final YAMLKeyValue element) {
         final List<PsiElement> neededJobs = getTextElements(element);
         if (!neededJobs.isEmpty()) {
@@ -133,24 +109,6 @@ public class HighlightAnnotator implements Annotator {
 
         }
 
-    }
-
-    private static void withHandler(final AnnotationHolder holder, final PsiElement element) {
-        getParentStepOrJob(element)
-                .flatMap(step -> PsiElementHelper.getChild(step, FIELD_USES))
-                .map(GitHubActionCache::getAction)
-                .filter(GitHubAction::isResolved)
-                .map(GitHubAction::freshInputs)
-                .map(Map::keySet)
-                .ifPresent(inputs -> PsiElementHelper.getChildren(element).forEach(kvInput -> {
-                    if (!inputs.contains(kvInput.getKeyText())) {
-                        addAnnotation(holder, kvInput, new SyntaxAnnotation(
-                                "Delete invalid input [" + kvInput.getKeyText() + "]",
-                                null,
-                                deleteElementAction(kvInput.getTextRange())
-                        ));
-                    }
-                }));
     }
 
 
@@ -189,59 +147,14 @@ public class HighlightAnnotator implements Annotator {
                 .ifPresent(element -> toSimpleElements(element).forEach(simpleElement -> {
                             final SimpleElement[] parts = splitToElements(simpleElement);
                             switch (parts.length > 0 ? parts[0].text() : "N/A") {
-                                case FIELD_INPUTS ->
-                                        ifEnoughItems(holder, element, parts, 2, 2, inputId -> isDefinedItem0(element, holder, inputId, listInputs(element).stream().map(SimpleElement::key).toList()));
-                                case FIELD_SECRETS -> ifEnoughItems(holder, element, parts, 2, 2, secretId -> {
-                                    // SECRETS ARE NOT ALLOWED IN IF STATEMENT
-                                    if (parentIf.isPresent()) {
-                                        final TextRange range = psiElement.getTextRange();
-                                        final TextRange textRange = new TextRange(range.getStartOffset() + parts[0].startIndexOffset(), range.getStartOffset() + parts[parts.length - 1].endIndexOffset());
-                                        new SyntaxAnnotation(
-                                                "Remove [" + simpleElement.text() + "] - Secrets are not valid in `if` statements",
-                                                null,
-                                                deleteElementAction(textRange)
-                                        ).createAnnotation(psiElement, textRange, holder);
-                                    }
-                                    final List<String> secrets = listSecrets(element).stream().map(SimpleElement::key).toList();
-                                    if (!secrets.contains(secretId.text())) {
-                                        final TextRange textRange = simpleTextRange(element, secretId);
-                                        createAnnotation(element, textRange, holder, secrets.stream().map(secret -> new SyntaxAnnotation(
-                                                "Replace [" + secretId.text() + "] with [" + secret + "] - if it is not provided at runtime",
-                                                null,
-                                                HighlightSeverity.WEAK_WARNING,
-                                                ProblemHighlightType.WEAK_WARNING,
-                                                replaceAction(textRange, secret),
-                                                true
-                                        )).toList());
-                                    }
-                                });
-                                case FIELD_ENVS ->
-                                        ifEnoughItems(holder, element, parts, 2, -1, envId -> isDefinedItem0(element, holder, envId, listEnvs(element).stream().map(SimpleElement::key).toList()));
-                                case FIELD_GITHUB ->
-                                        ifEnoughItems(holder, element, parts, 2, -1, envId -> isDefinedItem0(element, holder, envId, new ArrayList<>(DEFAULT_VALUE_MAP.get(FIELD_GITHUB).get().keySet())));
-                                case FIELD_RUNNER ->
-                                        ifEnoughItems(holder, element, parts, 2, 2, runnerId -> isDefinedItem0(element, holder, runnerId, new ArrayList<>(DEFAULT_VALUE_MAP.get(FIELD_RUNNER).get().keySet())));
-                                case FIELD_STEPS -> {
-                                    if (parts.length > 2 && List.of(FIELD_CONCLUSION, FIELD_OUTCOME).contains(parts[2].text())) {
-                                        ifEnoughStepItems(holder, element, parts, 3, VALID_STEP_FIELDS);
-                                    } else {
-                                        ifEnoughStepItems(holder, element, parts, 4, VALID_OUTPUT_FIELDS);
-                                    }
-                                }
-                                case FIELD_JOBS -> ifEnoughItems(holder, element, parts, 4, 4, jobId -> {
-                                    final List<YAMLKeyValue> jobs = listJobs(element);
-                                    if (isDefinedItem0(element, holder, jobId, jobs.stream().map(YAMLKeyValue::getKeyText).toList()) && isField2Valid(element, holder, parts[2])) {
-                                        final List<String> outputs = listJobOutputs(jobs.stream().filter(job -> job.getKeyText().equals(jobId.text())).findFirst().orElse(null)).stream().map(SimpleElement::key).toList();
-                                        isValidItem3(element, holder, parts[3], outputs);
-                                    }
-                                });
-                                case FIELD_NEEDS -> ifEnoughItems(holder, element, parts, 4, 4, jobId -> {
-                                    final List<String> jobIds = listJobNeeds(element);
-                                    if (isDefinedItem0(element, holder, jobId, jobIds) && isField2Valid(element, holder, parts[2])) {
-                                        final List<String> outputs = listJobOutputs(listAllJobs(element).stream().filter(job -> job.getKeyText().equals(jobId.text())).findFirst().orElse(null)).stream().map(SimpleElement::key).toList();
-                                        isValidItem3(element, holder, parts[3], outputs);
-                                    }
-                                });
+                                case FIELD_INPUTS -> highLightInputs(holder, element, parts);
+                                case FIELD_SECRETS -> highLightSecrets(holder, psiElement, element, simpleElement, parts, parentIf.orElse(null));
+                                case FIELD_ENVS -> highLightEnvs(holder, element, parts);
+                                case FIELD_GITHUB -> highLightGitHub(holder, element, parts);
+                                case FIELD_RUNNER -> highlightRunner(holder, element, parts);
+                                case FIELD_STEPS -> highlightSteps(holder, element, parts);
+                                case FIELD_JOBS -> highLightJobs(holder, element, parts);
+                                case FIELD_NEEDS -> highlightNeeds(holder, element, parts);
                                 default -> {
                                     // ignored
                                 }
@@ -333,15 +246,5 @@ public class HighlightAnnotator implements Annotator {
         return elementStart;
     }
 
-    private static void ifEnoughStepItems(final AnnotationHolder holder, final PsiElement element, final SimpleElement[] parts, final int numberOfItems, final List<String> validFields) {
-        ifEnoughItems(holder, element, parts, numberOfItems, numberOfItems, stepId -> {
-            final List<YAMLSequenceItem> steps = listSteps(element);
-            if (isDefinedItem0(element, holder, stepId, steps.stream().map(step -> getText(step, FIELD_ID).orElse(null)).filter(Objects::nonNull).toList()) && isField2Valid(element, holder, parts[2], validFields)) {
-                final List<String> outputs = listStepOutputs(steps.stream().filter(step -> getText(step, FIELD_ID).filter(id -> id.equals(stepId.text())).isPresent()).findFirst().orElse(null)).stream().map(SimpleElement::key).toList();
-                if (parts.length > 3) {
-                    isValidItem3(element, holder, parts[3], outputs);
-                }
-            }
-        });
-    }
+
 }

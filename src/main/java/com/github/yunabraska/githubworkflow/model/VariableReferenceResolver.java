@@ -19,12 +19,12 @@ import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.F
 import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.FIELD_NEEDS;
 import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.FIELD_STEPS;
 import static com.github.yunabraska.githubworkflow.helper.PsiElementHelper.getChild;
-import static com.github.yunabraska.githubworkflow.helper.PsiElementHelper.getJobNeed;
 import static com.github.yunabraska.githubworkflow.helper.PsiElementHelper.getTextElements;
-import static com.github.yunabraska.githubworkflow.helper.PsiElementHelper.listInputsRaw;
-import static com.github.yunabraska.githubworkflow.helper.PsiElementHelper.listJobs;
-import static com.github.yunabraska.githubworkflow.helper.PsiElementHelper.listSteps;
 import static com.github.yunabraska.githubworkflow.helper.PsiElementHelper.removeQuotes;
+import static com.github.yunabraska.githubworkflow.logic.Inputs.listInputsRaw;
+import static com.github.yunabraska.githubworkflow.logic.Jobs.listJobs;
+import static com.github.yunabraska.githubworkflow.logic.Needs.getJobNeed;
+import static com.github.yunabraska.githubworkflow.logic.Steps.listSteps;
 import static com.github.yunabraska.githubworkflow.services.HighlightAnnotator.VARIABLE_ELEMENTS;
 import static com.github.yunabraska.githubworkflow.services.HighlightAnnotator.splitToElements;
 import static java.util.Optional.ofNullable;
