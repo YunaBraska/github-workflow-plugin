@@ -84,7 +84,6 @@ public class Steps {
     }
 
     // ########## COMMONS ##########
-
     public static List<YAMLSequenceItem> listSteps(final PsiElement psiElement) {
         // StepList position == step?    list previous steps in current job
         // StepList position == outputs? list all      steps in current job

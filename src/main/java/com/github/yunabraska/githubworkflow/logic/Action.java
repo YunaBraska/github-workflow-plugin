@@ -1,6 +1,7 @@
 package com.github.yunabraska.githubworkflow.logic;
 
 import com.github.yunabraska.githubworkflow.model.GitHubAction;
+import com.github.yunabraska.githubworkflow.model.LocalActionReferenceResolver;
 import com.github.yunabraska.githubworkflow.model.SimpleElement;
 import com.github.yunabraska.githubworkflow.model.SyntaxAnnotation;
 import com.github.yunabraska.githubworkflow.services.GitHubActionCache;
@@ -9,8 +10,10 @@ import com.intellij.lang.annotation.AnnotationHolder;
 import com.intellij.lang.annotation.HighlightSeverity;
 import com.intellij.openapi.editor.DefaultLanguageHighlighterColors;
 import com.intellij.openapi.keymap.KeymapUtil;
+import com.intellij.openapi.paths.WebReference;
 import com.intellij.openapi.util.TextRange;
 import com.intellij.psi.PsiElement;
+import com.intellij.psi.PsiReference;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.yaml.psi.YAMLKeyValue;
 import org.jetbrains.yaml.psi.YAMLSequenceItem;
@@ -35,6 +38,7 @@ import static com.github.yunabraska.githubworkflow.helper.PsiElementHelper.getCh
 import static com.github.yunabraska.githubworkflow.helper.PsiElementHelper.getParent;
 import static com.github.yunabraska.githubworkflow.helper.PsiElementHelper.getParentStepOrJob;
 import static com.github.yunabraska.githubworkflow.helper.PsiElementHelper.getTextElement;
+import static com.github.yunabraska.githubworkflow.helper.PsiElementHelper.goToDeclarationString;
 import static com.github.yunabraska.githubworkflow.helper.PsiElementHelper.toYAMLKeyValue;
 import static com.github.yunabraska.githubworkflow.model.NodeIcon.EMPTY;
 import static com.github.yunabraska.githubworkflow.model.NodeIcon.ICON_OUTPUT;
@@ -42,14 +46,13 @@ import static com.github.yunabraska.githubworkflow.model.NodeIcon.IGNORED;
 import static com.github.yunabraska.githubworkflow.model.NodeIcon.SUPPRESS_OFF;
 import static com.github.yunabraska.githubworkflow.model.SimpleElement.completionItemsOf;
 import static com.github.yunabraska.githubworkflow.services.GitHubActionCache.triggerSyntaxHighlightingForActiveFiles;
+import static com.github.yunabraska.githubworkflow.services.ReferenceContributor.ACTION_KEY;
 import static java.util.Optional.ofNullable;
 
 public class Action {
 
+    // ########## SYNTAX HIGHLIGHTING ##########
     public static void highLightAction(final AnnotationHolder holder, final YAMLKeyValue element) {
-        //TODO: suppress warnings for whole action
-        //TODO: suppress warnings for single input / outputs action
-
         final List<SyntaxAnnotation> result = new ArrayList<>();
         ofNullable(element)
                 .map(GitHubActionCache::getAction)
@@ -64,25 +67,6 @@ public class Action {
                     }
                 }, () -> result.add(newUnresolvedAction(element))); //FIXME: is this a valid state?
         addAnnotation(holder, element, result);
-    }
-
-    private static void highlightLocalActions(final AnnotationHolder holder, final YAMLKeyValue element, final GitHubAction action, final List<SyntaxAnnotation> result) {
-        if (action.isResolved() && action.isLocal()) {
-            final String tooltip = String.format("Open declaration (%s)", Arrays.stream(KeymapUtil.getActiveKeymapShortcuts("GotoDeclaration").getShortcuts())
-                    .limit(2)
-                    .map(KeymapUtil::getShortcutText)
-                    .collect(Collectors.joining(", "))
-            );
-            getTextElement(element).ifPresent(textElement -> {
-                holder.newAnnotation(HighlightSeverity.INFORMATION, tooltip)
-                        .range(textElement)
-                        .textAttributes(DefaultLanguageHighlighterColors.HIGHLIGHTED_REFERENCE)
-                        .tooltip(tooltip)
-                        .create();
-                result.add(newJumpToFile(action));
-            });
-
-        }
     }
 
     public static void highlightActionInput(final AnnotationHolder holder, final PsiElement psiElement) {
@@ -106,24 +90,7 @@ public class Action {
     }
 
     public static List<SyntaxAnnotation> highlightActionOutputs(final YAMLSequenceItem stepItem, final SimpleElement part) {
-        return getAction(stepItem).map(action -> {
-//            final String outputId = part.text();
-//            final boolean isSuppressed = action.ignoredInputs().contains(outputId);
-//            final int startRange = element.getTextRange().getStartOffset();
-//            final String message = toggleText(outputId, isSuppressed);
-//            holder.newAnnotation(HighlightSeverity.INFORMATION, message)
-//                    .tooltip(message)
-//                    .range(new TextRange(startRange + part.range().getStartOffset(), startRange + part.range().getEndOffset()))
-//                    .withFix(new SyntaxAnnotation(message, IGNORED, fix -> {
-//                        action.suppressOutput(outputId, !isSuppressed);
-//                        triggerSyntaxHighlightingForActiveFiles();
-//                    }))
-//                    .create();
-//            newSuppressOutput(action, outputId).createAnnotation(element, new TextRange(startRange + part.range().getStartOffset(), startRange + part.range().getEndOffset()), holder);
-                    return newSuppressOutput(action, part.text());
-                })
-                .map(List::of)
-                .orElseGet(Collections::emptyList);
+        return getAction(stepItem).map(action -> newSuppressOutput(action, part.text())).map(List::of).orElseGet(Collections::emptyList);
     }
 
     public static void highlightActionOutputs(final AnnotationHolder holder, final PsiElement psiElement, final YAMLSequenceItem stepItem, final SimpleElement part) {
@@ -136,6 +103,34 @@ public class Action {
         });
     }
 
+    // ########## REFERENCE RESOLVER ##########
+    public static Optional<PsiReference[]> referenceGithubAction(final PsiElement psiElement) {
+        return getParent(psiElement, FIELD_USES)
+                .map(GitHubActionCache::getAction)
+                .filter(GitHubAction::isResolved)
+                .filter(action -> !action.isSuppressed())
+                .map(action -> {
+                            psiElement.putUserData(ACTION_KEY, action);
+                            return action.isLocal() ? new PsiReference[]{new LocalActionReferenceResolver(psiElement)} : new WebReference[]{new WebReference(psiElement, action.githubUrl())};
+                        }
+                );
+    }
+
+    private static void highlightLocalActions(final AnnotationHolder holder, final YAMLKeyValue element, final GitHubAction action, final List<SyntaxAnnotation> result) {
+        if (action.isResolved() && action.isLocal()) {
+            final String tooltip = goToDeclarationString();
+            getTextElement(element).ifPresent(textElement -> {
+                holder.newAnnotation(HighlightSeverity.INFORMATION, tooltip)
+                        .range(textElement)
+                        .textAttributes(DefaultLanguageHighlighterColors.HIGHLIGHTED_REFERENCE)
+                        .tooltip(tooltip)
+                        .create();
+                result.add(newJumpToFile(action));
+            });
+        }
+    }
+
+    // ########## CODE COMPLETION ##########
     public static List<SimpleElement> listActionsOutputs(final PsiElement psiElement) {
         return getAction(psiElement)
                 .map(GitHubAction::freshOutputs)
@@ -143,7 +138,7 @@ public class Action {
                 .orElseGet(Collections::emptyList);
     }
 
-    @NotNull
+    // ########## COMMONS ##########
     private static Optional<GitHubAction> getAction(final PsiElement psiElement) {
         return ofNullable(psiElement)
                 .flatMap(element -> getChild(element, FIELD_USES))
@@ -151,7 +146,6 @@ public class Action {
     }
 
 
-    @NotNull
     private static SyntaxAnnotation newSuppressAction(final GitHubAction action) {
         final boolean suppressed = action.isSuppressed();
         return new SyntaxAnnotation(

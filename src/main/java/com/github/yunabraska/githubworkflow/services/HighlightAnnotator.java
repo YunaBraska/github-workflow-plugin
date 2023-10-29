@@ -27,10 +27,15 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.*;
-import static com.github.yunabraska.githubworkflow.helper.HighlightAnnotatorHelper.addAnnotation;
 import static com.github.yunabraska.githubworkflow.helper.HighlightAnnotatorHelper.deleteElementAction;
 import static com.github.yunabraska.githubworkflow.helper.HighlightAnnotatorHelper.getFirstChild;
-import static com.github.yunabraska.githubworkflow.helper.PsiElementHelper.*;
+import static com.github.yunabraska.githubworkflow.helper.PsiElementHelper.getAllElements;
+import static com.github.yunabraska.githubworkflow.helper.PsiElementHelper.getParent;
+import static com.github.yunabraska.githubworkflow.helper.PsiElementHelper.getParentJob;
+import static com.github.yunabraska.githubworkflow.helper.PsiElementHelper.getText;
+import static com.github.yunabraska.githubworkflow.helper.PsiElementHelper.parseEnvVariables;
+import static com.github.yunabraska.githubworkflow.helper.PsiElementHelper.parseOutputVariables;
+import static com.github.yunabraska.githubworkflow.helper.PsiElementHelper.toYAMLKeyValue;
 import static com.github.yunabraska.githubworkflow.logic.Action.highLightAction;
 import static com.github.yunabraska.githubworkflow.logic.Action.highlightActionInput;
 import static com.github.yunabraska.githubworkflow.logic.Envs.highLightEnvs;
@@ -56,6 +61,7 @@ public class HighlightAnnotator implements Annotator {
             highlightRunOutputs(holder, psiElement);
             // HIGHLIGHT ACTION INPUTS
             highlightActionInput(holder, psiElement);
+            highlightNeeds(holder, psiElement);
         }
     }
 
@@ -64,7 +70,6 @@ public class HighlightAnnotator implements Annotator {
         toYAMLKeyValue(psiElement).ifPresent(element -> {
             switch (element.getKeyText()) {
                 case FIELD_USES -> highLightAction(holder, element);
-                case FIELD_NEEDS -> needsHandler(holder, element);
                 case FIELD_OUTPUTS -> outputsHandler(holder, element);
                 default -> {
                     // No Action
@@ -89,28 +94,6 @@ public class HighlightAnnotator implements Annotator {
                         .create()
                 )));
     }
-
-    private static void needsHandler(final AnnotationHolder holder, final YAMLKeyValue element) {
-        final List<PsiElement> neededJobs = getTextElements(element);
-        if (!neededJobs.isEmpty()) {
-            final String currentJobName = getParentJob(element).map(YAMLKeyValue::getKeyText).orElse("");
-            final List<String> previousJobNames = getAllJobs(element).stream().map(YAMLKeyValue::getKeyText).takeWhile(jobName -> !currentJobName.equals(jobName)).toList();
-            neededJobs.forEach(neededJob -> {
-                final String jobId = removeQuotes(neededJob.getText());
-                if (!previousJobNames.contains(jobId)) {
-                    // INVALID JOB_ID
-                    addAnnotation(holder, neededJob, new SyntaxAnnotation(
-                            "Remove invalid jobId [" + jobId + "] - this jobId doesn't match any previous job",
-                            null,
-                            deleteElementAction(neededJob.getTextRange())
-                    ));
-                }
-            });
-
-        }
-
-    }
-
 
     private static void outputsHandler(final AnnotationHolder holder, final PsiElement psiElement) {
         getParentJob(psiElement).ifPresent(job -> {
@@ -148,7 +131,8 @@ public class HighlightAnnotator implements Annotator {
                             final SimpleElement[] parts = splitToElements(simpleElement);
                             switch (parts.length > 0 ? parts[0].text() : "N/A") {
                                 case FIELD_INPUTS -> highLightInputs(holder, element, parts);
-                                case FIELD_SECRETS -> highLightSecrets(holder, psiElement, element, simpleElement, parts, parentIf.orElse(null));
+                                case FIELD_SECRETS ->
+                                        highLightSecrets(holder, psiElement, element, simpleElement, parts, parentIf.orElse(null));
                                 case FIELD_ENVS -> highLightEnvs(holder, element, parts);
                                 case FIELD_GITHUB -> highLightGitHub(holder, element, parts);
                                 case FIELD_RUNNER -> highlightRunner(holder, element, parts);

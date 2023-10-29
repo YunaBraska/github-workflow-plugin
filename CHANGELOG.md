@@ -9,7 +9,8 @@
 ### Acknowledge undefined action inputs & outputs
 
 - Fix: Keep user settings after action refresh
-- Feat: Acknowledge undefined action inputs & outputs
+- Feat: [#33 Acknowledge undefined action inputs & outputs](https://github.com/YunaBraska/github-workflow-plugin/issues/33)
+- Feat: Click on `Needs` navigates directly to the `Job`
 - Chore: refactored & split logic to specific classes
   like \[`Action`, `Envs`, `GitHub`, `Inputs`, `Jobs`, `Needs`, `Runner`, `Secrets`, `Steps`]
 

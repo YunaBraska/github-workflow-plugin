@@ -1,6 +1,7 @@
 package com.github.yunabraska.githubworkflow.helper;
 
 import com.github.yunabraska.githubworkflow.model.SimpleElement;
+import com.intellij.openapi.keymap.KeymapUtil;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.TextRange;
 import com.intellij.psi.PsiElement;
@@ -24,6 +25,7 @@ import java.util.Optional;
 import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.regex.Matcher;
+import java.util.stream.Collectors;
 
 import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.FIELD_JOBS;
 import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.FIELD_STEPS;
@@ -147,7 +149,6 @@ public class PsiElementHelper {
         return getElementUnderParent(psiElement, FIELD_STEPS, YAMLSequenceItem.class);
     }
 
-    //TOTO: getChild(psiElement, FIELD_STEPS)???
     public static List<YAMLSequenceItem> getChildSteps(final PsiElement psiElement) {
         return ofNullable(psiElement)
                 .map(element -> element instanceof final YAMLKeyValue keyValue && FIELD_STEPS.equals(keyValue.getKeyText()) ? List.of(keyValue) : getAllElements(element, FIELD_STEPS))
@@ -230,6 +231,14 @@ public class PsiElementHelper {
 
     public static boolean hasText(final String str) {
         return (str != null && !str.isEmpty() && containsText(str));
+    }
+
+    public static String goToDeclarationString() {
+        return String.format("Open declaration (%s)", Arrays.stream(KeymapUtil.getActiveKeymapShortcuts("GotoDeclaration").getShortcuts())
+                .limit(2)
+                .map(KeymapUtil::getShortcutText)
+                .collect(Collectors.joining(", "))
+        );
     }
 
     private static Map<String, String> toGithubOutputs(final String text) {
