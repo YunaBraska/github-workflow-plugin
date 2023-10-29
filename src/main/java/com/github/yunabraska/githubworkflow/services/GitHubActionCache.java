@@ -26,13 +26,13 @@ import org.jetbrains.yaml.psi.YAMLKeyValue;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Stream;
 
-import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.CACHE_ONE_DAY;
 import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.FIELD_USES;
 import static com.github.yunabraska.githubworkflow.helper.PsiElementHelper.getProject;
 import static com.github.yunabraska.githubworkflow.model.GitHubAction.createGithubAction;
@@ -66,9 +66,15 @@ public class GitHubActionCache implements PersistentStateComponent<GitHubActionC
 
     public void cleanUp() {
         final long currentTime = System.currentTimeMillis();
-        state.actions.entrySet().removeIf(entry -> currentTime > entry.getValue().expiryTime()
-                || isUnresolvedAndOlderThen30Min(entry, currentTime)
-        );
+        new HashMap<>(state.actions).forEach((key, action) -> {
+            if (currentTime > action.expiryTime()) {
+                if (action.isSuppressed() || !action.ignoredInputs().isEmpty() || !action.ignoredOutputs().isEmpty()) {
+                    saveNewAction(ProjectManager.getInstance().getDefaultProject(), action);
+                } else {
+                    state.actions.remove(key);
+                }
+            }
+        });
     }
 
     protected GitHubAction get(final Project project, final String usesValue) {
@@ -77,17 +83,8 @@ public class GitHubActionCache implements PersistentStateComponent<GitHubActionC
         final String path = getAbsolutePath(isLocal, usesCleaned, project);
         return ofNullable(path)
                 .map(state.actions::get)
-                .filter(action -> !action.isSchema())
-                .filter(action -> System.currentTimeMillis() < action.expiryTime())
-                .orElseGet(() -> {
-                    final GitHubAction result = createGithubAction(isLocal, usesCleaned, path);
-                    state.actions.put(path, result);
-                    return result;
-                });
-    }
-
-    public boolean isAvailable(final String key) {
-        return state.actions.containsKey(key);
+                .map(action -> System.currentTimeMillis() < action.expiryTime() ? action : saveNewAction(usesCleaned, path, isLocal, action))
+                .orElseGet(() -> saveNewAction(usesCleaned, path, isLocal, null));
     }
 
     public String remove(final String usesValue) {
@@ -97,8 +94,8 @@ public class GitHubActionCache implements PersistentStateComponent<GitHubActionC
 
     public GitHubAction reloadAsync(final Project project, final String usesValue) {
         return project == null ? null : ofNullable(usesValue)
-                .map(this::remove)
-                .map(uses -> get(project, uses))
+                .map(state.actions::get)
+                .map(oldAction -> saveNewAction(project, oldAction))
                 .map(action -> {
                     ApplicationManager.getApplication().executeOnPooledThread(() -> {
                         action.resolve();
@@ -185,6 +182,26 @@ public class GitHubActionCache implements PersistentStateComponent<GitHubActionC
                 .filter(keyValue -> FIELD_USES.equals(keyValue.getKeyText()));
     }
 
+    private GitHubAction saveNewAction(final Project project, final GitHubAction oldAction) {
+        final boolean isLocal = !oldAction.usesValue().contains("@");
+        return saveNewAction(oldAction.usesValue(), getAbsolutePath(isLocal, oldAction.usesValue(), project), isLocal, oldAction);
+    }
+
+    private GitHubAction saveNewAction(final String usesValue, final String path, final boolean isLocal, final GitHubAction oldAction) {
+        return ofNullable(path).map(absolutePath -> {
+            final GitHubAction newAction = createGithubAction(isLocal, usesValue, path);
+
+            // RESTORE MANUAL SAVED VALUES
+            if (oldAction != null) {
+                newAction.isSuppressed(oldAction.isSuppressed());
+                oldAction.ignoredInputs().forEach(input -> newAction.suppressInput(input, true));
+                oldAction.ignoredOutputs().forEach(input -> newAction.suppressOutput(input, true));
+            }
+            state.actions.put(absolutePath, newAction);
+            return newAction;
+        }).orElse(null);
+    }
+
     private String getAbsolutePath(final boolean isLocal, final String subPath, final Project project) {
         return !isLocal ? subPath : ofNullable(project)
                 .map(ProjectUtil::guessProjectDir)
@@ -207,11 +224,6 @@ public class GitHubActionCache implements PersistentStateComponent<GitHubActionC
 
     private static Optional<String> getChildWithUsesValue(final PsiElement psiElement) {
         return ofNullable(psiElement).filter(PsiElement::isValid).flatMap(element -> PsiElementHelper.getChild(element, FIELD_USES)).flatMap(PsiElementHelper::getText);
-    }
-
-    private static boolean isUnresolvedAndOlderThen30Min(final Map.Entry<String, GitHubAction> entry, final long currentTime) {
-        final long time = currentTime + ((CACHE_ONE_DAY * 14) - 30);
-        return !entry.getValue().isResolved() && !entry.getValue().isSuppressed() && time > entry.getValue().expiryTime();
     }
 
 }

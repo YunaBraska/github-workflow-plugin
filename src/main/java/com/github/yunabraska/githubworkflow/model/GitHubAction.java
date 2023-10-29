@@ -48,17 +48,22 @@ import static java.util.Optional.ofNullable;
 
 /**
  * Serialized class for JetBrains Cache
- * Name can be miss leading as it's used for [GitHub Actions, GitHub Workflows, GitHub Schema]
+ * Name can be miss leading as it's used for [GitHub Actions, GitHub Workflows]
  * Try to use the metaData and don't use non-serializable fields
  */
 @SuppressWarnings("unused")
 public class GitHubAction implements Serializable {
 
+    // SERIALIZABLE
     private final Map<String, String> metaData = new ConcurrentHashMap<>();
     private final Map<String, String> inputs = new ConcurrentHashMap<>();
     private final Map<String, String> outputs = new ConcurrentHashMap<>();
+
+    // NON SERIALIZABLE
     private final Set<String> ignoredInputs = ConcurrentHashMap.newKeySet();
     private final Set<String> ignoredOutputs = ConcurrentHashMap.newKeySet();
+
+    // STATICS
     @Serial
     private static final long serialVersionUID = 135457798745235490L;
     private static final Logger LOG = Logger.getInstance(GitHubAction.class);
@@ -66,7 +71,6 @@ public class GitHubAction implements Serializable {
     public static GitHubAction createSchemaAction(final String url, final String content) {
         return new GitHubAction()
                 .isResolved(true)
-                .isSchema(true)
                 .isLocal(true)
                 .isSuppressed(false)
                 .name(content)
@@ -109,7 +113,6 @@ public class GitHubAction implements Serializable {
                 .expiryTime(System.currentTimeMillis() + (CACHE_ONE_DAY * 14))
                 .isLocal(isLocal)
                 .setAction(isAction)
-                .isSchema(false)
                 .isSuppressed(false)
                 ;
     }
@@ -217,15 +220,6 @@ public class GitHubAction implements Serializable {
 
     public GitHubAction isResolved(final boolean isResolved) {
         metaData.put("isResolved", Boolean.toString(isResolved));
-        return this;
-    }
-
-    public boolean isSchema() {
-        return parseBoolean(metaData.getOrDefault("isSchema", "false"));
-    }
-
-    public GitHubAction isSchema(final boolean isSchema) {
-        metaData.put("isSchema", Boolean.toString(isSchema));
         return this;
     }
 
@@ -380,7 +374,7 @@ public class GitHubAction implements Serializable {
     private static Map<String, String> readActionParameters(final PsiElement psiElement, final String fieldName) {
         return getChild(psiElement.getContainingFile(), fieldName)
                 .map(PsiElementHelper::getChildren)
-                .map(children -> children.stream().collect(Collectors.toMap(YAMLKeyValue::getKeyText, field -> PsiElementHelper.getDescription(field, FIELD_INPUTS.equals(fieldName)) )))
+                .map(children -> children.stream().collect(Collectors.toMap(YAMLKeyValue::getKeyText, field -> PsiElementHelper.getDescription(field, FIELD_INPUTS.equals(fieldName)))))
                 .orElseGet(Collections::emptyMap);
     }
 

@@ -4,9 +4,18 @@
 
 ## [Unreleased]
 
+## [3.2.0] - 2023-10-14
+
+### Acknowledge undefined action inputs & outputs
+
+- Fix: Keep user settings after action refresh
+- Feat: Acknowledge undefined action inputs & outputs
+- Chore: refactored & split logic to specific classes
+  like \[`Action`, `Envs`, `GitHub`, `Inputs`, `Jobs`, `Needs`, `Runner`, `Secrets`, `Steps`]
+
 ## [3.1.0] - 2023-10-14
 
-### Feature
+### Code Completion for steps outcome && conclusion
 
 - Feat: Code Completion for steps outcome &&
   conclusion [#37 Schema Cache](https://github.com/YunaBraska/github-workflow-plugin/pull/37) Big thanks
