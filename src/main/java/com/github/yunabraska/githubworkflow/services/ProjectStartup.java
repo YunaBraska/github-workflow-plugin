@@ -89,17 +89,25 @@ public class ProjectStartup implements ProjectActivity {
     }
 
     private static void asyncInitAllActions(final Project project, final VirtualFile virtualFile) {
-        if (virtualFile != null && (GitHubWorkflowHelper.isWorkflowPath(toPath(virtualFile.getPath())))) {
-            final List<GitHubAction> actions = new ArrayList<>();
-            // READ CONTEXT
-            ApplicationManager.getApplication().runReadAction(() -> Optional.of(PsiManager.getInstance(project))
-                    .map(psiManager -> psiManager.findFile(virtualFile))
-                    .map(psiFile -> PsiElementHelper.getAllElements(psiFile, FIELD_USES))
-                    .ifPresent(usesList -> usesList.stream().map(GitHubActionCache::getAction).filter(action -> !action.isSuppressed()).filter(action -> !action.isResolved()).forEach(actions::add))
-            );
+        final Runnable task = () -> {
+            if (virtualFile != null && (GitHubWorkflowHelper.isWorkflowPath(toPath(virtualFile.getPath())))) {
+                final List<GitHubAction> actions = new ArrayList<>();
+                // READ CONTEXT
+                ApplicationManager.getApplication().runReadAction(() -> Optional.of(PsiManager.getInstance(project))
+                        .map(psiManager -> psiManager.findFile(virtualFile))
+                        .map(psiFile -> PsiElementHelper.getAllElements(psiFile, FIELD_USES))
+                        .ifPresent(usesList -> usesList.stream().map(GitHubActionCache::getAction).filter(action -> !action.isSuppressed()).filter(action -> !action.isResolved()).forEach(actions::add))
+                );
 
-            // ASYNC HTTP CONTEXT
-            GitHubActionCache.resolveActionsAsync(actions);
+                // ASYNC HTTP CONTEXT
+                GitHubActionCache.resolveActionsAsync(actions);
+            }
+        };
+
+        if (!DumbService.isDumb(project)) {
+            ApplicationManager.getApplication().executeOnPooledThread(task);
+        } else {
+            DumbService.getInstance(project).runWhenSmart(() -> ApplicationManager.getApplication().executeOnPooledThread(task));
         }
     }
 }
