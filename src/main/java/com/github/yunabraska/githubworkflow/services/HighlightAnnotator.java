@@ -120,33 +120,6 @@ public class HighlightAnnotator implements Annotator {
         });
     }
 
-
-    private static void variableElementHandler(final AnnotationHolder holder, final PsiElement psiElement) {
-        final Optional<YAMLKeyValue> parentIf = getParent(psiElement, FIELD_IF);
-        Optional.of(psiElement)
-                .filter(LeafPsiElement.class::isInstance)
-                .map(LeafPsiElement.class::cast)
-                .filter(isElementWithVariables(parentIf.orElse(null)))
-                .ifPresent(element -> toSimpleElements(element).forEach(simpleElement -> {
-                            final SimpleElement[] parts = splitToElements(simpleElement);
-                            switch (parts.length > 0 ? parts[0].text() : "N/A") {
-                                case FIELD_INPUTS -> highLightInputs(holder, element, parts);
-                                case FIELD_SECRETS ->
-                                        highLightSecrets(holder, psiElement, element, simpleElement, parts, parentIf.orElse(null));
-                                case FIELD_ENVS -> highLightEnvs(holder, element, parts);
-                                case FIELD_GITHUB -> highLightGitHub(holder, element, parts);
-                                case FIELD_RUNNER -> highlightRunner(holder, element, parts);
-                                case FIELD_STEPS -> highlightSteps(holder, element, parts);
-                                case FIELD_JOBS -> highLightJobs(holder, element, parts);
-                                case FIELD_NEEDS -> highlightNeeds(holder, element, parts);
-                                default -> {
-                                    // ignored
-                                }
-                            }
-                        })
-                );
-    }
-
     @NotNull
     public static Predicate<PsiElement> isElementWithVariables(final YAMLKeyValue parentIf) {
         return element -> ofNullable(parentIf)
@@ -219,6 +192,32 @@ public class HighlightAnnotator implements Annotator {
             previousChar = ch;
         }
         return elements;
+    }
+
+    private static void variableElementHandler(final AnnotationHolder holder, final PsiElement psiElement) {
+        final Optional<YAMLKeyValue> parentIf = getParent(psiElement, FIELD_IF);
+        Optional.of(psiElement)
+                .filter(LeafPsiElement.class::isInstance)
+                .map(LeafPsiElement.class::cast)
+                .filter(isElementWithVariables(parentIf.orElse(null)))
+                .ifPresent(element -> toSimpleElements(element).forEach(simpleElement -> {
+                            final SimpleElement[] parts = splitToElements(simpleElement);
+                            switch (parts.length > 0 ? parts[0].text() : "N/A") {
+                                case FIELD_INPUTS -> highLightInputs(holder, element, parts);
+                                case FIELD_SECRETS ->
+                                        highLightSecrets(holder, psiElement, element, simpleElement, parts, parentIf.orElse(null));
+                                case FIELD_ENVS -> highLightEnvs(holder, element, parts);
+                                case FIELD_GITHUB -> highLightGitHub(holder, element, parts);
+                                case FIELD_RUNNER -> highlightRunner(holder, element, parts);
+                                case FIELD_STEPS -> highlightSteps(holder, element, parts);
+                                case FIELD_JOBS -> highLightJobs(holder, element, parts);
+                                case FIELD_NEEDS -> highlightNeeds(holder, element, parts);
+                                default -> {
+                                    // ignored
+                                }
+                            }
+                        })
+                );
     }
 
     private static int validateAndAddElement(final StringBuilder currentElement, final List<SimpleElement> elements, int elementStart, final int i) {

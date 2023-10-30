@@ -48,14 +48,14 @@ public class ProjectStartup implements ProjectActivity {
         // AFTER STARTUP
         final FileEditorManager fileEditorManager = FileEditorManager.getInstance(project);
         for (final VirtualFile openedFile : fileEditorManager.getOpenFiles()) {
-            asyncInitAllActionsAfterInit(project, openedFile);
+            asyncInitAllActions(project, openedFile);
         }
 
         final MessageBusConnection connection = project.getMessageBus().connect();
         connection.subscribe(FileEditorManagerListener.FILE_EDITOR_MANAGER, new FileEditorManagerListener() {
             @Override
             public void fileOpened(@NotNull final FileEditorManager source, @NotNull final VirtualFile file) {
-                asyncInitAllActionsAfterInit(project, file);
+                asyncInitAllActions(project, file);
             }
         });
 
@@ -76,15 +76,6 @@ public class ProjectStartup implements ProjectActivity {
         final ActionManagerEx actionManager = ActionManagerEx.getInstanceEx();
         for (final String oldId : actionManager.getActionIdList("GHWP_" + project.getLocationHash())) {
             actionManager.unregisterAction(oldId);
-        }
-    }
-
-
-    public static void asyncInitAllActionsAfterInit(final Project project, final VirtualFile virtualFile) {
-        if (!DumbService.isDumb(project)) {
-            asyncInitAllActions(project, virtualFile);
-        } else {
-            DumbService.getInstance(project).runWhenSmart(() -> asyncInitAllActions(project, virtualFile));
         }
     }
 

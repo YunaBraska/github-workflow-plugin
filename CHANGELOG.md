@@ -11,7 +11,8 @@
 - Feat: [#33 Acknowledge undefined action inputs & outputs](https://github.com/YunaBraska/github-workflow-plugin/issues/33)
 - Feat: Click on `Needs` navigates directly to the `Job`
 - Fix: [Startup error: Slow operations are prohibited on EDT](https://github.com/YunaBraska/github-workflow-plugin/issues/38)
-- Fix: Keep user settings after action refresh
+- Fix: [InvalidPathException](https://github.com/YunaBraska/github-workflow-plugin/issues/40)
+- Fix: Keep user settings after action or cache refresh
 - Chore: refactored & split logic to specific classes
   like \[`Action`, `Envs`, `GitHub`, `Inputs`, `Jobs`, `Needs`, `Runner`, `Secrets`, `Steps`]
 

@@ -4,6 +4,7 @@ import com.github.yunabraska.githubworkflow.model.SimpleElement;
 import com.intellij.openapi.keymap.KeymapUtil;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.TextRange;
+import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.psi.PsiElement;
 import com.intellij.psi.impl.source.tree.LeafPsiElement;
 import org.jetbrains.annotations.NotNull;
@@ -14,6 +15,8 @@ import org.jetbrains.yaml.psi.impl.YAMLBlockScalarImpl;
 import org.jetbrains.yaml.psi.impl.YAMLBlockSequenceImpl;
 import org.jetbrains.yaml.psi.impl.YAMLPlainTextImpl;
 
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -214,6 +217,19 @@ public class PsiElementHelper {
         return psiElement == null ? "" : requiredString(psiElement, requiredField)
                 + getText(psiElement, "default").map(def -> "def[" + def + "]").orElse("")
                 + getText(psiElement, "description").or(() -> getText(psiElement, "desc")).map(desc -> " " + desc).orElse("");
+    }
+
+    public static Optional<Path> toPath(final VirtualFile virtualFile) {
+        return ofNullable(virtualFile).map(VirtualFile::getPath).flatMap(PsiElementHelper::toPath);
+    }
+
+    public static Optional<Path> toPath(final String path) {
+        try {
+            return ofNullable(path).map(Paths::get);
+        } catch (final Exception ignored) {
+            //e.g. java.nio.file.InvalidPathException: Illegal char <<> at index 0: <36ba1c43-b8f1-4f54-ace0-cef443d1e8f0>/etc/php/8.1/apache2/php.ini
+            return Optional.empty();
+        }
     }
 
     @NotNull

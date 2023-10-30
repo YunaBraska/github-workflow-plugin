@@ -24,7 +24,6 @@ import org.jetbrains.annotations.Nullable;
 import org.jetbrains.yaml.psi.YAMLKeyValue;
 
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.Map;
@@ -35,6 +34,7 @@ import java.util.stream.Stream;
 
 import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.FIELD_USES;
 import static com.github.yunabraska.githubworkflow.helper.PsiElementHelper.getProject;
+import static com.github.yunabraska.githubworkflow.helper.PsiElementHelper.toPath;
 import static com.github.yunabraska.githubworkflow.model.GitHubAction.createGithubAction;
 import static com.github.yunabraska.githubworkflow.model.GitHubAction.findActionYaml;
 import static java.util.Optional.ofNullable;
@@ -138,7 +138,7 @@ public class GitHubActionCache implements PersistentStateComponent<GitHubActionC
     public static void triggerSyntaxHighlightingForActiveFiles() {
         ApplicationManager.getApplication().invokeLater(() ->
                 Stream.of(ProjectManager.getInstance().getOpenProjects()).forEach(project -> Stream.of(FileEditorManager.getInstance(project).getSelectedFiles()).filter(VirtualFile::isValid)
-                        .filter(virtualFile -> Optional.of(virtualFile.getPath()).map(Paths::get).map(GitHubWorkflowHelper::isWorkflowPath).orElse(false))
+                        .filter(virtualFile -> toPath(virtualFile).map(GitHubWorkflowHelper::isWorkflowPath).orElse(false))
                         .forEach(virtualFile -> ofNullable(PsiManager.getInstance(project).findFile(virtualFile))
                                 .filter(PsiFile::isValid)
                                 .ifPresent(psiFile -> DaemonCodeAnalyzer.getInstance(project).restart(psiFile)))
@@ -206,8 +206,7 @@ public class GitHubActionCache implements PersistentStateComponent<GitHubActionC
         return !isLocal ? subPath : ofNullable(project)
                 .map(ProjectUtil::guessProjectDir)
                 .map(projectDir -> findActionYaml(subPath, projectDir))
-                .map(VirtualFile::getPath)
-                .map(Paths::get)
+                .flatMap(PsiElementHelper::toPath)
                 .map(Path::toString)
                 .orElse(subPath);
     }

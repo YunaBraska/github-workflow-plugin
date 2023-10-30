@@ -9,7 +9,6 @@ import com.intellij.codeInspection.ProblemHighlightType;
 import com.intellij.lang.annotation.AnnotationHolder;
 import com.intellij.lang.annotation.HighlightSeverity;
 import com.intellij.openapi.editor.DefaultLanguageHighlighterColors;
-import com.intellij.openapi.keymap.KeymapUtil;
 import com.intellij.openapi.paths.WebReference;
 import com.intellij.openapi.util.TextRange;
 import com.intellij.psi.PsiElement;
@@ -19,12 +18,10 @@ import org.jetbrains.yaml.psi.YAMLKeyValue;
 import org.jetbrains.yaml.psi.YAMLSequenceItem;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
-import java.util.stream.Collectors;
 
 import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.FIELD_USES;
 import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.FIELD_WITH;

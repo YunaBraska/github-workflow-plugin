@@ -4,13 +4,11 @@ import com.github.yunabraska.githubworkflow.model.NodeIcon;
 import com.intellij.codeInsight.completion.PrioritizedLookupElement;
 import com.intellij.codeInsight.lookup.LookupElement;
 import com.intellij.codeInsight.lookup.LookupElementBuilder;
-import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.psi.FileViewProvider;
 import com.intellij.psi.PsiElement;
 import com.intellij.psi.PsiFile;
 
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.Optional;
 
 import static com.github.yunabraska.githubworkflow.helper.AutoPopupInsertHandler.addSuffix;
@@ -105,18 +103,8 @@ public class GitHubWorkflowHelper {
                 .map(PsiFile::getOriginalFile)
                 .map(PsiFile::getViewProvider)
                 .map(FileViewProvider::getVirtualFile)
-                .map(VirtualFile::getPath)
-                .map(Paths::get)
+                .flatMap(PsiElementHelper::toPath)
                 .filter(GitHubWorkflowHelper::isWorkflowPath);
-    }
-
-    public static Optional<Path> psiFileToPath(final PsiElement psiFile) {
-        return Optional.of(psiFile)
-                .filter(PsiFile.class::isInstance)
-                .map(PsiFile.class::cast)
-                .map(PsiFile::getVirtualFile)
-                .map(VirtualFile::getPath)
-                .map(Paths::get);
     }
 
     public static boolean isWorkflowPath(final Path path) {

@@ -315,7 +315,7 @@ public class GitHubAction implements Serializable {
     }
 
     private void extractLocalParameters() {
-        of(downloadUrl()).map(Paths::get).filter(Files::exists).filter(Files::isRegularFile).map(file -> {
+        of(downloadUrl()).flatMap(PsiElementHelper::toPath).filter(Files::exists).filter(Files::isRegularFile).map(file -> {
             try {
                 return Files.readString(file);
             } catch (final IOException ignored) {

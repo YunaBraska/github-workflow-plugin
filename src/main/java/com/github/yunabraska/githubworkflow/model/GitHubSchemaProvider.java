@@ -1,5 +1,6 @@
 package com.github.yunabraska.githubworkflow.model;
 
+import com.github.yunabraska.githubworkflow.helper.PsiElementHelper;
 import com.intellij.json.JsonFileType;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.testFramework.LightVirtualFile;
@@ -46,7 +47,7 @@ public class GitHubSchemaProvider implements JsonSchemaFileProvider {
 
     @Override
     public boolean isAvailable(@NotNull final VirtualFile file) {
-        return Optional.of(file).map(VirtualFile::getPath).map(Paths::get).filter(validatePath).isPresent();
+        return Optional.of(file).flatMap(PsiElementHelper::toPath).filter(validatePath).isPresent();
     }
 
     @Nullable
