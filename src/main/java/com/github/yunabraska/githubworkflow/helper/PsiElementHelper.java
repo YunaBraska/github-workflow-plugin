@@ -15,6 +15,7 @@ import org.jetbrains.yaml.psi.impl.YAMLBlockScalarImpl;
 import org.jetbrains.yaml.psi.impl.YAMLBlockSequenceImpl;
 import org.jetbrains.yaml.psi.impl.YAMLPlainTextImpl;
 
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
@@ -225,7 +226,7 @@ public class PsiElementHelper {
 
     public static Optional<Path> toPath(final String path) {
         try {
-            return ofNullable(path).map(Paths::get);
+            return ofNullable(path).map(Paths::get).filter(Files::exists);
         } catch (final Exception ignored) {
             //e.g. java.nio.file.InvalidPathException: Illegal char <<> at index 0: <36ba1c43-b8f1-4f54-ace0-cef443d1e8f0>/etc/php/8.1/apache2/php.ini
             return Optional.empty();

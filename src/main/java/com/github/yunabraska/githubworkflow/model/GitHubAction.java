@@ -19,7 +19,6 @@ import java.io.IOException;
 import java.io.Serial;
 import java.io.Serializable;
 import java.nio.file.Files;
-import java.nio.file.Paths;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.Map;
@@ -315,7 +314,7 @@ public class GitHubAction implements Serializable {
     }
 
     private void extractLocalParameters() {
-        of(downloadUrl()).flatMap(PsiElementHelper::toPath).filter(Files::exists).filter(Files::isRegularFile).map(file -> {
+        of(downloadUrl()).flatMap(PsiElementHelper::toPath).filter(Files::isRegularFile).map(file -> {
             try {
                 return Files.readString(file);
             } catch (final IOException ignored) {
