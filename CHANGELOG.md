@@ -4,6 +4,12 @@
 
 ## [Unreleased]
 
+## [3.2.1] - 2023-11-04
+
+### Investigating UI Freeze
+
+- Fix: [UI freeze when opening a repo with large amount of JS files](https://github.com/YunaBraska/github-workflow-plugin/issues/39)
+
 ## [3.2.0] - 2023-10-14
 
 ### Acknowledge undefined action inputs & outputs

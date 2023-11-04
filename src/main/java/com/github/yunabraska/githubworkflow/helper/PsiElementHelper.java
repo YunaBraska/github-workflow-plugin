@@ -1,6 +1,7 @@
 package com.github.yunabraska.githubworkflow.helper;
 
 import com.github.yunabraska.githubworkflow.model.SimpleElement;
+import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.keymap.KeymapUtil;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.TextRange;
@@ -226,7 +227,7 @@ public class PsiElementHelper {
 
     public static Optional<Path> toPath(final String path) {
         try {
-            return ofNullable(path).map(Paths::get).filter(Files::exists);
+            return ofNullable(path).map(Paths::get).filter(p -> Files.exists(p) || ApplicationManager.getApplication().isUnitTestMode());
         } catch (final Exception ignored) {
             //e.g. java.nio.file.InvalidPathException: Illegal char <<> at index 0: <36ba1c43-b8f1-4f54-ace0-cef443d1e8f0>/etc/php/8.1/apache2/php.ini
             return Optional.empty();

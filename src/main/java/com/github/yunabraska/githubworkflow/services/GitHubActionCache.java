@@ -37,6 +37,7 @@ import static com.github.yunabraska.githubworkflow.helper.PsiElementHelper.getPr
 import static com.github.yunabraska.githubworkflow.helper.PsiElementHelper.toPath;
 import static com.github.yunabraska.githubworkflow.model.GitHubAction.createGithubAction;
 import static com.github.yunabraska.githubworkflow.model.GitHubAction.findActionYaml;
+import static com.github.yunabraska.githubworkflow.services.ProjectStartup.threadPoolExec;
 import static java.util.Optional.ofNullable;
 
 @SuppressWarnings("UnusedReturnValue")
@@ -97,7 +98,7 @@ public class GitHubActionCache implements PersistentStateComponent<GitHubActionC
                 .map(state.actions::get)
                 .map(oldAction -> saveNewAction(project, oldAction))
                 .map(action -> {
-                    ApplicationManager.getApplication().executeOnPooledThread(() -> {
+                    threadPoolExec(project, () -> {
                         action.resolve();
                         triggerSyntaxHighlightingForActiveFiles();
                     });
@@ -141,13 +142,18 @@ public class GitHubActionCache implements PersistentStateComponent<GitHubActionC
                         .filter(virtualFile -> toPath(virtualFile).map(GitHubWorkflowHelper::isWorkflowPath).orElse(false))
                         .forEach(virtualFile -> ofNullable(PsiManager.getInstance(project).findFile(virtualFile))
                                 .filter(PsiFile::isValid)
-                                .ifPresent(psiFile -> DaemonCodeAnalyzer.getInstance(project).restart(psiFile)))
+                                .ifPresent(psiFile -> {
+                                    if (DaemonCodeAnalyzer.getInstance(project).isHighlightingAvailable(psiFile)) {
+                                        DaemonCodeAnalyzer.getInstance(project).restart(psiFile);
+                                    }
+                                })
+                        )
                 )
         );
     }
 
     public static void resolveActionsAsync(final Collection<GitHubAction> actions) {
-        getActionCache().resolveAsync(actions);
+        threadPoolExec(ProjectManager.getInstance().getDefaultProject(), () -> getActionCache().resolveAsync(actions));
     }
 
     public static GitHubAction reloadActionAsync(final Project project, final String usesValue) {

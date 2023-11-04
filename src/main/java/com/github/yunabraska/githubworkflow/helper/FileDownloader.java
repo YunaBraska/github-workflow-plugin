@@ -18,6 +18,8 @@ import org.jetbrains.plugins.github.util.GHCompatibilityUtil;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.net.HttpURLConnection;
+import java.net.URL;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.Future;
@@ -54,21 +56,55 @@ public class FileDownloader {
         return "";
     }
 
-    @Nullable
-    public static String downloadSync(final String urlString, final String userAgent) {
-        try {
-            return HttpRequests
-                    .request(urlString)
-                    .gzip(true)
-                    .readTimeout(5000)
-                    .connectTimeout(5000)
-                    .userAgent(userAgent)
-                    .tuner(request -> request.setRequestProperty("Client-Name", "GitHub Workflow Plugin"))
-                    .readString();
-        } catch (final Exception e) {
-            return null;
+//    @Nullable
+//    public static String downloadSync(final String urlString, final String userAgent) {
+//        try {
+//            return HttpRequests
+//                    .request(urlString)
+//                    .gzip(true)
+//                    .readTimeout(1000)
+//                    .connectTimeout(1000)
+//                    .userAgent(userAgent)
+//                    .tuner(request -> request.setRequestProperty("Client-Name", "GitHub Workflow Plugin"))
+//                    .readString();
+//        } catch (final Exception e) {
+//            return null;
+//        }
+//    }
+@Nullable
+public static String downloadSync(final String urlString, final String userAgent) {
+    HttpURLConnection connection = null;
+    try {
+        connection = (HttpURLConnection) new URL(urlString).openConnection();
+        connection.setRequestMethod("GET");
+        connection.setConnectTimeout(1000); // Connect timeout
+        connection.setReadTimeout(1000); // Read timeout
+        connection.setRequestProperty("User-Agent", userAgent);
+        connection.setRequestProperty("Client-Name", "GitHub Workflow Plugin");
+
+        // Check for successful response code or throw error
+        if (connection.getResponseCode() / 100 != 2) {
+            throw new IOException("HTTP error code: " + connection.getResponseCode());
+        }
+
+        // Read response
+        try (final BufferedReader in = new BufferedReader(new InputStreamReader(connection.getInputStream()))) {
+            final StringBuilder response = new StringBuilder();
+            String inputLine;
+            while ((inputLine = in.readLine()) != null) {
+                response.append(inputLine).append(System.lineSeparator());
+            }
+            return response.toString();
+        }
+    } catch (final Exception e) {
+        // Handle exceptions accordingly, returning null is often not a good practice
+        return null;
+    } finally {
+        if (connection != null) {
+            connection.disconnect();
         }
     }
+}
 
     private static String downloadFromGitHub(final String downloadUrl, final GithubAccount account) {
         return ofNullable(ProjectUtil.getActiveProject())

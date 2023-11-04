@@ -95,6 +95,10 @@ public class ProjectStartup implements ProjectActivity {
             }
         };
 
+        threadPoolExec(project, task);
+    }
+
+    public static void threadPoolExec(final Project project, final Runnable task) {
         if (!DumbService.isDumb(project)) {
             ApplicationManager.getApplication().executeOnPooledThread(task);
         } else {

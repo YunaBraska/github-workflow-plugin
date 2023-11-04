@@ -1,5 +1,6 @@
 package com.github.yunabraska.githubworkflow.model;
 
+import com.esotericsoftware.kryo.kryo5.minlog.Log;
 import com.github.yunabraska.githubworkflow.helper.PsiElementHelper;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.diagnostic.Logger;
@@ -26,7 +27,9 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.StringJoiner;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -310,7 +313,12 @@ public class GitHubAction implements Serializable {
     }
 
     private void extractRemoteParameters() {
+        try {
+            CompletableFuture.runAsync(() -> ofNullable(downloadFileFromGitHub(downloadUrl())).or(() -> ofNullable(downloadContent(downloadUrl()))).ifPresent(this::setParameters)).orTimeout(5000, TimeUnit.MILLISECONDS).join();
         ofNullable(downloadFileFromGitHub(downloadUrl())).or(() -> ofNullable(downloadContent(downloadUrl()))).ifPresent(this::setParameters);
+        } catch (final Exception exception) {
+            Log.error("Download failed", exception);
+        }
     }
 
     private void extractLocalParameters() {

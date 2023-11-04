@@ -4,6 +4,7 @@ import com.github.yunabraska.githubworkflow.model.NodeIcon;
 import com.intellij.codeInsight.completion.PrioritizedLookupElement;
 import com.intellij.codeInsight.lookup.LookupElement;
 import com.intellij.codeInsight.lookup.LookupElementBuilder;
+import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.psi.FileViewProvider;
 import com.intellij.psi.PsiElement;
 import com.intellij.psi.PsiFile;
@@ -108,7 +109,7 @@ public class GitHubWorkflowHelper {
     }
 
     public static boolean isWorkflowPath(final Path path) {
-        return path != null && (isActionFile(path) || isWorkflowFile(path));
+        return path != null && (isActionFile(path) || isWorkflowFile(path) || ApplicationManager.getApplication().isUnitTestMode());
     }
 
     public static boolean isYamlFile(final Path path) {
