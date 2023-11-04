@@ -30,6 +30,7 @@ public class PsiElementChangeListener extends PsiTreeChangeAdapter {
     @Override
     public void childrenChanged(@NotNull final PsiTreeChangeEvent event) {
         ofNullable(event.getParent())
+                .filter(psiElement -> getWorkflowFile(psiElement).isPresent())
                 .map(psiElement -> PsiElementHelper.getAllElements(psiElement, FIELD_USES))
                 .map(usesList -> usesList.stream().map(GitHubActionCache::getAction).filter(Objects::nonNull).filter(action -> !action.isLocal()).filter(action -> !action.isResolved()).toList())
                 .ifPresent(GitHubActionCache::resolveActionsAsync);
