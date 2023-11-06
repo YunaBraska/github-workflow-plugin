@@ -4,9 +4,27 @@
 
 ## [Unreleased]
 
+## [3.2.1] - 2023-11-04
+
+### Investigating UI Freeze
+
+- Fix: [UI freeze when opening a repo with large amount of JS files](https://github.com/YunaBraska/github-workflow-plugin/issues/39)
+
+## [3.2.0] - 2023-10-14
+
+### Acknowledge undefined action inputs & outputs
+
+- Feat: [#33 Acknowledge undefined action inputs & outputs](https://github.com/YunaBraska/github-workflow-plugin/issues/33)
+- Feat: Click on `Needs` navigates directly to the `Job`
+- Fix: [Startup error: Slow operations are prohibited on EDT](https://github.com/YunaBraska/github-workflow-plugin/issues/38)
+- Fix: [InvalidPathException](https://github.com/YunaBraska/github-workflow-plugin/issues/40)
+- Fix: Keep user settings after action or cache refresh
+- Chore: refactored & split logic to specific classes
+  like \[`Action`, `Envs`, `GitHub`, `Inputs`, `Jobs`, `Needs`, `Runner`, `Secrets`, `Steps`]
+
 ## [3.1.0] - 2023-10-14
 
-### Feature
+### Code Completion for steps outcome && conclusion
 
 - Feat: Code Completion for steps outcome &&
   conclusion [#37 Schema Cache](https://github.com/YunaBraska/github-workflow-plugin/pull/37) Big thanks

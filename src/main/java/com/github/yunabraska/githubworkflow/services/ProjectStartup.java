@@ -48,14 +48,14 @@ public class ProjectStartup implements ProjectActivity {
         // AFTER STARTUP
         final FileEditorManager fileEditorManager = FileEditorManager.getInstance(project);
         for (final VirtualFile openedFile : fileEditorManager.getOpenFiles()) {
-            asyncInitAllActionsAfterInit(project, openedFile);
+            asyncInitAllActions(project, openedFile);
         }
 
         final MessageBusConnection connection = project.getMessageBus().connect();
         connection.subscribe(FileEditorManagerListener.FILE_EDITOR_MANAGER, new FileEditorManagerListener() {
             @Override
             public void fileOpened(@NotNull final FileEditorManager source, @NotNull final VirtualFile file) {
-                asyncInitAllActionsAfterInit(project, file);
+                asyncInitAllActions(project, file);
             }
         });
 
@@ -79,27 +79,30 @@ public class ProjectStartup implements ProjectActivity {
         }
     }
 
+    private static void asyncInitAllActions(final Project project, final VirtualFile virtualFile) {
+        final Runnable task = () -> {
+            if (virtualFile != null && (GitHubWorkflowHelper.isWorkflowPath(toPath(virtualFile.getPath())))) {
+                final List<GitHubAction> actions = new ArrayList<>();
+                // READ CONTEXT
+                ApplicationManager.getApplication().runReadAction(() -> Optional.of(PsiManager.getInstance(project))
+                        .map(psiManager -> psiManager.findFile(virtualFile))
+                        .map(psiFile -> PsiElementHelper.getAllElements(psiFile, FIELD_USES))
+                        .ifPresent(usesList -> usesList.stream().map(GitHubActionCache::getAction).filter(action -> !action.isSuppressed()).filter(action -> !action.isResolved()).forEach(actions::add))
+                );
 
-    public static void asyncInitAllActionsAfterInit(final Project project, final VirtualFile virtualFile) {
-        if (!DumbService.isDumb(project)) {
-            asyncInitAllActions(project, virtualFile);
-        } else {
-            DumbService.getInstance(project).runWhenSmart(() -> asyncInitAllActions(project, virtualFile));
-        }
+                // ASYNC HTTP CONTEXT
+                GitHubActionCache.resolveActionsAsync(actions);
+            }
+        };
+
+        threadPoolExec(project, task);
     }
 
-    private static void asyncInitAllActions(final Project project, final VirtualFile virtualFile) {
-        if (virtualFile != null && (GitHubWorkflowHelper.isWorkflowPath(toPath(virtualFile.getPath())))) {
-            final List<GitHubAction> actions = new ArrayList<>();
-            // READ CONTEXT
-            ApplicationManager.getApplication().runReadAction(() -> Optional.of(PsiManager.getInstance(project))
-                    .map(psiManager -> psiManager.findFile(virtualFile))
-                    .map(psiFile -> PsiElementHelper.getAllElements(psiFile, FIELD_USES))
-                    .ifPresent(usesList -> usesList.stream().map(GitHubActionCache::getAction).filter(action -> !action.isSuppressed()).filter(action -> !action.isResolved()).forEach(actions::add))
-            );
-
-            // ASYNC HTTP CONTEXT
-            GitHubActionCache.resolveActionsAsync(actions);
+    public static void threadPoolExec(final Project project, final Runnable task) {
+        if (!DumbService.isDumb(project)) {
+            ApplicationManager.getApplication().executeOnPooledThread(task);
+        } else {
+            DumbService.getInstance(project).runWhenSmart(() -> ApplicationManager.getApplication().executeOnPooledThread(task));
         }
     }
 }
