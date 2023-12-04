@@ -20,13 +20,7 @@ import java.io.IOException;
 import java.io.Serial;
 import java.io.Serializable;
 import java.nio.file.Files;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Optional;
-import java.util.Set;
-import java.util.StringJoiner;
+import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
@@ -36,10 +30,7 @@ import java.util.stream.Stream;
 
 import static com.github.yunabraska.githubworkflow.helper.FileDownloader.downloadContent;
 import static com.github.yunabraska.githubworkflow.helper.FileDownloader.downloadFileFromGitHub;
-import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.CACHE_ONE_DAY;
-import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.FIELD_INPUTS;
-import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.FIELD_ON;
-import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.FIELD_OUTPUTS;
+import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.*;
 import static com.github.yunabraska.githubworkflow.helper.PsiElementHelper.getChild;
 import static com.github.yunabraska.githubworkflow.helper.PsiElementHelper.hasText;
 import static java.lang.Boolean.parseBoolean;
@@ -314,8 +305,16 @@ public class GitHubAction implements Serializable {
 
     private void extractRemoteParameters() {
         try {
-            CompletableFuture.runAsync(() -> ofNullable(downloadFileFromGitHub(downloadUrl())).or(() -> ofNullable(downloadContent(downloadUrl()))).ifPresent(this::setParameters)).orTimeout(5000, TimeUnit.MILLISECONDS).join();
-        ofNullable(downloadFileFromGitHub(downloadUrl())).or(() -> ofNullable(downloadContent(downloadUrl()))).ifPresent(this::setParameters);
+            CompletableFuture
+                    .runAsync(() ->
+                            ofNullable(downloadFileFromGitHub(downloadUrl()))
+                                    .or(() -> ofNullable(downloadContent(downloadUrl())))
+                                    .ifPresent(this::setParameters))
+                    .orTimeout(5000, TimeUnit.MILLISECONDS)
+                    .join();
+            ofNullable(downloadFileFromGitHub(downloadUrl()))
+                    .or(() -> ofNullable(downloadContent(downloadUrl())))
+                    .ifPresent(this::setParameters);
         } catch (final Exception exception) {
             Log.error("Download failed", exception);
         }

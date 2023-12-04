@@ -15,9 +15,7 @@ import java.util.Map;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
-import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.DEFAULT_VALUE_MAP;
-import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.FIELD_ENVS;
-import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.FIELD_RUN;
+import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.*;
 import static com.github.yunabraska.githubworkflow.helper.HighlightAnnotatorHelper.ifEnoughItems;
 import static com.github.yunabraska.githubworkflow.helper.HighlightAnnotatorHelper.isDefinedItem0;
 import static com.github.yunabraska.githubworkflow.helper.PsiElementHelper.getAllElements;
@@ -106,7 +104,7 @@ public class Envs {
     }
 
     private static void addDefaultEnvs(final List<SimpleElement> result) {
-        result.addAll(completionItemsOf(DEFAULT_VALUE_MAP.get(FIELD_ENVS).get(), ICON_ENV));
+        result.addAll(completionItemsOf(FIELD_ENVS_MAP, ICON_ENV));
     }
 
     private Envs() {
