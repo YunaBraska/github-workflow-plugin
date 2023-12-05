@@ -35,10 +35,10 @@ public class FileDownloader {
 
     public static String downloadFileFromGitHub(final String downloadUrl) {
         return GHAccountsUtil.getAccounts().stream()
-                .map(account -> downloadFromGitHub(downloadUrl, account))
-                .filter(Objects::nonNull)
-                .findFirst()
-                .orElse(null);
+            .map(account -> downloadFromGitHub(downloadUrl, account))
+            .filter(Objects::nonNull)
+            .findFirst()
+            .orElse(null);
     }
 
 
@@ -107,10 +107,10 @@ public class FileDownloader {
 
     private static String downloadFromGitHub(final String downloadUrl, final GithubAccount account) {
         return ofNullable(ProjectUtil.getActiveProject())
-                .or(() -> Optional.of(ProjectManager.getInstance().getDefaultProject()))
-                .map(project -> GHCompatibilityUtil.getOrRequestToken(account, project))
-                .map(token -> downloadContent(downloadUrl, token))
-                .orElse(null);
+            .or(() -> Optional.of(ProjectManager.getInstance().getDefaultProject()))
+            .map(project -> GHCompatibilityUtil.getOrRequestToken(account, project))
+            .map(token -> downloadContent(downloadUrl, token))
+            .orElse(null);
     }
 
     private static String downloadContent(final String downloadUrl, final String token) {

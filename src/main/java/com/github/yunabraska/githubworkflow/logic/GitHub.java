@@ -7,7 +7,7 @@ import com.intellij.psi.impl.source.tree.LeafPsiElement;
 import java.util.ArrayList;
 import java.util.List;
 
-import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.*;
+import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.FIELD_GITHUB_MAP;
 import static com.github.yunabraska.githubworkflow.helper.HighlightAnnotatorHelper.ifEnoughItems;
 import static com.github.yunabraska.githubworkflow.helper.HighlightAnnotatorHelper.isDefinedItem0;
 import static com.github.yunabraska.githubworkflow.model.NodeIcon.ICON_ENV;

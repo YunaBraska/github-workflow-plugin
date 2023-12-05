@@ -14,7 +14,6 @@ import com.intellij.util.ProcessingContext;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.*;
-import java.util.function.Supplier;
 
 import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.*;
 import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowHelper.*;
@@ -48,9 +47,9 @@ public class CodeCompletion extends CompletionContributor {
         return new CompletionProvider<>() {
             @Override
             public void addCompletions(
-                    @NotNull final CompletionParameters parameters,
-                    @NotNull final ProcessingContext processingContext,
-                    @NotNull final CompletionResultSet resultSet
+                @NotNull final CompletionParameters parameters,
+                @NotNull final ProcessingContext processingContext,
+                @NotNull final CompletionResultSet resultSet
             ) {
                 final PsiElement position = parameters.getPosition();
                 getWorkflowFile(position).ifPresent(file -> {
@@ -64,23 +63,23 @@ public class CodeCompletion extends CompletionContributor {
                         if (getParent(position, FIELD_RUN).isPresent() && position.getText().contains("$IntellijIdeaRulezzz")) {
                             // AUTO COMPLETE [$GITHUB_ENV, $GITHUB_OUTPUT]
                             addLookupElements(
-                                    resultSet.withPrefixMatcher(prefix[0]),
-                                    Map.of("GITHUB_ENV", FIELD_DEFAULT_MAP.getOrDefault(FIELD_ENVS, ""),
-                                            "GITHUB_OUTPUT", FIELD_DEFAULT_MAP.getOrDefault(FIELD_GITHUB, "")),
-                                    NodeIcon.ICON_ENV,
-                                    Character.MIN_VALUE);
+                                resultSet.withPrefixMatcher(prefix[0]),
+                                Map.of("GITHUB_ENV", FIELD_DEFAULT_MAP.getOrDefault(FIELD_ENVS, ""),
+                                    "GITHUB_OUTPUT", FIELD_DEFAULT_MAP.getOrDefault(FIELD_GITHUB, "")),
+                                NodeIcon.ICON_ENV,
+                                Character.MIN_VALUE);
                         } else if (getParent(position, FIELD_NEEDS).isPresent()) {
                             //[jobs.job_name.needs] list previous jobs
                             Optional.of(codeCompletionNeeds(position)).filter(cil -> !cil.isEmpty())
-                                    .map(CodeCompletion::toLookupItems)
-                                    .ifPresent(lookupElements -> addElementsWithPrefix(resultSet, getDefaultPrefix(parameters), lookupElements));
+                                .map(CodeCompletion::toLookupItems)
+                                .ifPresent(lookupElements -> addElementsWithPrefix(resultSet, getDefaultPrefix(parameters), lookupElements));
                         } else {
                             //USES COMPLETION [jobs.job_id.steps.step_id:with]
                             final Optional<Map<String, String>> withCompletion = getParentStepOrJob(position)
-                                    .flatMap(step -> PsiElementHelper.getChild(step, FIELD_USES))
-                                    .map(GitHubActionCache::getAction)
-                                    .filter(GitHubAction::isResolved)
-                                    .map(GitHubAction::freshInputs);
+                                .flatMap(step -> PsiElementHelper.getChild(step, FIELD_USES))
+                                .map(GitHubActionCache::getAction)
+                                .filter(GitHubAction::isResolved)
+                                .map(GitHubAction::freshInputs);
                             withCompletion.ifPresent(map -> addLookupElements(resultSet.withPrefixMatcher(getDefaultPrefix(parameters)), map, NodeIcon.ICON_INPUT, ':'));
                         }
                     }
@@ -103,8 +102,8 @@ public class CodeCompletion extends CompletionContributor {
         }
         //ADD LOOKUP ELEMENTS
         ofNullable(completionResultMap.getOrDefault(cbi.length - 1, null))
-                .map(CodeCompletion::toLookupItems)
-                .ifPresent(lookupElements -> addElementsWithPrefix(resultSet, prefix[0], lookupElements));
+            .map(CodeCompletion::toLookupItems)
+            .ifPresent(lookupElements -> addElementsWithPrefix(resultSet, prefix[0], lookupElements));
     }
 
     private static void addElementsWithPrefix(final CompletionResultSet resultSet, final String prefix, final List<LookupElement> lookupElements) {
@@ -135,12 +134,12 @@ public class CodeCompletion extends CompletionContributor {
     private static void handleSecondItem(final String[] cbi, final int i, final Map<Integer, List<SimpleElement>> completionItemMap) {
         switch (cbi[0]) {
             case FIELD_STEPS -> completionItemMap.put(i, List.of(
-                    completionItemOf(FIELD_OUTPUTS, "The set of outputs defined for the step.", ICON_OUTPUT),
-                    completionItemOf(FIELD_CONCLUSION, "The result of a completed step after continue-on-error is applied.", ICON_OUTPUT),
-                    completionItemOf(FIELD_OUTCOME, "The result of a completed step before continue-on-error is applied.", ICON_OUTPUT)
+                completionItemOf(FIELD_OUTPUTS, "The set of outputs defined for the step.", ICON_OUTPUT),
+                completionItemOf(FIELD_CONCLUSION, "The result of a completed step after continue-on-error is applied.", ICON_OUTPUT),
+                completionItemOf(FIELD_OUTCOME, "The result of a completed step before continue-on-error is applied.", ICON_OUTPUT)
             ));
             case FIELD_JOBS, FIELD_NEEDS -> completionItemMap.put(i, List.of(
-                    completionItemOf(FIELD_OUTPUTS, "The set of outputs defined for the step.", ICON_OUTPUT)
+                completionItemOf(FIELD_OUTPUTS, "The set of outputs defined for the step.", ICON_OUTPUT)
             ));
             default -> {
                 // ignored
@@ -174,17 +173,17 @@ public class CodeCompletion extends CompletionContributor {
 
     private static void addDefaultCodeCompletionItems(final int i, final PsiElement position, final Map<Integer, List<SimpleElement>> completionItemMap) {
         Optional.of(FIELD_DEFAULT_MAP)
-                .map(map -> {
-                    final Map<String, String> copyMap = new HashMap<>(map);
-                    Optional.of(listInputs(position)).filter(List::isEmpty).ifPresent(empty -> copyMap.remove(FIELD_INPUTS));
-                    Optional.of(listSecrets(position)).filter(List::isEmpty).ifPresent(empty -> copyMap.remove(FIELD_SECRETS));
-                    Optional.of(listJobs(position)).filter(List::isEmpty).ifPresent(empty -> copyMap.remove(FIELD_JOBS));
-                    Optional.of(listSteps(position)).filter(List::isEmpty).ifPresent(empty -> copyMap.remove(FIELD_STEPS));
-                    Optional.of(listJobNeeds(position)).filter(List::isEmpty).ifPresent(empty -> copyMap.remove(FIELD_NEEDS));
-                    return copyMap;
-                })
-                .map(map -> completionItemsOf(map, ICON_NODE))
-                .ifPresent(items -> completionItemMap.put(i, items));
+            .map(map -> {
+                final Map<String, String> copyMap = new HashMap<>(map);
+                Optional.of(listInputs(position)).filter(List::isEmpty).ifPresent(empty -> copyMap.remove(FIELD_INPUTS));
+                Optional.of(listSecrets(position)).filter(List::isEmpty).ifPresent(empty -> copyMap.remove(FIELD_SECRETS));
+                Optional.of(listJobs(position)).filter(List::isEmpty).ifPresent(empty -> copyMap.remove(FIELD_JOBS));
+                Optional.of(listSteps(position)).filter(List::isEmpty).ifPresent(empty -> copyMap.remove(FIELD_STEPS));
+                Optional.of(listJobNeeds(position)).filter(List::isEmpty).ifPresent(empty -> copyMap.remove(FIELD_NEEDS));
+                return copyMap;
+            })
+            .map(map -> completionItemsOf(map, ICON_NODE))
+            .ifPresent(items -> completionItemMap.put(i, items));
     }
 
     private static String getDefaultPrefix(final CompletionParameters parameters) {

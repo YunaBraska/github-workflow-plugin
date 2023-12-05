@@ -582,7 +582,13 @@
     },
     "dependency-type": {
       "type": "string",
-      "enum": ["direct", "indirect", "all", "production", "development"],
+      "enum": [
+        "direct",
+        "indirect",
+        "all",
+        "production",
+        "development"
+      ],
       "x-intellij-enum-metadata": {
         "direct": {
           "description": "All explicitly defined dependencies."
@@ -616,7 +622,10 @@
     },
     "insecure-external-code-execution": {
       "type": "string",
-      "enum": ["allow", "deny"]
+      "enum": [
+        "allow",
+        "deny"
+      ]
     },
     "versioning-strategy": {
       "type": "string",
@@ -680,7 +689,11 @@
     },
     "schedule-interval": {
       "type": "string",
-      "enum": ["daily", "weekly", "monthly"]
+      "enum": [
+        "daily",
+        "weekly",
+        "monthly"
+      ]
     },
     "update": {
       "type": "object",
@@ -699,8 +712,16 @@
               }
             },
             "anyOf": [
-              { "required": ["dependency-name"] },
-              { "required": ["dependency-type"] }
+              {
+                "required": [
+                  "dependency-name"
+                ]
+              },
+              {
+                "required": [
+                  "dependency-type"
+                ]
+              }
             ],
             "additionalProperties": false
           }
@@ -732,14 +753,28 @@
             "include": {
               "description": "Specifies that any prefix is followed by a list of the dependencies updated in the commit.",
               "type": "string",
-              "enum": ["scope"],
+              "enum": [
+                "scope"
+              ],
               "default": "scope"
             }
           },
           "anyOf": [
-            { "required": ["prefix"] },
-            { "required": ["prefix-development"] },
-            { "required": ["include"] }
+            {
+              "required": [
+                "prefix"
+              ]
+            },
+            {
+              "required": [
+                "prefix-development"
+              ]
+            },
+            {
+              "required": [
+                "include"
+              ]
+            }
           ],
           "additionalProperties": false
         },
@@ -758,7 +793,10 @@
                 "dependency-type": {
                   "description": "Specify a dependency type to be included in the group.",
                   "type": "string",
-                  "enum": ["development", "production"]
+                  "enum": [
+                    "development",
+                    "production"
+                  ]
                 },
                 "patterns": {
                   "description": "Define strings of characters that match with a dependency name (or multiple dependency names) to include those dependencies in the group.",
@@ -785,16 +823,32 @@
                   "type": "array",
                   "items": {
                     "type": "string",
-                    "enum": ["major", "minor", "patch"]
+                    "enum": [
+                      "major",
+                      "minor",
+                      "patch"
+                    ]
                   },
                   "minItems": 1,
                   "uniqueItems": true
                 }
               },
               "anyOf": [
-                { "required": ["dependency-type"] },
-                { "required": ["patterns"] },
-                { "required": ["update-types"] }
+                {
+                  "required": [
+                    "dependency-type"
+                  ]
+                },
+                {
+                  "required": [
+                    "patterns"
+                  ]
+                },
+                {
+                  "required": [
+                    "update-types"
+                  ]
+                }
               ],
               "additionalProperties": false
             }
@@ -827,9 +881,21 @@
               }
             },
             "anyOf": [
-              { "required": ["dependency-name"] },
-              { "required": ["update-types"] },
-              { "required": ["versions"] }
+              {
+                "required": [
+                  "dependency-name"
+                ]
+              },
+              {
+                "required": [
+                  "update-types"
+                ]
+              },
+              {
+                "required": [
+                  "versions"
+                ]
+              }
             ],
             "additionalProperties": false
           }
@@ -847,7 +913,9 @@
           },
           "minItems": 0,
           "uniqueItems": true,
-          "default": ["dependencies"]
+          "default": [
+            "dependencies"
+          ]
         },
         "milestone": {
           "description": "Associate all pull requests raised for a package manager with a milestone. You need to specify the numeric identifier of the milestone and not its label.",
@@ -865,8 +933,12 @@
           "$comment": "These values are restricted by a top-level if-then-else when 'enable-beta-ecosystems' is not enabled.",
           "type": "string",
           "anyOf": [
-            { "$ref": "#/definitions/package-ecosystem-values" },
-            { "minLength": 1 }
+            {
+              "$ref": "#/definitions/package-ecosystem-values"
+            },
+            {
+              "minLength": 1
+            }
           ]
         },
         "pull-request-branch-name": {
@@ -877,16 +949,25 @@
               "description": "Change separator for PR branch name",
               "type": "string",
               "default": "/",
-              "enum": ["-", "_", "/"]
+              "enum": [
+                "-",
+                "_",
+                "/"
+              ]
             }
           },
-          "required": ["separator"],
+          "required": [
+            "separator"
+          ],
           "additionalProperties": false
         },
         "rebase-strategy": {
           "description": "Disable automatic rebasing. 'auto' is the default and Dependabot will rebase open pull requests when changes are detected. 'disabled' will disable automatic rebasing.",
           "type": "string",
-          "enum": ["auto", "disabled"],
+          "enum": [
+            "auto",
+            "disabled"
+          ],
           "default": "auto"
         },
         "registries": {
@@ -929,7 +1010,9 @@
               "description": "The time zone identifier must be from the Time Zone database maintained by IANA"
             }
           },
-          "required": ["interval"]
+          "required": [
+            "interval"
+          ]
         },
         "target-branch": {
           "description": "Specify a different branch for manifest files and for pull requests.",
@@ -945,7 +1028,11 @@
           "$ref": "#/definitions/versioning-strategy"
         }
       },
-      "required": ["package-ecosystem", "directory", "schedule"]
+      "required": [
+        "package-ecosystem",
+        "directory",
+        "schedule"
+      ]
     },
     "registry": {
       "type": "object",
@@ -1013,7 +1100,10 @@
               "type": "string"
             }
           },
-          "required": ["type", "url"]
+          "required": [
+            "type",
+            "url"
+          ]
         }
       },
       "minProperties": 1
@@ -1024,7 +1114,9 @@
       "title": "Config file version",
       "description": "Dependabot configuration files require this key, and its value must be 2",
       "type": "integer",
-      "enum": [2]
+      "enum": [
+        2
+      ]
     },
     "enable-beta-ecosystems": {
       "description": "Enable ecosystems that have beta-level support",
@@ -1042,7 +1134,10 @@
       "$ref": "#/definitions/registry"
     }
   },
-  "required": ["version", "updates"],
+  "required": [
+    "version",
+    "updates"
+  ],
   "title": "GitHub Dependabot v2 config",
   "type": "object",
   "allOf": [
@@ -1054,7 +1149,9 @@
             "const": true
           }
         },
-        "required": ["enable-beta-ecosystems"]
+        "required": [
+          "enable-beta-ecosystems"
+        ]
       },
       "then": {},
       "else": {

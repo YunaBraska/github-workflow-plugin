@@ -30,7 +30,13 @@
         "properties": {
           "type": {
             "type": "string",
-            "enum": ["markdown", "textarea", "input", "dropdown", "checkboxes"]
+            "enum": [
+              "markdown",
+              "textarea",
+              "input",
+              "dropdown",
+              "checkboxes"
+            ]
           },
           "attributes": {
             "type": "object",
@@ -58,6 +64,8 @@
       }
     }
   },
-  "required": ["body"],
+  "required": [
+    "body"
+  ],
   "type": "object"
 }

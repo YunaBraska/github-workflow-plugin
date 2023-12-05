@@ -24,9 +24,9 @@ import static com.github.yunabraska.githubworkflow.model.SimpleElement.completio
 public class Inputs {
 
     public static void highLightInputs(
-            final AnnotationHolder holder,
-            final LeafPsiElement element,
-            final SimpleElement[] parts
+        final AnnotationHolder holder,
+        final LeafPsiElement element,
+        final SimpleElement[] parts
     ) {
         ifEnoughItems(holder, element, parts, 2, 2, inputId -> isDefinedItem0(element, holder, inputId, listInputs(element).stream().map(SimpleElement::key).toList()));
     }
@@ -46,9 +46,9 @@ public class Inputs {
     @NotNull
     public static List<YAMLKeyValue> listInputsRaw(final PsiElement psiElement) {
         return getAllElements(psiElement.getContainingFile(), FIELD_INPUTS).stream()
-                .map(PsiElementHelper::getChildren)
-                .flatMap(Collection::stream)
-                .toList();
+            .map(PsiElementHelper::getChildren)
+            .flatMap(Collection::stream)
+            .toList();
     }
 
     private Inputs() {

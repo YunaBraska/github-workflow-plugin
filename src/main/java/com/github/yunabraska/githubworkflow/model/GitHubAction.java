@@ -63,12 +63,12 @@ public class GitHubAction implements Serializable {
 
     public static GitHubAction createSchemaAction(final String url, final String content) {
         return new GitHubAction()
-                .isResolved(true)
-                .isLocal(true)
-                .isSuppressed(false)
-                .name(content)
-                .downloadUrl(url)
-                .expiryTime(System.currentTimeMillis() + (CACHE_ONE_DAY * 30));
+            .isResolved(true)
+            .isLocal(true)
+            .isSuppressed(false)
+            .name(content)
+            .downloadUrl(url)
+            .expiryTime(System.currentTimeMillis() + (CACHE_ONE_DAY * 30));
     }
 
     @SuppressWarnings("java:S3776")
@@ -99,22 +99,22 @@ public class GitHubAction implements Serializable {
         // END [EXTRACT PARTS]
 
         return new GitHubAction()
-                .name(slug != null ? slug : tmpName)
-                .usesValue(usesValue)
-                .downloadUrl(isLocal ? absolutePath : toRemoteDownloadUrl(isAction, ref, slug, tmpSub, tmpName))
-                .githubUrl(isAction ? toGitHubActionUrl(ref, slug, tmpSub) : toGitHubWorkflowUrl(ref, slug, tmpName))
-                .expiryTime(System.currentTimeMillis() + (CACHE_ONE_DAY * 14))
-                .isLocal(isLocal)
-                .setAction(isAction)
-                .isSuppressed(false)
-                ;
+            .name(slug != null ? slug : tmpName)
+            .usesValue(usesValue)
+            .downloadUrl(isLocal ? absolutePath : toRemoteDownloadUrl(isAction, ref, slug, tmpSub, tmpName))
+            .githubUrl(isAction ? toGitHubActionUrl(ref, slug, tmpSub) : toGitHubWorkflowUrl(ref, slug, tmpName))
+            .expiryTime(System.currentTimeMillis() + (CACHE_ONE_DAY * 14))
+            .isLocal(isLocal)
+            .setAction(isAction)
+            .isSuppressed(false)
+            ;
     }
 
     public Optional<String> getLocalPath(final Project project) {
         return isLocal() ? ofNullable(project)
-                .map(ProjectUtil::guessProjectDir)
-                .map(dir -> findActionYaml(usesValue(), dir))
-                .map(VirtualFile::getPath) : Optional.empty();
+            .map(ProjectUtil::guessProjectDir)
+            .map(dir -> findActionYaml(usesValue(), dir))
+            .map(VirtualFile::getPath) : Optional.empty();
     }
 
     // !!! Performs Network and File Operations !!!
@@ -285,9 +285,9 @@ public class GitHubAction implements Serializable {
 
     public static VirtualFile findActionYaml(final String subPath, final VirtualFile projectDir) {
         return ofNullable(projectDir.findFileByRelativePath(subPath)).filter(p -> !p.isDirectory())
-                .or(() -> ofNullable(projectDir.findFileByRelativePath(subPath + "/action.yml")).filter(VirtualFile::isValid).filter(p -> !p.isDirectory()))
-                .or(() -> ofNullable(projectDir.findFileByRelativePath(subPath + "/action.yaml")).filter(VirtualFile::isValid).filter(p -> !p.isDirectory()))
-                .orElse(null);
+            .or(() -> ofNullable(projectDir.findFileByRelativePath(subPath + "/action.yml")).filter(VirtualFile::isValid).filter(p -> !p.isDirectory()))
+            .or(() -> ofNullable(projectDir.findFileByRelativePath(subPath + "/action.yaml")).filter(VirtualFile::isValid).filter(p -> !p.isDirectory()))
+            .orElse(null);
     }
 
     private void extractParameters() {
@@ -306,15 +306,15 @@ public class GitHubAction implements Serializable {
     private void extractRemoteParameters() {
         try {
             CompletableFuture
-                    .runAsync(() ->
-                            ofNullable(downloadFileFromGitHub(downloadUrl()))
-                                    .or(() -> ofNullable(downloadContent(downloadUrl())))
-                                    .ifPresent(this::setParameters))
-                    .orTimeout(5000, TimeUnit.MILLISECONDS)
-                    .join();
+                .runAsync(() ->
+                    ofNullable(downloadFileFromGitHub(downloadUrl()))
+                        .or(() -> ofNullable(downloadContent(downloadUrl())))
+                        .ifPresent(this::setParameters))
+                .orTimeout(5000, TimeUnit.MILLISECONDS)
+                .join();
             ofNullable(downloadFileFromGitHub(downloadUrl()))
-                    .or(() -> ofNullable(downloadContent(downloadUrl())))
-                    .ifPresent(this::setParameters);
+                .or(() -> ofNullable(downloadContent(downloadUrl())))
+                .ifPresent(this::setParameters);
         } catch (final Exception exception) {
             Log.error("Download failed", exception);
         }
@@ -379,18 +379,18 @@ public class GitHubAction implements Serializable {
     @NotNull
     private static Map<String, String> readActionParameters(final PsiElement psiElement, final String fieldName) {
         return getChild(psiElement.getContainingFile(), fieldName)
-                .map(PsiElementHelper::getChildren)
-                .map(children -> children.stream().collect(Collectors.toMap(YAMLKeyValue::getKeyText, field -> PsiElementHelper.getDescription(field, FIELD_INPUTS.equals(fieldName)))))
-                .orElseGet(Collections::emptyMap);
+            .map(PsiElementHelper::getChildren)
+            .map(children -> children.stream().collect(Collectors.toMap(YAMLKeyValue::getKeyText, field -> PsiElementHelper.getDescription(field, FIELD_INPUTS.equals(fieldName)))))
+            .orElseGet(Collections::emptyMap);
     }
 
     @NotNull
     private static Map<String, String> readWorkflowParameters(final PsiElement psiElement, final String fieldName) {
         return getChild(psiElement.getContainingFile(), FIELD_ON)
-                .flatMap(keyValue -> getChild(psiElement.getContainingFile(), fieldName))
-                .map(PsiElementHelper::getChildren)
-                .map(children -> children.stream().collect(Collectors.toMap(YAMLKeyValue::getKeyText, field -> PsiElementHelper.getDescription(field, FIELD_INPUTS.equals(fieldName)))))
-                .orElseGet(Collections::emptyMap);
+            .flatMap(keyValue -> getChild(psiElement.getContainingFile(), fieldName))
+            .map(PsiElementHelper::getChildren)
+            .map(children -> children.stream().collect(Collectors.toMap(YAMLKeyValue::getKeyText, field -> PsiElementHelper.getDescription(field, FIELD_INPUTS.equals(fieldName)))))
+            .orElseGet(Collections::emptyMap);
     }
 
     private static void readPsiElement(final Project project, final String fileName, final String fileContent, final Consumer<PsiFile> action) {
@@ -423,9 +423,9 @@ public class GitHubAction implements Serializable {
     @Override
     public String toString() {
         return new StringJoiner(", ", GitHubAction.class.getSimpleName() + "[", "]")
-                .add("metaData=" + metaData)
-                .add("inputs=" + (inputs.size() + ignoredInputs.size()))
-                .add("outputs=" + (outputs.size() + ignoredOutputs.size()))
-                .toString();
+            .add("metaData=" + metaData)
+            .add("inputs=" + (inputs.size() + ignoredInputs.size()))
+            .add("outputs=" + (outputs.size() + ignoredOutputs.size()))
+            .toString();
     }
 }
