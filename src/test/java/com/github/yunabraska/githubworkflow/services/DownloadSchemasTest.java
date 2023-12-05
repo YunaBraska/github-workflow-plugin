@@ -6,10 +6,10 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
-import java.util.Arrays;
 import java.util.List;
 
 import static com.github.yunabraska.githubworkflow.helper.FileDownloader.downloadSync;
+import static junit.framework.TestCase.assertNotNull;
 
 public class DownloadSchemasTest {
 
@@ -34,6 +34,7 @@ public class DownloadSchemasTest {
         for (final String schemaName : schemaNames) {
             final String schemaContent = downloadSync(
                     "https://json.schemastore.org/" + schemaName, "JetBrains GithubWorkflow");
+            assertNotNull(schemaContent);
             Files.writeString(
                     Path.of(directory.toFile().getAbsolutePath(), schemaName + ".json"),
                     schemaContent,

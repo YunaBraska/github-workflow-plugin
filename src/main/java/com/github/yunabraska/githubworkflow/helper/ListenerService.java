@@ -7,10 +7,6 @@ import com.intellij.openapi.project.Project;
 
 @Service
 public final class ListenerService implements Disposable {
-    @Override
-    public void dispose() {
-    }
-
     @SuppressWarnings("unused")
     public static ListenerService getInstance() {
         return ApplicationManager.getApplication().getService(ListenerService.class);
@@ -18,5 +14,9 @@ public final class ListenerService implements Disposable {
 
     public static ListenerService getInstance(final Project project) {
         return project.getService(ListenerService.class);
+    }
+
+    @Override
+    public void dispose() {
     }
 }
