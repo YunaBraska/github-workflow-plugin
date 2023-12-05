@@ -20,7 +20,13 @@ import java.io.IOException;
 import java.io.Serial;
 import java.io.Serializable;
 import java.nio.file.Files;
-import java.util.*;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.Set;
+import java.util.StringJoiner;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
@@ -30,7 +36,10 @@ import java.util.stream.Stream;
 
 import static com.github.yunabraska.githubworkflow.helper.FileDownloader.downloadContent;
 import static com.github.yunabraska.githubworkflow.helper.FileDownloader.downloadFileFromGitHub;
-import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.*;
+import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.CACHE_ONE_DAY;
+import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.FIELD_INPUTS;
+import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.FIELD_ON;
+import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.FIELD_OUTPUTS;
 import static com.github.yunabraska.githubworkflow.helper.PsiElementHelper.getChild;
 import static com.github.yunabraska.githubworkflow.helper.PsiElementHelper.hasText;
 import static java.lang.Boolean.parseBoolean;
@@ -47,28 +56,26 @@ import static java.util.Optional.ofNullable;
 @SuppressWarnings("unused")
 public class GitHubAction implements Serializable {
 
-    // SERIALIZABLE
-    private final Map<String, String> metaData = new ConcurrentHashMap<>();
-    private final Map<String, String> inputs = new ConcurrentHashMap<>();
-    private final Map<String, String> outputs = new ConcurrentHashMap<>();
-
-    // NON SERIALIZABLE
-    private final Set<String> ignoredInputs = ConcurrentHashMap.newKeySet();
-    private final Set<String> ignoredOutputs = ConcurrentHashMap.newKeySet();
-
     // STATICS
     @Serial
     private static final long serialVersionUID = 135457798745235490L;
     private static final Logger LOG = Logger.getInstance(GitHubAction.class);
+    // SERIALIZABLE
+    private final Map<String, String> metaData = new ConcurrentHashMap<>();
+    private final Map<String, String> inputs = new ConcurrentHashMap<>();
+    private final Map<String, String> outputs = new ConcurrentHashMap<>();
+    // NON SERIALIZABLE
+    private final Set<String> ignoredInputs = ConcurrentHashMap.newKeySet();
+    private final Set<String> ignoredOutputs = ConcurrentHashMap.newKeySet();
 
     public static GitHubAction createSchemaAction(final String url, final String content) {
         return new GitHubAction()
-            .isResolved(true)
-            .isLocal(true)
-            .isSuppressed(false)
-            .name(content)
-            .downloadUrl(url)
-            .expiryTime(System.currentTimeMillis() + (CACHE_ONE_DAY * 30));
+                .isResolved(true)
+                .isLocal(true)
+                .isSuppressed(false)
+                .name(content)
+                .downloadUrl(url)
+                .expiryTime(System.currentTimeMillis() + (CACHE_ONE_DAY * 30));
     }
 
     @SuppressWarnings("java:S3776")
@@ -99,22 +106,96 @@ public class GitHubAction implements Serializable {
         // END [EXTRACT PARTS]
 
         return new GitHubAction()
-            .name(slug != null ? slug : tmpName)
-            .usesValue(usesValue)
-            .downloadUrl(isLocal ? absolutePath : toRemoteDownloadUrl(isAction, ref, slug, tmpSub, tmpName))
-            .githubUrl(isAction ? toGitHubActionUrl(ref, slug, tmpSub) : toGitHubWorkflowUrl(ref, slug, tmpName))
-            .expiryTime(System.currentTimeMillis() + (CACHE_ONE_DAY * 14))
-            .isLocal(isLocal)
-            .setAction(isAction)
-            .isSuppressed(false)
-            ;
+                .name(slug != null ? slug : tmpName)
+                .usesValue(usesValue)
+                .downloadUrl(isLocal ? absolutePath : toRemoteDownloadUrl(isAction, ref, slug, tmpSub, tmpName))
+                .githubUrl(isAction ? toGitHubActionUrl(ref, slug, tmpSub) : toGitHubWorkflowUrl(ref, slug, tmpName))
+                .expiryTime(System.currentTimeMillis() + (CACHE_ONE_DAY * 14))
+                .isLocal(isLocal)
+                .setAction(isAction)
+                .isSuppressed(false)
+                ;
+    }
+
+    public static VirtualFile findActionYaml(final String subPath, final VirtualFile projectDir) {
+        return ofNullable(projectDir.findFileByRelativePath(subPath)).filter(p -> !p.isDirectory())
+                .or(() -> ofNullable(projectDir.findFileByRelativePath(subPath + "/action.yml")).filter(VirtualFile::isValid).filter(p -> !p.isDirectory()))
+                .or(() -> ofNullable(projectDir.findFileByRelativePath(subPath + "/action.yaml")).filter(VirtualFile::isValid).filter(p -> !p.isDirectory()))
+                .orElse(null);
+    }
+
+    @Nullable
+    private static String toRemoteDownloadUrl(final boolean isAction, final String ref, final String slug, final String sub, final String name) {
+        return isAction ? toActionDownloadUrl(ref, slug, sub) : toWorkflowDownloadUrl(ref, slug, name);
+    }
+
+    @Nullable
+    private static String toWorkflowDownloadUrl(final String ref, final String slug, final String name) {
+        return (ref != null && slug != null) ? "https://raw.githubusercontent.com/" + slug + "/" + ref + "/.github/workflows/" + name : null;
+    }
+
+    @Nullable
+    private static String toActionDownloadUrl(final String ref, final String slug, final String sub) {
+        return (ref != null && slug != null && sub != null) ? "https://raw.githubusercontent.com/" + slug + "/" + ref + sub + "/action.yml" : null;
+    }
+
+    @Nullable
+    private static String toGitHubWorkflowUrl(final String ref, final String slug, final String name) {
+        return (ref != null && slug != null) ? "https://github.com/" + slug + "/blob/" + ref + "/.github/workflows/" + name : null;
+    }
+
+    @Nullable
+    private static String toGitHubActionUrl(final String ref, final String slug, final String sub) {
+        //        return (ref != null && slug != null && sub != null) ? "https://github.com/" + slug + "/blob/" + ref + sub + "/action.yml" : null;
+        //        https://github.com/actions/checkout/tree/Update-description#readme
+        return (ref != null && slug != null && sub != null) ? "https://github.com/" + slug + "/tree/" + ref + sub + "#readme" : null;
+    }
+
+    @NotNull
+    private static Map<String, String> getActionParameters(final PsiElement psiElement, final String fieldName, final boolean action) {
+        if (action) {
+            return readActionParameters(psiElement, fieldName);
+        } else {
+            return readWorkflowParameters(psiElement, fieldName);
+        }
+    }
+
+    @NotNull
+    private static Map<String, String> readActionParameters(final PsiElement psiElement, final String fieldName) {
+        return getChild(psiElement.getContainingFile(), fieldName)
+                .map(PsiElementHelper::getChildren)
+                .map(children -> children.stream().collect(Collectors.toMap(YAMLKeyValue::getKeyText, field -> PsiElementHelper.getDescription(field, FIELD_INPUTS.equals(fieldName)))))
+                .orElseGet(Collections::emptyMap);
+    }
+
+    @NotNull
+    private static Map<String, String> readWorkflowParameters(final PsiElement psiElement, final String fieldName) {
+        return getChild(psiElement.getContainingFile(), FIELD_ON)
+                .flatMap(keyValue -> getChild(psiElement.getContainingFile(), fieldName))
+                .map(PsiElementHelper::getChildren)
+                .map(children -> children.stream().collect(Collectors.toMap(YAMLKeyValue::getKeyText, field -> PsiElementHelper.getDescription(field, FIELD_INPUTS.equals(fieldName)))))
+                .orElseGet(Collections::emptyMap);
+    }
+
+    private static void readPsiElement(final Project project, final String fileName, final String fileContent, final Consumer<PsiFile> action) {
+        ApplicationManager.getApplication().runReadAction(() -> {
+            try {
+                ofNullable(action).ifPresent(consumer -> consumer.accept(PsiFileFactory.getInstance(project).createFileFromText(fileName, YAMLFileType.YML, fileContent.replaceAll("\r?\\n|\\r", "\n"))));
+            } catch (final Exception ignored) {
+                // ignored
+            }
+        });
+    }
+
+    private static <K, V> Map<K, V> concatMap(final Map<K, V> map1, final Map<K, V> map2) {
+        return Stream.concat(map1.entrySet().stream(), map2.entrySet().stream()).collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue, (v1, v2) -> v1));
     }
 
     public Optional<String> getLocalPath(final Project project) {
         return isLocal() ? ofNullable(project)
-            .map(ProjectUtil::guessProjectDir)
-            .map(dir -> findActionYaml(usesValue(), dir))
-            .map(VirtualFile::getPath) : Optional.empty();
+                .map(ProjectUtil::guessProjectDir)
+                .map(dir -> findActionYaml(usesValue(), dir))
+                .map(VirtualFile::getPath) : Optional.empty();
     }
 
     // !!! Performs Network and File Operations !!!
@@ -253,7 +334,6 @@ public class GitHubAction implements Serializable {
         return unmodifiableSet(ignoredOutputs);
     }
 
-
     public Map<String, String> getInputs() {
         return unmodifiableMap(inputs);
     }
@@ -283,13 +363,6 @@ public class GitHubAction implements Serializable {
         return this;
     }
 
-    public static VirtualFile findActionYaml(final String subPath, final VirtualFile projectDir) {
-        return ofNullable(projectDir.findFileByRelativePath(subPath)).filter(p -> !p.isDirectory())
-            .or(() -> ofNullable(projectDir.findFileByRelativePath(subPath + "/action.yml")).filter(VirtualFile::isValid).filter(p -> !p.isDirectory()))
-            .or(() -> ofNullable(projectDir.findFileByRelativePath(subPath + "/action.yaml")).filter(VirtualFile::isValid).filter(p -> !p.isDirectory()))
-            .orElse(null);
-    }
-
     private void extractParameters() {
         try {
             if (isLocal()) {
@@ -306,15 +379,15 @@ public class GitHubAction implements Serializable {
     private void extractRemoteParameters() {
         try {
             CompletableFuture
-                .runAsync(() ->
-                    ofNullable(downloadFileFromGitHub(downloadUrl()))
-                        .or(() -> ofNullable(downloadContent(downloadUrl())))
-                        .ifPresent(this::setParameters))
-                .orTimeout(5000, TimeUnit.MILLISECONDS)
-                .join();
+                    .runAsync(() ->
+                            ofNullable(downloadFileFromGitHub(downloadUrl()))
+                                    .or(() -> ofNullable(downloadContent(downloadUrl())))
+                                    .ifPresent(this::setParameters))
+                    .orTimeout(5000, TimeUnit.MILLISECONDS)
+                    .join();
             ofNullable(downloadFileFromGitHub(downloadUrl()))
-                .or(() -> ofNullable(downloadContent(downloadUrl())))
-                .ifPresent(this::setParameters);
+                    .or(() -> ofNullable(downloadContent(downloadUrl())))
+                    .ifPresent(this::setParameters);
         } catch (final Exception exception) {
             Log.error("Download failed", exception);
         }
@@ -340,73 +413,6 @@ public class GitHubAction implements Serializable {
         });
     }
 
-    @Nullable
-    private static String toRemoteDownloadUrl(final boolean isAction, final String ref, final String slug, final String sub, final String name) {
-        return isAction ? toActionDownloadUrl(ref, slug, sub) : toWorkflowDownloadUrl(ref, slug, name);
-    }
-
-    @Nullable
-    private static String toWorkflowDownloadUrl(final String ref, final String slug, final String name) {
-        return (ref != null && slug != null) ? "https://raw.githubusercontent.com/" + slug + "/" + ref + "/.github/workflows/" + name : null;
-    }
-
-    @Nullable
-    private static String toActionDownloadUrl(final String ref, final String slug, final String sub) {
-        return (ref != null && slug != null && sub != null) ? "https://raw.githubusercontent.com/" + slug + "/" + ref + sub + "/action.yml" : null;
-    }
-
-    @Nullable
-    private static String toGitHubWorkflowUrl(final String ref, final String slug, final String name) {
-        return (ref != null && slug != null) ? "https://github.com/" + slug + "/blob/" + ref + "/.github/workflows/" + name : null;
-    }
-
-    @Nullable
-    private static String toGitHubActionUrl(final String ref, final String slug, final String sub) {
-        //        return (ref != null && slug != null && sub != null) ? "https://github.com/" + slug + "/blob/" + ref + sub + "/action.yml" : null;
-        //        https://github.com/actions/checkout/tree/Update-description#readme
-        return (ref != null && slug != null && sub != null) ? "https://github.com/" + slug + "/tree/" + ref + sub + "#readme" : null;
-    }
-
-    @NotNull
-    private static Map<String, String> getActionParameters(final PsiElement psiElement, final String fieldName, final boolean action) {
-        if (action) {
-            return readActionParameters(psiElement, fieldName);
-        } else {
-            return readWorkflowParameters(psiElement, fieldName);
-        }
-    }
-
-    @NotNull
-    private static Map<String, String> readActionParameters(final PsiElement psiElement, final String fieldName) {
-        return getChild(psiElement.getContainingFile(), fieldName)
-            .map(PsiElementHelper::getChildren)
-            .map(children -> children.stream().collect(Collectors.toMap(YAMLKeyValue::getKeyText, field -> PsiElementHelper.getDescription(field, FIELD_INPUTS.equals(fieldName)))))
-            .orElseGet(Collections::emptyMap);
-    }
-
-    @NotNull
-    private static Map<String, String> readWorkflowParameters(final PsiElement psiElement, final String fieldName) {
-        return getChild(psiElement.getContainingFile(), FIELD_ON)
-            .flatMap(keyValue -> getChild(psiElement.getContainingFile(), fieldName))
-            .map(PsiElementHelper::getChildren)
-            .map(children -> children.stream().collect(Collectors.toMap(YAMLKeyValue::getKeyText, field -> PsiElementHelper.getDescription(field, FIELD_INPUTS.equals(fieldName)))))
-            .orElseGet(Collections::emptyMap);
-    }
-
-    private static void readPsiElement(final Project project, final String fileName, final String fileContent, final Consumer<PsiFile> action) {
-        ApplicationManager.getApplication().runReadAction(() -> {
-            try {
-                ofNullable(action).ifPresent(consumer -> consumer.accept(PsiFileFactory.getInstance(project).createFileFromText(fileName, YAMLFileType.YML, fileContent.replaceAll("\r?\\n|\\r", "\n"))));
-            } catch (final Exception ignored) {
-                // ignored
-            }
-        });
-    }
-
-    private static <K, V> Map<K, V> concatMap(final Map<K, V> map1, final Map<K, V> map2) {
-        return Stream.concat(map1.entrySet().stream(), map2.entrySet().stream()).collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue, (v1, v2) -> v1));
-    }
-
     @Override
     public boolean equals(final Object o) {
         if (this == o) return true;
@@ -423,9 +429,9 @@ public class GitHubAction implements Serializable {
     @Override
     public String toString() {
         return new StringJoiner(", ", GitHubAction.class.getSimpleName() + "[", "]")
-            .add("metaData=" + metaData)
-            .add("inputs=" + (inputs.size() + ignoredInputs.size()))
-            .add("outputs=" + (outputs.size() + ignoredOutputs.size()))
-            .toString();
+                .add("metaData=" + metaData)
+                .add("inputs=" + (inputs.size() + ignoredInputs.size()))
+                .add("outputs=" + (outputs.size() + ignoredOutputs.size()))
+                .toString();
     }
 }

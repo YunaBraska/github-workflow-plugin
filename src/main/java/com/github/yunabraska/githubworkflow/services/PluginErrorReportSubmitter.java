@@ -44,10 +44,10 @@ final class PluginErrorReportSubmitter extends ErrorReportSubmitter {
 
         sb.append(URLEncoder.encode(StringUtil.splitByLines(throwableText)[0], UTF_8));
         ofNullable(event.getThrowable())
-                .map(Throwable::getMessage)
-                .or(() -> Optional.of(throwableText).map(title -> StringUtil.splitByLines(title)[0]))
-                .map(title -> "&title=" + URLEncoder.encode(title, UTF_8))
-                .ifPresent(sb::append);
+            .map(Throwable::getMessage)
+            .or(() -> Optional.of(throwableText).map(title -> StringUtil.splitByLines(title)[0]))
+            .map(title -> "&title=" + URLEncoder.encode(title, UTF_8))
+            .ifPresent(sb::append);
 
         sb.append("&body=");
         sb.append(URLEncoder.encode("\n\n### Description\n", UTF_8));
@@ -64,7 +64,7 @@ final class PluginErrorReportSubmitter extends ErrorReportSubmitter {
         assert descriptor != null;
         sb.append(URLEncoder.encode("Plugin version : " + descriptor.getVersion() + "\n", UTF_8));
         sb.append(URLEncoder.encode("IDE: " + ApplicationInfo.getInstance().getFullApplicationName() +
-                " (" + ApplicationInfo.getInstance().getBuild().asString() + ")\n", UTF_8));
+            " (" + ApplicationInfo.getInstance().getBuild().asString() + ")\n", UTF_8));
         sb.append(URLEncoder.encode("OS: " + SystemInfo.getOsNameAndVersion(), UTF_8));
 
         sb.append(URLEncoder.encode("\n\n### Stacktrace\n", UTF_8));

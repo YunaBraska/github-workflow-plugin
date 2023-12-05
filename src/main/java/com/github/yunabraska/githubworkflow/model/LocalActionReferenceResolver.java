@@ -2,12 +2,7 @@ package com.github.yunabraska.githubworkflow.model;
 
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.vfs.LocalFileSystem;
-import com.intellij.psi.PsiElement;
-import com.intellij.psi.PsiElementResolveResult;
-import com.intellij.psi.PsiManager;
-import com.intellij.psi.PsiPolyVariantReference;
-import com.intellij.psi.PsiReferenceBase;
-import com.intellij.psi.ResolveResult;
+import com.intellij.psi.*;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -26,11 +21,11 @@ public class LocalActionReferenceResolver extends PsiReferenceBase<PsiElement> i
         return ofNullable(myElement.getUserData(ACTION_KEY)).flatMap(action -> {
             final Project project = getProject(myElement);
             return ofNullable(project)
-                    .flatMap(action::getLocalPath)
-                    .map(path -> LocalFileSystem.getInstance().findFileByPath(path))
-                    .map(virtualFile -> PsiManager.getInstance(project).findFile(virtualFile))
-                    .map(target -> target.getChildren().length > 0 ? target.getChildren()[0] : target)
-                    .map(target -> new ResolveResult[]{(new PsiElementResolveResult(target))});
+                .flatMap(action::getLocalPath)
+                .map(path -> LocalFileSystem.getInstance().findFileByPath(path))
+                .map(virtualFile -> PsiManager.getInstance(project).findFile(virtualFile))
+                .map(target -> target.getChildren().length > 0 ? target.getChildren()[0] : target)
+                .map(target -> new ResolveResult[]{(new PsiElementResolveResult(target))});
         }).orElse(ResolveResult.EMPTY_ARRAY);
     }
 

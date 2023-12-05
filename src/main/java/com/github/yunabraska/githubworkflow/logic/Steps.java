@@ -14,9 +14,26 @@ import java.util.List;
 import java.util.Objects;
 import java.util.stream.Stream;
 
-import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.*;
-import static com.github.yunabraska.githubworkflow.helper.HighlightAnnotatorHelper.*;
-import static com.github.yunabraska.githubworkflow.helper.PsiElementHelper.*;
+import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.FIELD_CONCLUSION;
+import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.FIELD_ID;
+import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.FIELD_OUTCOME;
+import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.FIELD_OUTPUTS;
+import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.FIELD_RUN;
+import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.FIELD_RUNS;
+import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.FIELD_STEPS;
+import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.FIELD_USES;
+import static com.github.yunabraska.githubworkflow.helper.HighlightAnnotatorHelper.VALID_OUTPUT_FIELDS;
+import static com.github.yunabraska.githubworkflow.helper.HighlightAnnotatorHelper.VALID_STEP_FIELDS;
+import static com.github.yunabraska.githubworkflow.helper.HighlightAnnotatorHelper.ifEnoughItems;
+import static com.github.yunabraska.githubworkflow.helper.HighlightAnnotatorHelper.isDefinedItem0;
+import static com.github.yunabraska.githubworkflow.helper.HighlightAnnotatorHelper.isField2Valid;
+import static com.github.yunabraska.githubworkflow.helper.HighlightAnnotatorHelper.isValidItem3;
+import static com.github.yunabraska.githubworkflow.helper.PsiElementHelper.getChild;
+import static com.github.yunabraska.githubworkflow.helper.PsiElementHelper.getChildSteps;
+import static com.github.yunabraska.githubworkflow.helper.PsiElementHelper.getParent;
+import static com.github.yunabraska.githubworkflow.helper.PsiElementHelper.getParentJob;
+import static com.github.yunabraska.githubworkflow.helper.PsiElementHelper.getParentStep;
+import static com.github.yunabraska.githubworkflow.helper.PsiElementHelper.getText;
 import static com.github.yunabraska.githubworkflow.logic.Action.highlightActionOutputs;
 import static com.github.yunabraska.githubworkflow.logic.Action.listActionsOutputs;
 import static com.github.yunabraska.githubworkflow.model.NodeIcon.ICON_STEP;
@@ -59,9 +76,9 @@ public class Steps {
         return listSteps(psiElement).stream().map(item -> {
             final List<YAMLKeyValue> children = PsiElementHelper.getChildren(item);
             return children.stream().filter(child -> FIELD_ID.equals(child.getKeyText())).findFirst().flatMap(PsiElementHelper::getText).map(stepId -> completionItemOf(
-                stepId,
-                children.stream().filter(child -> FIELD_USES.equals(child.getKeyText())).findFirst().flatMap(PsiElementHelper::getText).orElseGet(() -> children.stream().filter(child -> "name".equals(child.getKeyText())).findFirst().flatMap(PsiElementHelper::getText).orElse(null)),
-                ICON_STEP
+                    stepId,
+                    children.stream().filter(child -> FIELD_USES.equals(child.getKeyText())).findFirst().flatMap(PsiElementHelper::getText).orElseGet(() -> children.stream().filter(child -> "name".equals(child.getKeyText())).findFirst().flatMap(PsiElementHelper::getText).orElse(null)),
+                    ICON_STEP
             )).orElse(null);
         }).filter(Objects::nonNull).toList();
     }
@@ -79,12 +96,12 @@ public class Steps {
             final boolean isOutput = getParent(psiElement, FIELD_OUTPUTS).isPresent();
             return getChildSteps(job).stream().takeWhile(step -> isOutput || step != currentStep).toList();
         }).orElseGet(() -> getParent(psiElement, FIELD_OUTPUTS)
-            //Action.yaml [runs.steps]
-            .map(outputs -> psiElement.getContainingFile())
-            .flatMap(psiFile -> getChild(psiFile, FIELD_RUNS))
-            .flatMap(runs -> getChild(runs, FIELD_STEPS))
-            .map(PsiElementHelper::getChildSteps)
-            .orElseGet(Collections::emptyList)
+                //Action.yaml [runs.steps]
+                .map(outputs -> psiElement.getContainingFile())
+                .flatMap(psiFile -> getChild(psiFile, FIELD_RUNS))
+                .flatMap(runs -> getChild(runs, FIELD_STEPS))
+                .map(PsiElementHelper::getChildSteps)
+                .orElseGet(Collections::emptyList)
         );
     }
 
@@ -97,8 +114,8 @@ public class Steps {
     @NotNull
     private static List<SimpleElement> listRunOutputs(final YAMLSequenceItem step) {
         return ofNullable(step).flatMap(s -> getChild(s, FIELD_RUN)
-            .map(PsiElementHelper::parseOutputVariables)
-            .map(outputs -> outputs.stream().map(output -> completionItemOf(output.key(), output.text(), ICON_TEXT_VARIABLE)).toList())
+                .map(PsiElementHelper::parseOutputVariables)
+                .map(outputs -> outputs.stream().map(output -> completionItemOf(output.key(), output.text(), ICON_TEXT_VARIABLE)).toList())
         ).orElseGet(Collections::emptyList);
     }
 }

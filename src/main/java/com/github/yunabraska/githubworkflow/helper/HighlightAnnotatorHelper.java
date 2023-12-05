@@ -29,14 +29,9 @@ import java.util.List;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
-import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.FIELD_CONCLUSION;
-import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.FIELD_OUTCOME;
-import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.FIELD_OUTPUTS;
-import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.FIELD_USES;
+import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.*;
 import static com.github.yunabraska.githubworkflow.helper.PsiElementHelper.removeQuotes;
-import static com.github.yunabraska.githubworkflow.model.NodeIcon.JUMP_TO_IMPLEMENTATION;
-import static com.github.yunabraska.githubworkflow.model.NodeIcon.RELOAD;
-import static com.github.yunabraska.githubworkflow.model.NodeIcon.SETTINGS;
+import static com.github.yunabraska.githubworkflow.model.NodeIcon.*;
 import static com.github.yunabraska.githubworkflow.model.SyntaxAnnotation.createAnnotation;
 import static java.util.Optional.ofNullable;
 
@@ -60,28 +55,28 @@ public class HighlightAnnotatorHelper {
     }
 
     public static void ifEnoughItems(
-            final AnnotationHolder holder,
-            final PsiElement psiElement,
-            final SimpleElement[] parts,
-            final int min,
-            final int max,
-            final Consumer<SimpleElement> then
+        final AnnotationHolder holder,
+        final PsiElement psiElement,
+        final SimpleElement[] parts,
+        final int min,
+        final int max,
+        final Consumer<SimpleElement> then
     ) {
         if (parts.length < min || parts.length < 2) {
             final TextRange range = psiElement.getTextRange();
             new SyntaxAnnotation(
-                    "Incomplete statement [" + Arrays.stream(parts).map(SimpleElement::text).collect(Collectors.joining(".")) + "]",
-                    null,
-                    null
+                "Incomplete statement [" + Arrays.stream(parts).map(SimpleElement::text).collect(Collectors.joining(".")) + "]",
+                null,
+                null
             ).createAnnotation(psiElement, new TextRange(range.getStartOffset() + parts[0].startIndexOffset(), range.getStartOffset() + parts[parts.length - 1].endIndexOffset()), holder);
         } else if (max != -1 && parts.length > max) {
             final TextRange range = psiElement.getTextRange();
             final SimpleElement[] tooLongPart = Arrays.copyOfRange(parts, max, parts.length);
             final TextRange textRange = new TextRange(range.getStartOffset() + tooLongPart[0].startIndexOffset(), range.getStartOffset() + tooLongPart[tooLongPart.length - 1].endIndexOffset());
             new SyntaxAnnotation(
-                    "Remove invalid suffix [" + Arrays.stream(tooLongPart).map(SimpleElement::text).collect(Collectors.joining(".")) + "]",
-                    null,
-                    deleteElementAction(textRange)
+                "Remove invalid suffix [" + Arrays.stream(tooLongPart).map(SimpleElement::text).collect(Collectors.joining(".")) + "]",
+                null,
+                deleteElementAction(textRange)
             ).createAnnotation(psiElement, textRange, holder);
         } else {
             then.accept(parts[1]);
@@ -94,9 +89,9 @@ public class HighlightAnnotatorHelper {
         } else if (!items.contains(itemId.text())) {
             final TextRange textRange = simpleTextRange(psiElement, itemId);
             createAnnotation(psiElement, textRange, holder, items.stream().map(item -> new SyntaxAnnotation(
-                    "Replace with [" + item + "]",
-                    null,
-                    replaceAction(textRange, item)
+                "Replace with [" + item + "]",
+                null,
+                replaceAction(textRange, item)
             )).toList());
             return false;
         }
@@ -111,9 +106,9 @@ public class HighlightAnnotatorHelper {
         if (!validFields.contains(itemId.text())) {
             final TextRange textRange = simpleTextRange(psiElement, itemId);
             new SyntaxAnnotation(
-                    "Remove invalid [" + itemId + "]",
-                    null,
-                    deleteElementAction(textRange)
+                "Remove invalid [" + itemId + "]",
+                null,
+                deleteElementAction(textRange)
             ).createAnnotation(psiElement, textRange, holder);
             return false;
         }
@@ -124,9 +119,9 @@ public class HighlightAnnotatorHelper {
         if (!isEmpty(outputs, itemId, psiElement, holder) && itemId != null && !outputs.contains(itemId.text())) {
             final TextRange textRange = simpleTextRange(psiElement, itemId);
             createAnnotation(psiElement, textRange, holder, outputs.stream().filter(PsiElementHelper::hasText).map(item -> new SyntaxAnnotation(
-                    "Replace with [" + item + "]",
-                    null,
-                    replaceAction(textRange, item)
+                "Replace with [" + item + "]",
+                null,
+                replaceAction(textRange, item)
             )).toList());
         }
     }
@@ -134,36 +129,36 @@ public class HighlightAnnotatorHelper {
     @NotNull
     public static SyntaxAnnotation newReloadAction(final GitHubAction action) {
         return new SyntaxAnnotation(
-                "Reload [" + action.name() + "]",
-                RELOAD,
-                HighlightSeverity.INFORMATION,
-                ProblemHighlightType.INFORMATION,
-                f -> GitHubActionCache.reloadActionAsync(f.project(), action.usesValue())
+            "Reload [" + action.name() + "]",
+            RELOAD,
+            HighlightSeverity.INFORMATION,
+            ProblemHighlightType.INFORMATION,
+            f -> GitHubActionCache.reloadActionAsync(f.project(), action.usesValue())
         );
     }
 
     @NotNull
     public static SyntaxAnnotation newUnresolvedAction(final YAMLKeyValue element) {
         return new SyntaxAnnotation(
-                "Unresolved [" + removeQuotes(element.getValueText()) + "] - you may need to connect your GitHub",
-                SETTINGS,
-                HighlightSeverity.WEAK_WARNING,
-                ProblemHighlightType.WEAK_WARNING,
-                f -> {
-                    ShowSettingsUtil.getInstance().showSettingsDialog(f.project(), "GitHub");
-                    resolveAction(element);
-                }
+            "Unresolved [" + removeQuotes(element.getValueText()) + "] - you may need to connect your GitHub",
+            SETTINGS,
+            HighlightSeverity.WEAK_WARNING,
+            ProblemHighlightType.WEAK_WARNING,
+            f -> {
+                ShowSettingsUtil.getInstance().showSettingsDialog(f.project(), "GitHub");
+                resolveAction(element);
+            }
         );
     }
 
     public static SyntaxAnnotation deleteInvalidAction(final YAMLKeyValue element) {
         final TextRange textRange = ofNullable(element.getValue()).map(PsiElement::getTextRange).orElseGet(element::getTextRange);
         return new SyntaxAnnotation(
-                "Remove invalid [" + element.getValueText() + "]",
-                null,
-                HighlightSeverity.WEAK_WARNING,
-                ProblemHighlightType.WEAK_WARNING,
-                deleteElementAction(textRange)
+            "Remove invalid [" + element.getValueText() + "]",
+            null,
+            HighlightSeverity.WEAK_WARNING,
+            ProblemHighlightType.WEAK_WARNING,
+            deleteElementAction(textRange)
         );
     }
 
@@ -171,22 +166,22 @@ public class HighlightAnnotatorHelper {
     public static SyntaxAnnotation newJumpToFile(final GitHubAction action) {
         //TODO: List Workflows connected to the action file
         return new SyntaxAnnotation(
-                "Jump to file [" + action.name() + "]",
-                JUMP_TO_IMPLEMENTATION,
-                HighlightSeverity.INFORMATION,
-                ProblemHighlightType.INFORMATION,
-                f -> jumpToFile(action, f.project()),
-                false
+            "Jump to file [" + action.name() + "]",
+            JUMP_TO_IMPLEMENTATION,
+            HighlightSeverity.INFORMATION,
+            ProblemHighlightType.INFORMATION,
+            f -> jumpToFile(action, f.project()),
+            false
         );
     }
 
     public static void jumpToFile(final GitHubAction action, final Project project) {
         ofNullable(project)
-                .map(p -> action)
-                .flatMap(a -> a.getLocalPath(project))
-                .map(path -> LocalFileSystem.getInstance().findFileByPath(path))
-                .map(target -> PsiManager.getInstance(project).findFile(target))
-                .ifPresent(psiFile -> PsiNavigationSupport.getInstance().createNavigatable(project, psiFile.getVirtualFile(), 0).navigate(true));
+            .map(p -> action)
+            .flatMap(a -> a.getLocalPath(project))
+            .map(path -> LocalFileSystem.getInstance().findFileByPath(path))
+            .map(target -> PsiManager.getInstance(project).findFile(target))
+            .ifPresent(psiFile -> PsiNavigationSupport.getInstance().createNavigatable(project, psiFile.getVirtualFile(), 0).navigate(true));
     }
 
 
@@ -216,8 +211,8 @@ public class HighlightAnnotatorHelper {
         final TextRange textRange = psiElement.getTextRange();
         final int startOffset = textRange.getStartOffset();
         return new TextRange(
-                Math.max(startOffset + item.startIndexOffset(), startOffset),
-                Math.min(startOffset + item.endIndexOffset(), textRange.getEndOffset())
+            Math.max(startOffset + item.startIndexOffset(), startOffset),
+            Math.min(startOffset + item.endIndexOffset(), textRange.getEndOffset())
         );
     }
 
@@ -225,9 +220,9 @@ public class HighlightAnnotatorHelper {
         if (itemId != null && items.isEmpty()) {
             final TextRange textRange = simpleTextRange(psiElement, itemId);
             createAnnotation(psiElement, textRange, holder, List.of(new SyntaxAnnotation(
-                    "Delete invalid [" + itemId.text() + "]",
-                    null,
-                    deleteElementAction(textRange)
+                "Delete invalid [" + itemId.text() + "]",
+                null,
+                deleteElementAction(textRange)
             )));
             return true;
         }
@@ -236,11 +231,11 @@ public class HighlightAnnotatorHelper {
 
     private static void resolveAction(final YAMLKeyValue element) {
         ApplicationManager.getApplication().invokeLater(() -> ofNullable(element)
-                .filter(PsiElement::isValid)
-                .flatMap(psiElement -> PsiElementHelper.getParent(psiElement, FIELD_USES))
-                .map(GitHubActionCache::getAction)
-                .filter(action -> !action.isResolved())
-                .map(List::of)
-                .ifPresent(GitHubActionCache::resolveActionsAsync), ModalityState.defaultModalityState());
+            .filter(PsiElement::isValid)
+            .flatMap(psiElement -> PsiElementHelper.getParent(psiElement, FIELD_USES))
+            .map(GitHubActionCache::getAction)
+            .filter(action -> !action.isResolved())
+            .map(List::of)
+            .ifPresent(GitHubActionCache::resolveActionsAsync), ModalityState.defaultModalityState());
     }
 }
