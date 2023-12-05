@@ -21,7 +21,10 @@ public class GitHubActionCacheTest extends BasePlatformTestCase {
 
         // THEN EXPECT
         validateResolvedJavaAction(javaAction);
-        assertThat(javaAction.expiryTime()).isEqualTo(getActionCache().get(project, "actions/setup-java@main").expiryTime());
+        assertThat(javaAction.expiryTime())
+                .isEqualTo(getActionCache()
+                        .get(project, "actions/setup-java@main")
+                        .expiryTime());
 
         // WHEN SERIALIZATION
         Thread.sleep(25);

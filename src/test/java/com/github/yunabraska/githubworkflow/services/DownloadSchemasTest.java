@@ -15,7 +15,7 @@ public class DownloadSchemasTest {
 
     @Test
     public void downloadSchemas() throws IOException {
-        final List<String> schemaNames = Arrays.asList(
+        final List<String> schemaNames = List.of(
                 "dependabot-2.0",
                 "github-action",
                 "github-funding",
@@ -32,8 +32,14 @@ public class DownloadSchemasTest {
         }
 
         for (final String schemaName : schemaNames) {
-            final String schemaContent = downloadSync("https://json.schemastore.org/" + schemaName, "JetBrains GithubWorkflow");
-            Files.writeString(Path.of(directory.toFile().getAbsolutePath(), schemaName + ".json"), schemaContent, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
+            final String schemaContent = downloadSync(
+                    "https://json.schemastore.org/" + schemaName, "JetBrains GithubWorkflow");
+            Files.writeString(
+                    Path.of(directory.toFile().getAbsolutePath(), schemaName + ".json"),
+                    schemaContent,
+                    StandardOpenOption.CREATE,
+                    StandardOpenOption.TRUNCATE_EXISTING
+            );
             System.out.println("Saved " + schemaName);
             System.out.println("Failed to fetch " + schemaName);
         }
