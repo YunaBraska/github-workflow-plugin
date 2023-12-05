@@ -27,6 +27,21 @@ public record SimpleElement(String key, String text, TextRange range, NodeIcon i
         this(null, text, range, null);
     }
 
+    public static List<SimpleElement> completionItemsOf(final Map<String, String> map, final NodeIcon icon) {
+        return map == null ? new ArrayList<>() : map.entrySet().stream()
+                .map(item -> completionItemOf(item.getKey(), item.getValue(), icon))
+                .filter(Objects::nonNull)
+                .collect(Collectors.toCollection(ArrayList::new));
+    }
+
+    public static SimpleElement completionItemOf(final String key, final String text, final NodeIcon icon) {
+        return key == null ? null : new SimpleElement(key, orEmpty(text), icon);
+    }
+
+    private static String orEmpty(final String text) {
+        return ofNullable(text).orElse("");
+    }
+
     @SuppressWarnings("unused")
     public NodeIcon icon() {
         return icon != null ? icon : NodeIcon.ICON_NODE;
@@ -46,21 +61,6 @@ public record SimpleElement(String key, String text, TextRange range, NodeIcon i
 
     public LookupElement toLookupElement() {
         return GitHubWorkflowHelper.toLookupElement(icon, Character.MIN_VALUE, key, text);
-    }
-
-    public static List<SimpleElement> completionItemsOf(final Map<String, String> map, final NodeIcon icon) {
-        return map == null ? new ArrayList<>() : map.entrySet().stream()
-                .map(item -> completionItemOf(item.getKey(), item.getValue(), icon))
-                .filter(Objects::nonNull)
-                .collect(Collectors.toCollection(ArrayList::new));
-    }
-
-    public static SimpleElement completionItemOf(final String key, final String text, final NodeIcon icon) {
-        return key == null ? null : new SimpleElement(key, orEmpty(text), icon);
-    }
-
-    private static String orEmpty(final String text) {
-        return ofNullable(text).orElse("");
     }
 
 }

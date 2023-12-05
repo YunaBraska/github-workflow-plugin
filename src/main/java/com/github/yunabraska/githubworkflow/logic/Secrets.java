@@ -24,6 +24,10 @@ import static com.github.yunabraska.githubworkflow.model.SyntaxAnnotation.create
 
 public class Secrets {
 
+    private Secrets() {
+        // static helper class
+    }
+
     public static void highLightSecrets(
         final AnnotationHolder holder,
         final PsiElement psiElement,
@@ -64,9 +68,5 @@ public class Secrets {
             .map(secrets -> secrets.stream().flatMap(secret -> getChildren(secret).stream()).collect(Collectors.toMap(YAMLKeyValue::getKeyText, keyValue -> getText(keyValue, "description").orElse(""), (existing, replacement) -> existing)))
             .map(map -> completionItemsOf(map, ICON_SECRET_WORKFLOW))
             .orElseGet(ArrayList::new);
-    }
-
-    private Secrets() {
-        // static helper class
     }
 }

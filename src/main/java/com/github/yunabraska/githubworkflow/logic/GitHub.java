@@ -15,15 +15,15 @@ import static com.github.yunabraska.githubworkflow.model.SimpleElement.completio
 
 public class GitHub {
 
+    private GitHub() {
+        // static helper class
+    }
+
     public static void highLightGitHub(final AnnotationHolder holder, final LeafPsiElement element, final SimpleElement[] parts) {
         ifEnoughItems(holder, element, parts, 2, -1, envId -> isDefinedItem0(element, holder, envId, new ArrayList<>(FIELD_GITHUB_MAP.keySet())));
     }
 
     public static List<SimpleElement> codeCompletionGithub() {
         return completionItemsOf(FIELD_GITHUB_MAP, ICON_ENV);
-    }
-
-    private GitHub() {
-        // static helper class
     }
 }

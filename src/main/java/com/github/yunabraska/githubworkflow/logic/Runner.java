@@ -15,15 +15,15 @@ import static com.github.yunabraska.githubworkflow.model.SimpleElement.completio
 
 public class Runner {
 
+    private Runner() {
+        // static helper class
+    }
+
     public static void highlightRunner(final AnnotationHolder holder, final LeafPsiElement element, final SimpleElement[] parts) {
         ifEnoughItems(holder, element, parts, 2, 2, runnerId -> isDefinedItem0(element, holder, runnerId, new ArrayList<>(FIELD_RUNNER_MAP.keySet())));
     }
 
     public static List<SimpleElement> codeCompletionRunner() {
         return completionItemsOf(FIELD_RUNNER_MAP, ICON_RUNNER);
-    }
-
-    private Runner() {
-        // static helper class
     }
 }

@@ -15,7 +15,9 @@ import java.util.Map;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
-import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.*;
+import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.FIELD_ENVS;
+import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.FIELD_ENVS_MAP;
+import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.FIELD_RUN;
 import static com.github.yunabraska.githubworkflow.helper.HighlightAnnotatorHelper.ifEnoughItems;
 import static com.github.yunabraska.githubworkflow.helper.HighlightAnnotatorHelper.isDefinedItem0;
 import static com.github.yunabraska.githubworkflow.helper.PsiElementHelper.*;
@@ -23,6 +25,10 @@ import static com.github.yunabraska.githubworkflow.model.NodeIcon.*;
 import static com.github.yunabraska.githubworkflow.model.SimpleElement.completionItemsOf;
 
 public class Envs {
+
+    private Envs() {
+        // static helper class
+    }
 
     public static void highLightEnvs(final AnnotationHolder holder, final LeafPsiElement element, final SimpleElement[] parts) {
         ifEnoughItems(holder, element, parts, 2, -1, envId -> isDefinedItem0(element, holder, envId, listEnvs(element).stream().map(SimpleElement::key).toList()));
@@ -96,9 +102,5 @@ public class Envs {
 
     private static void addDefaultEnvs(final List<SimpleElement> result) {
         result.addAll(completionItemsOf(FIELD_ENVS_MAP, ICON_ENV));
-    }
-
-    private Envs() {
-        // static helper class
     }
 }
