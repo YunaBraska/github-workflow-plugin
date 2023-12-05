@@ -90,7 +90,12 @@ public class Needs {
             .map(job -> new PsiReference[]{new LocalReferenceResolver(psiElement, job)});
     }
 
-    private static void highlightLocalActions(final AnnotationHolder holder, final YAMLKeyValue element, final GitHubAction action, final List<SyntaxAnnotation> result) {
+    private static void highlightLocalActions( // todo not used???
+            final AnnotationHolder holder,
+            final YAMLKeyValue element,
+            final GitHubAction action,
+            final List<SyntaxAnnotation> result
+    ) {
         if (action.isResolved() && action.isLocal()) {
             final String tooltip = String.format("Open declaration (%s)", Arrays.stream(KeymapUtil.getActiveKeymapShortcuts("GotoDeclaration").getShortcuts())
                 .limit(2)
