@@ -8,25 +8,19 @@
       "description": "A workflow template name\nhttps://docs.github.com/en/actions/using-workflows/creating-starter-workflows-for-your-organization#creating-a-starter-workflow",
       "type": "string",
       "minLength": 1,
-      "examples": [
-        "Sample name"
-      ]
+      "examples": ["Sample name"]
     },
     "description": {
       "description": "A workflow template description\nhttps://docs.github.com/en/actions/using-workflows/creating-starter-workflows-for-your-organization#creating-a-starter-workflow",
       "type": "string",
       "minLength": 1,
-      "examples": [
-        "Sample description"
-      ]
+      "examples": ["Sample description"]
     },
     "iconName": {
       "description": "A workflow template icon\nMust be the name of an SVG file, without the file name extension, stored in the workflow-templates directory\nhttps://docs.github.com/en/actions/using-workflows/creating-starter-workflows-for-your-organization#creating-a-starter-workflow",
       "type": "string",
       "minLength": 1,
-      "examples": [
-        "Sample icon"
-      ]
+      "examples": ["Sample icon"]
     },
     "categories": {
       "description": "A workflow category\nhttps://docs.github.com/en/actions/using-workflows/creating-starter-workflows-for-your-organization#creating-a-starter-workflow",
@@ -912,16 +906,11 @@
       "items": {
         "type": "string",
         "minLength": 1,
-        "examples": [
-          "*.sample"
-        ]
+        "examples": ["*.sample"]
       }
     }
   },
-  "required": [
-    "name",
-    "description"
-  ],
+  "required": ["name", "description"],
   "title": "GitHub starter workflow config file schema",
   "type": "object"
 }

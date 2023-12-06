@@ -8,15 +8,10 @@
       "type": "string",
       "maxLength": 39,
       "pattern": "^[a-zA-Z0-9](-?[a-zA-Z0-9])*$",
-      "examples": [
-        "SampleUserName"
-      ]
+      "examples": ["SampleUserName"]
     },
     "nullable_string": {
-      "type": [
-        "string",
-        "null"
-      ]
+      "type": ["string", "null"]
     }
   },
   "description": "You can add a sponsor button in your repository to increase the visibility of funding options for your open source project.",
@@ -96,11 +91,7 @@
     "custom": {
       "title": "Custom URL",
       "description": "Link or links where funding is accepted on external locations.",
-      "type": [
-        "string",
-        "array",
-        "null"
-      ],
+      "type": ["string", "array", "null"],
       "format": "uri-reference",
       "items": {
         "title": "Link",

@@ -32,11 +32,7 @@
         "using": {
           "$comment": "https://docs.github.com/en/actions/creating-actions/metadata-syntax-for-github-actions#runsusing",
           "description": "The application used to execute the code specified in `main`.",
-          "enum": [
-            "node12",
-            "node16",
-            "node20"
-          ]
+          "enum": ["node12", "node16", "node20"]
         },
         "main": {
           "$comment": "https://docs.github.com/en/actions/creating-actions/metadata-syntax-for-github-actions#runsmain",
@@ -60,10 +56,7 @@
           "$ref": "#/definitions/post-if"
         }
       },
-      "required": [
-        "using",
-        "main"
-      ],
+      "required": ["using", "main"],
       "additionalProperties": false
     },
     "runs-composite": {
@@ -162,25 +155,17 @@
             },
             "oneOf": [
               {
-                "required": [
-                  "run",
-                  "shell"
-                ]
+                "required": ["run", "shell"]
               },
               {
-                "required": [
-                  "uses"
-                ]
+                "required": ["uses"]
               }
             ],
             "additionalProperties": false
           }
         }
       },
-      "required": [
-        "using",
-        "steps"
-      ],
+      "required": ["using", "steps"],
       "additionalProperties": false
     },
     "runs-docker": {
@@ -253,10 +238,7 @@
           }
         }
       },
-      "required": [
-        "using",
-        "image"
-      ],
+      "required": ["using", "image"],
       "additionalProperties": false
     },
     "outputs": {
@@ -275,9 +257,7 @@
               "type": "string"
             }
           },
-          "required": [
-            "description"
-          ],
+          "required": ["description"],
           "additionalProperties": false
         }
       },
@@ -304,10 +284,7 @@
               "type": "string"
             }
           },
-          "required": [
-            "description",
-            "value"
-          ],
+          "required": ["description", "value"],
           "additionalProperties": false
         }
       },
@@ -378,9 +355,7 @@
               "type": "string"
             }
           },
-          "required": [
-            "description"
-          ],
+          "required": ["description"],
           "additionalProperties": false
         }
       },
@@ -690,11 +665,7 @@
       "additionalProperties": false
     }
   },
-  "required": [
-    "name",
-    "description",
-    "runs"
-  ],
+  "required": ["name", "description", "runs"],
   "then": {
     "properties": {
       "outputs": {
