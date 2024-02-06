@@ -26,7 +26,21 @@ import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.*;
+import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.FIELD_ENVS;
+import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.FIELD_GITHUB;
+import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.FIELD_ID;
+import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.FIELD_IF;
+import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.FIELD_INPUTS;
+import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.FIELD_JOBS;
+import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.FIELD_NEEDS;
+import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.FIELD_ON;
+import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.FIELD_OUTPUTS;
+import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.FIELD_RUN;
+import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.FIELD_RUNNER;
+import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.FIELD_SECRETS;
+import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.FIELD_STEPS;
+import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.FIELD_USES;
+import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.FIELD_WITH;
 import static com.github.yunabraska.githubworkflow.helper.HighlightAnnotatorHelper.deleteElementAction;
 import static com.github.yunabraska.githubworkflow.helper.HighlightAnnotatorHelper.getFirstChild;
 import static com.github.yunabraska.githubworkflow.helper.PsiElementHelper.getAllElements;
@@ -52,18 +66,7 @@ import static java.util.Optional.ofNullable;
 
 public class HighlightAnnotator implements Annotator {
 
-    @Override
-    public void annotate(@NotNull final PsiElement psiElement, @NotNull final AnnotationHolder holder) {
-        //it's needed to handle single elements instead of bulk wise from parent. Parent elements are doesn't update so often.
-        if (psiElement.isValid()) {
-            processPsiElement(holder, psiElement);
-            variableElementHandler(holder, psiElement);
-            highlightRunOutputs(holder, psiElement);
-            // HIGHLIGHT ACTION INPUTS
-            highlightActionInput(holder, psiElement);
-            highlightNeeds(holder, psiElement);
-        }
-    }
+    public static final Key<SimpleElement[]> VARIABLE_ELEMENTS = new Key<>("com.github.yunabraska.githubworkflow.VariableElements");
 
     //TODO: handle single elements instead of bulk updates for more reliability
     public static void processPsiElement(final AnnotationHolder holder, final PsiElement psiElement) {
@@ -132,8 +135,6 @@ public class HighlightAnnotator implements Annotator {
                 .or(() -> getParent(element, FIELD_OUTPUTS))
                 .isPresent();
     }
-
-    public static final Key<SimpleElement[]> VARIABLE_ELEMENTS = new Key<>("com.github.yunabraska.githubworkflow.VariableElements");
 
     @NotNull
     public static List<SimpleElement> toSimpleElements(final PsiElement element) {
@@ -227,6 +228,19 @@ public class HighlightAnnotator implements Annotator {
         elementStart = -1;
         currentElement.setLength(0);
         return elementStart;
+    }
+
+    @Override
+    public void annotate(@NotNull final PsiElement psiElement, @NotNull final AnnotationHolder holder) {
+        //it's needed to handle single elements instead of bulk wise from parent. Parent elements are doesn't update so often.
+        if (psiElement.isValid()) {
+            processPsiElement(holder, psiElement);
+            variableElementHandler(holder, psiElement);
+            highlightRunOutputs(holder, psiElement);
+            // HIGHLIGHT ACTION INPUTS
+            highlightActionInput(holder, psiElement);
+            highlightNeeds(holder, psiElement);
+        }
     }
 
 

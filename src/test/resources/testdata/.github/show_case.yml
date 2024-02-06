@@ -82,7 +82,7 @@ jobs:
           step_env_1: "My Step Env 1"
           step_env_2: "My Step Env 2"
   my_job_3:
-    needs: [ my_job_1, my_job_2, <error descr="Remove invalid jobId [my_job_3] - this jobId doesn't match any previous job">my_job_3</error> ]
+    needs: [ my_job_1, my_job_2, <error descr="Remove invalid jobId [ my_job_3 ] - this jobId doesn't match any previous job">my_job_3</error> ]
     runs-on: ubuntu-latest
     env:
       job_env_1: "My Job Env 1"

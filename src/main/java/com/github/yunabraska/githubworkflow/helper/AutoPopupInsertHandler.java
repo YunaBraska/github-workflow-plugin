@@ -10,11 +10,6 @@ import org.jetbrains.annotations.NotNull;
 public class AutoPopupInsertHandler<T extends LookupElement> implements InsertHandler<T> {
     public static final AutoPopupInsertHandler<LookupElement> INSTANCE = new AutoPopupInsertHandler<>();
 
-    @Override
-    public void handleInsert(@NotNull final InsertionContext context, @NotNull final T item) {
-        AutoPopupController.getInstance(context.getProject()).autoPopupMemberLookup(context.getEditor(), null);
-    }
-
     public static void addSuffix(final InsertionContext ctx, final LookupElement item, final char suffix) {
         if (suffix != Character.MIN_VALUE) {
             final String key = item.getLookupString();
@@ -64,5 +59,10 @@ public class AutoPopupInsertHandler<T extends LookupElement> implements InsertHa
             sb.append(' ');
         }
         return sb.toString();
+    }
+
+    @Override
+    public void handleInsert(@NotNull final InsertionContext context, @NotNull final T item) {
+        AutoPopupController.getInstance(context.getProject()).autoPopupMemberLookup(context.getEditor(), null);
     }
 }

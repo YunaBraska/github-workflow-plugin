@@ -5,7 +5,6 @@ import com.intellij.openapi.application.ApplicationInfo;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.project.ProjectManager;
-import com.intellij.util.io.HttpRequests;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.plugins.github.api.GithubApiRequest;
@@ -36,10 +35,10 @@ public class FileDownloader {
 
     public static String downloadFileFromGitHub(final String downloadUrl) {
         return GHAccountsUtil.getAccounts().stream()
-                .map(account -> downloadFromGitHub(downloadUrl, account))
-                .filter(Objects::nonNull)
-                .findFirst()
-                .orElse(null);
+            .map(account -> downloadFromGitHub(downloadUrl, account))
+            .filter(Objects::nonNull)
+            .findFirst()
+            .orElse(null);
     }
 
 
@@ -56,7 +55,7 @@ public class FileDownloader {
         return "";
     }
 
-//    @Nullable
+    //    @Nullable
 //    public static String downloadSync(final String urlString, final String userAgent) {
 //        try {
 //            return HttpRequests
@@ -71,47 +70,47 @@ public class FileDownloader {
 //            return null;
 //        }
 //    }
-@Nullable
-public static String downloadSync(final String urlString, final String userAgent) {
-    HttpURLConnection connection = null;
-    try {
-        connection = (HttpURLConnection) new URL(urlString).openConnection();
-        connection.setRequestMethod("GET");
-        connection.setConnectTimeout(1000); // Connect timeout
-        connection.setReadTimeout(1000); // Read timeout
-        connection.setRequestProperty("User-Agent", userAgent);
-        connection.setRequestProperty("Client-Name", "GitHub Workflow Plugin");
+    @Nullable
+    public static String downloadSync(final String urlString, final String userAgent) {
+        HttpURLConnection connection = null;
+        try {
+            connection = (HttpURLConnection) new URL(urlString).openConnection();
+            connection.setRequestMethod("GET");
+            connection.setConnectTimeout(1000); // Connect timeout
+            connection.setReadTimeout(1000); // Read timeout
+            connection.setRequestProperty("User-Agent", userAgent);
+            connection.setRequestProperty("Client-Name", "GitHub Workflow Plugin");
 
-        // Check for successful response code or throw error
-        if (connection.getResponseCode() / 100 != 2) {
-            throw new IOException("HTTP error code: " + connection.getResponseCode());
-        }
-
-        // Read response
-        try (final BufferedReader in = new BufferedReader(new InputStreamReader(connection.getInputStream()))) {
-            final StringBuilder response = new StringBuilder();
-            String inputLine;
-            while ((inputLine = in.readLine()) != null) {
-                response.append(inputLine).append(System.lineSeparator());
+            // Check for successful response code or throw error
+            if (connection.getResponseCode() / 100 != 2) {
+                throw new IOException("HTTP error code: " + connection.getResponseCode());
             }
-            return response.toString();
-        }
-    } catch (final Exception e) {
-        // Handle exceptions accordingly, returning null is often not a good practice
-        return null;
-    } finally {
-        if (connection != null) {
-            connection.disconnect();
+
+            // Read response
+            try (final BufferedReader in = new BufferedReader(new InputStreamReader(connection.getInputStream()))) {
+                final StringBuilder response = new StringBuilder();
+                String inputLine;
+                while ((inputLine = in.readLine()) != null) {
+                    response.append(inputLine).append(System.lineSeparator());
+                }
+                return response.toString();
+            }
+        } catch (final Exception e) {
+            // Handle exceptions accordingly, returning null is often not a good practice
+            return null;
+        } finally {
+            if (connection != null) {
+                connection.disconnect();
+            }
         }
     }
-}
 
     private static String downloadFromGitHub(final String downloadUrl, final GithubAccount account) {
         return ofNullable(ProjectUtil.getActiveProject())
-                .or(() -> Optional.of(ProjectManager.getInstance().getDefaultProject()))
-                .map(project -> GHCompatibilityUtil.getOrRequestToken(account, project))
-                .map(token -> downloadContent(downloadUrl, token))
-                .orElse(null);
+            .or(() -> Optional.of(ProjectManager.getInstance().getDefaultProject()))
+            .map(project -> GHCompatibilityUtil.getOrRequestToken(account, project))
+            .map(token -> downloadContent(downloadUrl, token))
+            .orElse(null);
     }
 
     private static String downloadContent(final String downloadUrl, final String token) {

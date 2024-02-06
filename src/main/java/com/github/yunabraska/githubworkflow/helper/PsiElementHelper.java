@@ -19,23 +19,13 @@ import org.jetbrains.yaml.psi.impl.YAMLPlainTextImpl;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Optional;
+import java.util.*;
 import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.regex.Matcher;
 import java.util.stream.Collectors;
 
-import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.FIELD_JOBS;
-import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.FIELD_STEPS;
-import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.PATTERN_GITHUB_ENV;
-import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.PATTERN_GITHUB_OUTPUT;
+import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.*;
 import static java.util.Collections.unmodifiableList;
 import static java.util.Optional.ofNullable;
 
@@ -156,42 +146,42 @@ public class PsiElementHelper {
 
     public static List<YAMLSequenceItem> getChildSteps(final PsiElement psiElement) {
         return ofNullable(psiElement)
-                .map(element -> element instanceof final YAMLKeyValue keyValue && FIELD_STEPS.equals(keyValue.getKeyText()) ? List.of(keyValue) : getAllElements(element, FIELD_STEPS))
-                .map(yamlKeyValues -> yamlKeyValues.stream().flatMap(steps -> getChildren(steps, YAMLSequenceItem.class).stream().filter(Objects::nonNull)).toList())
-                .orElseGet(Collections::emptyList);
+            .map(element -> element instanceof final YAMLKeyValue keyValue && FIELD_STEPS.equals(keyValue.getKeyText()) ? List.of(keyValue) : getAllElements(element, FIELD_STEPS))
+            .map(yamlKeyValues -> yamlKeyValues.stream().flatMap(steps -> getChildren(steps, YAMLSequenceItem.class).stream().filter(Objects::nonNull)).toList())
+            .orElseGet(Collections::emptyList);
     }
 
     public static <T> List<T> getChildren(final PsiElement psiElement, final Class<T> clazz) {
         return ofNullable(psiElement)
+            .map(PsiElement::getChildren)
+            .map(psiElements -> Arrays.stream(psiElements).filter(clazz::isInstance).map(clazz::cast).toList())
+            .filter(children -> !children.isEmpty())
+            .or(() -> ofNullable(psiElement)
                 .map(PsiElement::getChildren)
-                .map(psiElements -> Arrays.stream(psiElements).filter(clazz::isInstance).map(clazz::cast).toList())
-                .filter(children -> !children.isEmpty())
-                .or(() -> ofNullable(psiElement)
-                        .map(PsiElement::getChildren)
-                        .flatMap(psiElements -> Arrays.stream(psiElements).map(child -> getChildren(child, clazz)).filter(children -> !children.isEmpty()).findFirst())
-                )
-                .orElseGet(Collections::emptyList);
+                .flatMap(psiElements -> Arrays.stream(psiElements).map(child -> getChildren(child, clazz)).filter(children -> !children.isEmpty()).findFirst())
+            )
+            .orElseGet(Collections::emptyList);
     }
 
     public static Optional<YAMLKeyValue> getChild(final PsiElement psiElement, final String childKey) {
         return psiElement == null || childKey == null ? Optional.empty() : Optional.of(psiElement)
-                .map(PsiElementHelper::getChildren)
-                .flatMap(children -> children.stream()
-                        .filter(Objects::nonNull)
-                        .filter(child -> childKey.equals(child.getKeyText()))
-                        .findFirst()
-                        .or(() -> children.stream()
-                                .filter(Objects::nonNull)
-                                .map(child -> getChild(child, childKey))
-                                .filter(Optional::isPresent)
-                                .map(Optional::get)
-                                .findFirst())
-                );
+            .map(PsiElementHelper::getChildren)
+            .flatMap(children -> children.stream()
+                .filter(Objects::nonNull)
+                .filter(child -> childKey.equals(child.getKeyText()))
+                .findFirst()
+                .or(() -> children.stream()
+                    .filter(Objects::nonNull)
+                    .map(child -> getChild(child, childKey))
+                    .filter(Optional::isPresent)
+                    .map(Optional::get)
+                    .findFirst())
+            );
     }
 
     public static <T extends PsiElement> Optional<T> getElementUnderParent(final PsiElement psiElement, final String keyName, final Class<T> clazz) {
         return psiElement == null || keyName == null ? Optional.empty() : getParent(psiElement, yamlKeyValue -> keyName.equals(yamlKeyValue.getKeyText()))
-                .flatMap(yamlKeyValue -> getClosestChild(psiElement, yamlKeyValue, clazz));
+            .flatMap(yamlKeyValue -> getClosestChild(psiElement, yamlKeyValue, clazz));
     }
 
     public static Optional<YAMLKeyValue> getParent(final PsiElement psiElement, final String fieldKey) {
@@ -200,12 +190,12 @@ public class PsiElementHelper {
 
     public static Optional<YAMLKeyValue> getParent(final PsiElement psiElement, final Predicate<YAMLKeyValue> filter) {
         return psiElement == null || filter == null ? Optional.empty() : Optional.of(psiElement)
-                .flatMap(PsiElementHelper::toYAMLKeyValue)
-                .filter(filter)
-                .or(() -> Optional.of(psiElement)
-                        .map(PsiElement::getParent)
-                        .flatMap(parent -> getParent(parent, filter))
-                );
+            .flatMap(PsiElementHelper::toYAMLKeyValue)
+            .filter(filter)
+            .or(() -> Optional.of(psiElement)
+                .map(PsiElement::getParent)
+                .flatMap(parent -> getParent(parent, filter))
+            );
     }
 
     public static Optional<YAMLKeyValue> toYAMLKeyValue(final PsiElement psiElement) {
@@ -217,8 +207,8 @@ public class PsiElementHelper {
 
     public static String getDescription(final PsiElement psiElement, final boolean requiredField) {
         return psiElement == null ? "" : requiredString(psiElement, requiredField)
-                + getText(psiElement, "default").map(def -> "def[" + def + "]").orElse("")
-                + getText(psiElement, "description").or(() -> getText(psiElement, "desc")).map(desc -> " " + desc).orElse("");
+            + getText(psiElement, "default").map(def -> "def[" + def + "]").orElse("")
+            + getText(psiElement, "description").or(() -> getText(psiElement, "desc")).map(desc -> " " + desc).orElse("");
     }
 
     public static Optional<Path> toPath(final VirtualFile virtualFile) {
@@ -253,9 +243,9 @@ public class PsiElementHelper {
 
     public static String goToDeclarationString() {
         return String.format("Open declaration (%s)", Arrays.stream(KeymapUtil.getActiveKeymapShortcuts("GotoDeclaration").getShortcuts())
-                .limit(2)
-                .map(KeymapUtil::getShortcutText)
-                .collect(Collectors.joining(", "))
+            .limit(2)
+            .map(KeymapUtil::getShortcutText)
+            .collect(Collectors.joining(", "))
         );
     }
 
@@ -298,11 +288,11 @@ public class PsiElementHelper {
 
     private static <T extends PsiElement> Optional<T> getClosestChild(final PsiElement from, final YAMLKeyValue to, final Class<T> clazz) {
         return listAllParents(from, to).stream()
-                .filter(Objects::nonNull)
-                .filter(parent -> !(parent instanceof YAMLBlockSequenceImpl))
-                .filter(clazz::isInstance)
-                .findFirst()
-                .map(clazz::cast);
+            .filter(Objects::nonNull)
+            .filter(parent -> !(parent instanceof YAMLBlockSequenceImpl))
+            .filter(clazz::isInstance)
+            .findFirst()
+            .map(clazz::cast);
     }
 
     private static List<PsiElement> listAllParents(final PsiElement from, final PsiElement to) {
@@ -321,12 +311,12 @@ public class PsiElementHelper {
 
     private static List<SimpleElement> parseVariables(final LeafPsiElement element, final Function<String, Map<String, String>> method) {
         return ofNullable(element)
-                .filter(leafPsiElement -> method != null)
-                .map(line -> method.apply(line.getText()).entrySet().stream()
-                        .map(env -> new SimpleElement(env.getKey(), env.getValue(), line.getTextRange()))
-                        .toList()
-                )
-                .orElseGet(Collections::emptyList);
+            .filter(leafPsiElement -> method != null)
+            .map(line -> method.apply(line.getText()).entrySet().stream()
+                .map(env -> new SimpleElement(env.getKey(), env.getValue(), line.getTextRange()))
+                .toList()
+            )
+            .orElseGet(Collections::emptyList);
     }
 
     private static List<SimpleElement> parseVariables(final PsiElement psiElement, final Function<String, Map<String, String>> method) {
@@ -338,9 +328,9 @@ public class PsiElementHelper {
         return getChild(psiElement, YAMLBlockScalarImpl.class).map(psi -> {
             final TextRange parentRange = psi.getTextRange();
             return psi.getContentRanges().stream().map(textRange -> new SimpleElement(
-                    null,
-                    removeQuotes(psi.getText().substring(textRange.getStartOffset(), textRange.getEndOffset())),
-                    new TextRange(parentRange.getStartOffset() + textRange.getStartOffset(), parentRange.getStartOffset() + textRange.getEndOffset())
+                null,
+                removeQuotes(psi.getText().substring(textRange.getStartOffset(), textRange.getEndOffset())),
+                new TextRange(parentRange.getStartOffset() + textRange.getStartOffset(), parentRange.getStartOffset() + textRange.getEndOffset())
             )).filter(element -> element.startIndexOffset() < element.endIndexOffset()).filter(element -> hasText(element.text())).toList();
         }).orElseGet(Collections::emptyList);
     }

@@ -18,14 +18,26 @@ import com.intellij.util.ProcessingContext;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.function.Supplier;
 
-import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.*;
+import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.FIELD_CONCLUSION;
+import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.FIELD_DEFAULT_MAP;
+import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.FIELD_ENVS;
+import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.FIELD_GITHUB;
+import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.FIELD_INPUTS;
+import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.FIELD_JOBS;
+import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.FIELD_NEEDS;
+import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.FIELD_ON;
+import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.FIELD_OUTCOME;
+import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.FIELD_OUTPUTS;
+import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.FIELD_RUN;
+import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.FIELD_RUNNER;
+import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.FIELD_SECRETS;
+import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.FIELD_STEPS;
+import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.FIELD_USES;
 import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowHelper.getCaretBracketItem;
 import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowHelper.getStartIndex;
 import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowHelper.getWorkflowFile;
@@ -77,8 +89,12 @@ public class CodeCompletion extends CompletionContributor {
                     if (caretBracketItem.isEmpty()) {
                         if (getParent(position, FIELD_RUN).isPresent() && position.getText().contains("$IntellijIdeaRulezzz")) {
                             // AUTO COMPLETE [$GITHUB_ENV, $GITHUB_OUTPUT]
-                            final Map<String, String> defaults = ofNullable(DEFAULT_VALUE_MAP.get(FIELD_DEFAULT)).map(Supplier::get).orElseGet(Collections::emptyMap);
-                            addLookupElements(resultSet.withPrefixMatcher(prefix[0]), Map.of("GITHUB_ENV", defaults.getOrDefault(FIELD_ENVS, ""), "GITHUB_OUTPUT", defaults.getOrDefault(FIELD_GITHUB, "")), NodeIcon.ICON_ENV, Character.MIN_VALUE);
+                            addLookupElements(
+                                    resultSet.withPrefixMatcher(prefix[0]),
+                                    Map.of("GITHUB_ENV", FIELD_DEFAULT_MAP.getOrDefault(FIELD_ENVS, ""),
+                                            "GITHUB_OUTPUT", FIELD_DEFAULT_MAP.getOrDefault(FIELD_GITHUB, "")),
+                                    NodeIcon.ICON_ENV,
+                                    Character.MIN_VALUE);
                         } else if (getParent(position, FIELD_NEEDS).isPresent()) {
                             //[jobs.job_name.needs] list previous jobs
                             Optional.of(codeCompletionNeeds(position)).filter(cil -> !cil.isEmpty())
@@ -173,7 +189,7 @@ public class CodeCompletion extends CompletionContributor {
                 final boolean isOnOutput = getParent(position, FIELD_OUTPUTS).flatMap(outputs -> getParent(position, FIELD_ON)).isPresent();
                 // SHOW ONLY JOBS [on.workflow_call.outputs.key.value:xxx]
                 if (isOnOutput) {
-                    completionItemMap.put(i, singletonList(completionItemOf(FIELD_JOBS, DEFAULT_VALUE_MAP.get(FIELD_DEFAULT).get().get(FIELD_JOBS), ICON_JOB)));
+                    completionItemMap.put(i, singletonList(completionItemOf(FIELD_JOBS, FIELD_DEFAULT_MAP.get(FIELD_JOBS), ICON_JOB)));
                 } else if (getParent(position, "runs-on").isEmpty() && getParent(position, "os").isEmpty()) {
                     // DEFAULT
                     addDefaultCodeCompletionItems(i, position, completionItemMap);
@@ -183,8 +199,7 @@ public class CodeCompletion extends CompletionContributor {
     }
 
     private static void addDefaultCodeCompletionItems(final int i, final PsiElement position, final Map<Integer, List<SimpleElement>> completionItemMap) {
-        ofNullable(DEFAULT_VALUE_MAP.getOrDefault(FIELD_DEFAULT, null))
-                .map(Supplier::get)
+        Optional.of(FIELD_DEFAULT_MAP)
                 .map(map -> {
                     final Map<String, String> copyMap = new HashMap<>(map);
                     Optional.of(listInputs(position)).filter(List::isEmpty).ifPresent(empty -> copyMap.remove(FIELD_INPUTS));

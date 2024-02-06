@@ -34,6 +34,10 @@ import static java.util.Optional.ofNullable;
 
 public class Jobs {
 
+    private Jobs() {
+        // static helper class
+    }
+
     public static void highLightJobs(final AnnotationHolder holder, final LeafPsiElement element, final SimpleElement[] parts) {
         ifEnoughItems(holder, element, parts, 4, 4, jobId -> {
             final List<YAMLKeyValue> jobs = listJobs(element);
@@ -84,9 +88,5 @@ public class Jobs {
                 ofNullable(usesOrName).flatMap(PsiElementHelper::getText).orElse(""),
                 NodeIcon.ICON_NEEDS
         );
-    }
-
-    private Jobs() {
-        // static helper class
     }
 }

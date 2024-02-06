@@ -30,15 +30,12 @@ import static com.github.yunabraska.githubworkflow.helper.HighlightAnnotatorHelp
 import static com.github.yunabraska.githubworkflow.helper.HighlightAnnotatorHelper.isField2Valid;
 import static com.github.yunabraska.githubworkflow.helper.HighlightAnnotatorHelper.isValidItem3;
 import static com.github.yunabraska.githubworkflow.helper.HighlightAnnotatorHelper.newJumpToFile;
-import static com.github.yunabraska.githubworkflow.helper.PsiElementHelper.getAllJobs;
 import static com.github.yunabraska.githubworkflow.helper.PsiElementHelper.getChild;
 import static com.github.yunabraska.githubworkflow.helper.PsiElementHelper.getParent;
 import static com.github.yunabraska.githubworkflow.helper.PsiElementHelper.getParentJob;
 import static com.github.yunabraska.githubworkflow.helper.PsiElementHelper.getTextElement;
 import static com.github.yunabraska.githubworkflow.helper.PsiElementHelper.getTextElements;
 import static com.github.yunabraska.githubworkflow.helper.PsiElementHelper.goToDeclarationString;
-import static com.github.yunabraska.githubworkflow.helper.PsiElementHelper.isTextElement;
-import static com.github.yunabraska.githubworkflow.helper.PsiElementHelper.removeQuotes;
 import static com.github.yunabraska.githubworkflow.logic.Jobs.listAllJobs;
 import static com.github.yunabraska.githubworkflow.logic.Jobs.listJobOutputs;
 import static java.util.Optional.ofNullable;
@@ -46,6 +43,10 @@ import static java.util.Optional.ofNullable;
 public class Needs {
 
     // ########## SYNTAX HIGHLIGHTING ##########
+
+    private Needs() {
+        // static helper class
+    }
 
     // variable field
     public static void highlightNeeds(final AnnotationHolder holder, final LeafPsiElement element, final SimpleElement[] parts) {
@@ -66,7 +67,7 @@ public class Needs {
                 .filter(PsiElementHelper::isTextElement)
                 .filter(element -> getParent(element, FIELD_NEEDS).isPresent())
                 .ifPresent(element -> {
-                    final List<String> jobsNames  = listJobs(psiElement).stream().map(YAMLKeyValue::getKeyText).toList();
+                    final List<String> jobsNames = listJobs(psiElement).stream().map(YAMLKeyValue::getKeyText).toList();
                     if (!jobsNames.contains(element.getText())) {
                         // INVALID JOB_ID
                         addAnnotation(holder, psiElement, new SyntaxAnnotation(
@@ -108,7 +109,12 @@ public class Needs {
                 .map(job -> new PsiReference[]{new LocalReferenceResolver(psiElement, job)});
     }
 
-    private static void highlightLocalActions(final AnnotationHolder holder, final YAMLKeyValue element, final GitHubAction action, final List<SyntaxAnnotation> result) {
+    private static void highlightLocalActions( // todo not used???
+                                               final AnnotationHolder holder,
+                                               final YAMLKeyValue element,
+                                               final GitHubAction action,
+                                               final List<SyntaxAnnotation> result
+    ) {
         if (action.isResolved() && action.isLocal()) {
             final String tooltip = String.format("Open declaration (%s)", Arrays.stream(KeymapUtil.getActiveKeymapShortcuts("GotoDeclaration").getShortcuts())
                     .limit(2)
@@ -146,9 +152,5 @@ public class Needs {
         return ofNullable(psiElement)
                 .flatMap(PsiElementHelper::getParentJob)
                 .flatMap(job -> getChild(job, FIELD_NEEDS));
-    }
-
-    private Needs() {
-        // static helper class
     }
 }

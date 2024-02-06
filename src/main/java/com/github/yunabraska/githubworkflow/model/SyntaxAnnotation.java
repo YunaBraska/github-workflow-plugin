@@ -65,26 +65,6 @@ public class SyntaxAnnotation implements IntentionAction {
         this.showToolTip = showToolTip;
     }
 
-    @Override
-    public void invoke(@NotNull final Project project, final Editor editor, final PsiFile file) throws IncorrectOperationException {
-        ofNullable(execute).ifPresent(projectConsumer -> projectConsumer.accept(new QuickFixExecution(this, project, editor, file)));
-    }
-
-    public void createAnnotation(
-            final PsiElement psiElement,
-            final AnnotationHolder holder
-    ) {
-        createAnnotation(psiElement, psiElement.getTextRange(), holder);
-    }
-
-    public void createAnnotation(
-            final PsiElement psiElement,
-            final TextRange range,
-            final AnnotationHolder holder
-    ) {
-        createAnnotation(psiElement, range, holder, List.of(this));
-    }
-
     @SuppressWarnings("ResultOfMethodCallIgnored")
     public static void createAnnotation(
             final PsiElement psiElement,
@@ -104,6 +84,26 @@ public class SyntaxAnnotation implements IntentionAction {
                 annotation.create();
             });
         }
+    }
+
+    @Override
+    public void invoke(@NotNull final Project project, final Editor editor, final PsiFile file) throws IncorrectOperationException {
+        ofNullable(execute).ifPresent(projectConsumer -> projectConsumer.accept(new QuickFixExecution(this, project, editor, file)));
+    }
+
+    public void createAnnotation(
+            final PsiElement psiElement,
+            final AnnotationHolder holder
+    ) {
+        createAnnotation(psiElement, psiElement.getTextRange(), holder);
+    }
+
+    public void createAnnotation(
+            final PsiElement psiElement,
+            final TextRange range,
+            final AnnotationHolder holder
+    ) {
+        createAnnotation(psiElement, range, holder, List.of(this));
     }
 
     @SuppressWarnings("unused")

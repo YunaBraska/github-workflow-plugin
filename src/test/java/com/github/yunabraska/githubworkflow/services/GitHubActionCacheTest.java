@@ -10,6 +10,18 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 public class GitHubActionCacheTest extends BasePlatformTestCase {
 
+    private static void validateResolvedJavaAction(final GitHubAction javaAction) {
+        assertThat(javaAction.getInputs()).isNotEmpty();
+        assertThat(javaAction.getOutputs()).isNotEmpty();
+        assertThat(javaAction.isLocal()).isFalse();
+        assertThat(javaAction.isAction()).isTrue();
+        assertThat(javaAction.isResolved()).isTrue();
+        assertThat(javaAction.githubUrl()).isNotNull();
+        assertThat(javaAction.name()).isEqualTo("actions/setup-java");
+        assertThat(javaAction.downloadUrl()).isEqualTo("https://raw.githubusercontent.com/actions/setup-java/main/action.yml");
+        assertThat(javaAction.expiryTime()).isGreaterThan(System.currentTimeMillis());
+    }
+
     @Test
     public void testSerializationAndDeserialization() throws InterruptedException {
         // GIVEN
@@ -21,7 +33,10 @@ public class GitHubActionCacheTest extends BasePlatformTestCase {
 
         // THEN EXPECT
         validateResolvedJavaAction(javaAction);
-        assertThat(javaAction.expiryTime()).isEqualTo(getActionCache().get(project, "actions/setup-java@main").expiryTime());
+        assertThat(javaAction.expiryTime())
+                .isEqualTo(getActionCache()
+                        .get(project, "actions/setup-java@main")
+                        .expiryTime());
 
         // WHEN SERIALIZATION
         Thread.sleep(25);
@@ -48,17 +63,5 @@ public class GitHubActionCacheTest extends BasePlatformTestCase {
         Thread.sleep(1000);
         validateResolvedJavaAction(reloadedAction);
         assertThat(reloadedAction.expiryTime()).isNotEqualTo(javaAction.expiryTime());
-    }
-
-    private static void validateResolvedJavaAction(final GitHubAction javaAction) {
-        assertThat(javaAction.getInputs()).isNotEmpty();
-        assertThat(javaAction.getOutputs()).isNotEmpty();
-        assertThat(javaAction.isLocal()).isFalse();
-        assertThat(javaAction.isAction()).isTrue();
-        assertThat(javaAction.isResolved()).isTrue();
-        assertThat(javaAction.githubUrl()).isNotNull();
-        assertThat(javaAction.name()).isEqualTo("actions/setup-java");
-        assertThat(javaAction.downloadUrl()).isEqualTo("https://raw.githubusercontent.com/actions/setup-java/main/action.yml");
-        assertThat(javaAction.expiryTime()).isGreaterThan(System.currentTimeMillis());
     }
 }

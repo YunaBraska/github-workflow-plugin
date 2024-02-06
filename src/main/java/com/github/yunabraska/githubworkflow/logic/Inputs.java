@@ -23,6 +23,10 @@ import static com.github.yunabraska.githubworkflow.model.SimpleElement.completio
 
 public class Inputs {
 
+    private Inputs() {
+        // static helper class
+    }
+
     public static void highLightInputs(
             final AnnotationHolder holder,
             final LeafPsiElement element,
@@ -49,9 +53,5 @@ public class Inputs {
                 .map(PsiElementHelper::getChildren)
                 .flatMap(Collection::stream)
                 .toList();
-    }
-
-    private Inputs() {
-        // static helper class
     }
 }

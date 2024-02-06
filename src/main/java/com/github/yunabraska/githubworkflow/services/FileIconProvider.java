@@ -20,16 +20,16 @@ public class FileIconProvider extends IconProvider {
     @SuppressWarnings("java:S2637")
     public Icon getIcon(@NotNull final PsiElement element, final int flags) {
         return Optional.of(element)
-                .filter(PsiFile.class::isInstance)
-                .map(PsiFile.class::cast)
-                .map(PsiFile::getVirtualFile)
-                .flatMap(virtualFile -> SCHEMA_FILE_PROVIDERS.stream()
-                        .filter(GitHubSchemaProvider.class::isInstance)
-                        .map(GitHubSchemaProvider.class::cast)
-                        .filter(schemaProvider -> schemaProvider.isAvailable(virtualFile))
-                        .map(schema -> AllIcons.Vcs.Vendors.Github)
-                        .findFirst()
-                )
-                .orElse(null);
+            .filter(PsiFile.class::isInstance)
+            .map(PsiFile.class::cast)
+            .map(PsiFile::getVirtualFile)
+            .flatMap(virtualFile -> SCHEMA_FILE_PROVIDERS.stream()
+                .filter(GitHubSchemaProvider.class::isInstance)
+                .map(GitHubSchemaProvider.class::cast)
+                .filter(schemaProvider -> schemaProvider.isAvailable(virtualFile))
+                .map(schema -> AllIcons.Vcs.Vendors.Github)
+                .findFirst()
+            )
+            .orElse(null);
     }
 }

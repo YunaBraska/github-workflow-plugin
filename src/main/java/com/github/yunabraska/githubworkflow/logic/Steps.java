@@ -43,6 +43,10 @@ import static java.util.Optional.ofNullable;
 
 public class Steps {
 
+    private Steps() {
+        // static helper class
+    }
+
     // ########## SYNTAX HIGHLIGHTING ##########
     public static void highlightSteps(final AnnotationHolder holder, final LeafPsiElement psiElement, final SimpleElement[] parts) {
         if (parts.length > 2 && List.of(FIELD_CONCLUSION, FIELD_OUTCOME).contains(parts[2].text())) {
@@ -113,9 +117,5 @@ public class Steps {
                 .map(PsiElementHelper::parseOutputVariables)
                 .map(outputs -> outputs.stream().map(output -> completionItemOf(output.key(), output.text(), ICON_TEXT_VARIABLE)).toList())
         ).orElseGet(Collections::emptyList);
-    }
-
-    private Steps() {
-        // static helper class
     }
 }

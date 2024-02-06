@@ -44,14 +44,76 @@ import static java.util.Optional.ofNullable;
 @State(name = "GitHubActionCache", storages = {@Storage("githubActionCache.xml")})
 public class GitHubActionCache implements PersistentStateComponent<GitHubActionCache.State> {
 
-    public static class State {
-        public final Map<String, GitHubAction> actions = new ConcurrentHashMap<>();
-    }
-
     private final State state = new State();
 
     public static GitHubActionCache getActionCache() {
         return ApplicationManager.getApplication().getService(GitHubActionCache.class);
+    }
+
+    public static void triggerSyntaxHighlightingForActiveFiles() {
+        ApplicationManager.getApplication().invokeLater(() ->
+                Stream.of(ProjectManager.getInstance().getOpenProjects()).forEach(project -> Stream.of(FileEditorManager.getInstance(project).getSelectedFiles()).filter(VirtualFile::isValid)
+                        .filter(virtualFile -> toPath(virtualFile).map(GitHubWorkflowHelper::isWorkflowPath).orElse(false))
+                        .forEach(virtualFile -> ofNullable(PsiManager.getInstance(project).findFile(virtualFile))
+                                .filter(PsiFile::isValid)
+                                .ifPresent(psiFile -> {
+                                    if (DaemonCodeAnalyzer.getInstance(project).isHighlightingAvailable(psiFile)) {
+                                        DaemonCodeAnalyzer.getInstance(project).restart(psiFile);
+                                    }
+                                })
+                        )
+                )
+        );
+    }
+
+    public static void resolveActionsAsync(final Collection<GitHubAction> actions) {
+        threadPoolExec(ProjectManager.getInstance().getDefaultProject(), () -> getActionCache().resolveAsync(actions));
+    }
+
+    public static GitHubAction reloadActionAsync(final Project project, final String usesValue) {
+        return getActionCache().reloadAsync(project, usesValue);
+    }
+
+    public static GitHubAction getAction(final PsiElement psiElement) {
+        return getUsesString(psiElement).map(usesValue -> getActionCache().get(getProject(psiElement), usesValue)).orElse(null);
+    }
+
+    @SuppressWarnings("unused")
+    public static PsiElement removeAction(final PsiElement psiElement) {
+        getUsesString(psiElement).ifPresent(GitHubActionCache::removeAction);
+        return psiElement;
+    }
+
+    public static GitHubAction removeAction(final GitHubAction action) {
+        ofNullable(action).map(GitHubAction::downloadUrl).ifPresent(GitHubActionCache::removeAction);
+        return action;
+    }
+
+    public static String removeAction(final String usesValue) {
+        ofNullable(usesValue).ifPresent(value -> getActionCache().remove(value));
+        return usesValue;
+    }
+
+    public static Optional<YAMLKeyValue> isUseElement(final PsiElement psiElement) {
+        return ofNullable(psiElement)
+                .filter(PsiElement::isValid)
+                .filter(YAMLKeyValue.class::isInstance)
+                .map(YAMLKeyValue.class::cast)
+                .filter(keyValue -> FIELD_USES.equals(keyValue.getKeyText()));
+    }
+
+    private static Optional<String> getUsesString(final PsiElement psiElement) {
+        return ofNullable(psiElement).filter(PsiElement::isValid)
+                .flatMap(GitHubActionCache::getUsesValue)
+                .or(() -> getChildWithUsesValue(psiElement));
+    }
+
+    private static Optional<String> getUsesValue(final PsiElement psiElement) {
+        return isUseElement(psiElement).flatMap(PsiElementHelper::getText);
+    }
+
+    private static Optional<String> getChildWithUsesValue(final PsiElement psiElement) {
+        return ofNullable(psiElement).filter(PsiElement::isValid).flatMap(element -> PsiElementHelper.getChild(element, FIELD_USES)).flatMap(PsiElementHelper::getText);
     }
 
     @Nullable
@@ -136,58 +198,6 @@ public class GitHubActionCache implements PersistentStateComponent<GitHubActionC
         }.queue();
     }
 
-    public static void triggerSyntaxHighlightingForActiveFiles() {
-        ApplicationManager.getApplication().invokeLater(() ->
-                Stream.of(ProjectManager.getInstance().getOpenProjects()).forEach(project -> Stream.of(FileEditorManager.getInstance(project).getSelectedFiles()).filter(VirtualFile::isValid)
-                        .filter(virtualFile -> toPath(virtualFile).map(GitHubWorkflowHelper::isWorkflowPath).orElse(false))
-                        .forEach(virtualFile -> ofNullable(PsiManager.getInstance(project).findFile(virtualFile))
-                                .filter(PsiFile::isValid)
-                                .ifPresent(psiFile -> {
-                                    if (DaemonCodeAnalyzer.getInstance(project).isHighlightingAvailable(psiFile)) {
-                                        DaemonCodeAnalyzer.getInstance(project).restart(psiFile);
-                                    }
-                                })
-                        )
-                )
-        );
-    }
-
-    public static void resolveActionsAsync(final Collection<GitHubAction> actions) {
-        threadPoolExec(ProjectManager.getInstance().getDefaultProject(), () -> getActionCache().resolveAsync(actions));
-    }
-
-    public static GitHubAction reloadActionAsync(final Project project, final String usesValue) {
-        return getActionCache().reloadAsync(project, usesValue);
-    }
-
-    public static GitHubAction getAction(final PsiElement psiElement) {
-        return getUsesString(psiElement).map(usesValue -> getActionCache().get(getProject(psiElement), usesValue)).orElse(null);
-    }
-
-    @SuppressWarnings("unused")
-    public static PsiElement removeAction(final PsiElement psiElement) {
-        getUsesString(psiElement).ifPresent(GitHubActionCache::removeAction);
-        return psiElement;
-    }
-
-    public static GitHubAction removeAction(final GitHubAction action) {
-        ofNullable(action).map(GitHubAction::downloadUrl).ifPresent(GitHubActionCache::removeAction);
-        return action;
-    }
-
-    public static String removeAction(final String usesValue) {
-        ofNullable(usesValue).ifPresent(value -> getActionCache().remove(value));
-        return usesValue;
-    }
-
-    public static Optional<YAMLKeyValue> isUseElement(final PsiElement psiElement) {
-        return ofNullable(psiElement)
-                .filter(PsiElement::isValid)
-                .filter(YAMLKeyValue.class::isInstance)
-                .map(YAMLKeyValue.class::cast)
-                .filter(keyValue -> FIELD_USES.equals(keyValue.getKeyText()));
-    }
-
     private GitHubAction saveNewAction(final Project project, final GitHubAction oldAction) {
         final boolean isLocal = !oldAction.usesValue().contains("@");
         return saveNewAction(oldAction.usesValue(), getAbsolutePath(isLocal, oldAction.usesValue(), project), isLocal, oldAction);
@@ -217,18 +227,8 @@ public class GitHubActionCache implements PersistentStateComponent<GitHubActionC
                 .orElse(subPath);
     }
 
-    private static Optional<String> getUsesString(final PsiElement psiElement) {
-        return ofNullable(psiElement).filter(PsiElement::isValid)
-                .flatMap(GitHubActionCache::getUsesValue)
-                .or(() -> getChildWithUsesValue(psiElement));
-    }
-
-    private static Optional<String> getUsesValue(final PsiElement psiElement) {
-        return isUseElement(psiElement).flatMap(PsiElementHelper::getText);
-    }
-
-    private static Optional<String> getChildWithUsesValue(final PsiElement psiElement) {
-        return ofNullable(psiElement).filter(PsiElement::isValid).flatMap(element -> PsiElementHelper.getChild(element, FIELD_USES)).flatMap(PsiElementHelper::getText);
+    public static class State {
+        public final Map<String, GitHubAction> actions = new ConcurrentHashMap<>();
     }
 
 }

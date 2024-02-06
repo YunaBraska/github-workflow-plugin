@@ -48,6 +48,10 @@ import static java.util.Optional.ofNullable;
 
 public class Action {
 
+    private Action() {
+        // static helper class
+    }
+
     // ########## SYNTAX HIGHLIGHTING ##########
     public static void highLightAction(final AnnotationHolder holder, final YAMLKeyValue element) {
         final List<SyntaxAnnotation> result = new ArrayList<>();
@@ -142,7 +146,6 @@ public class Action {
                 .map(GitHubActionCache::getAction);
     }
 
-
     private static SyntaxAnnotation newSuppressAction(final GitHubAction action) {
         final boolean suppressed = action.isSuppressed();
         return new SyntaxAnnotation(
@@ -191,9 +194,5 @@ public class Action {
     @NotNull
     private static String toggleText(final String id, final boolean suppressed) {
         return "Toggle warnings [" + (suppressed ? "on" : "off") + "] for [" + id + "]";
-    }
-
-    private Action() {
-        // static helper class
     }
 }
