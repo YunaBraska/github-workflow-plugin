@@ -1,5 +1,6 @@
 package com.github.yunabraska.githubworkflow.logic;
 
+import com.github.yunabraska.githubworkflow.helper.PsiElementHelper;
 import com.github.yunabraska.githubworkflow.model.SimpleElement;
 import com.github.yunabraska.githubworkflow.model.SyntaxAnnotation;
 import com.intellij.codeInspection.ProblemHighlightType;
@@ -24,9 +25,10 @@ import static com.github.yunabraska.githubworkflow.helper.HighlightAnnotatorHelp
 import static com.github.yunabraska.githubworkflow.helper.HighlightAnnotatorHelper.simpleTextRange;
 import static com.github.yunabraska.githubworkflow.helper.PsiElementHelper.getAllElements;
 import static com.github.yunabraska.githubworkflow.helper.PsiElementHelper.getChild;
-import static com.github.yunabraska.githubworkflow.helper.PsiElementHelper.getChildren;
+import static com.github.yunabraska.githubworkflow.helper.PsiElementHelper.getKvChildren;
 import static com.github.yunabraska.githubworkflow.helper.PsiElementHelper.getParent;
 import static com.github.yunabraska.githubworkflow.helper.PsiElementHelper.getText;
+import static com.github.yunabraska.githubworkflow.helper.PsiElementHelper.toLinkedHashMap;
 import static com.github.yunabraska.githubworkflow.model.NodeIcon.ICON_SECRET_WORKFLOW;
 import static com.github.yunabraska.githubworkflow.model.SimpleElement.completionItemsOf;
 import static com.github.yunabraska.githubworkflow.model.SyntaxAnnotation.createAnnotation;
@@ -70,7 +72,7 @@ public class Secrets {
         //WORKFLOW SECRETS
         return getParent(psiElement, FIELD_IF).isPresent() ? Collections.emptyList() : getChild(psiElement.getContainingFile(), FIELD_ON)
                 .map(on -> getAllElements(on, FIELD_SECRETS))
-                .map(secrets -> secrets.stream().flatMap(secret -> getChildren(secret).stream()).collect(Collectors.toMap(YAMLKeyValue::getKeyText, keyValue -> getText(keyValue, "description").orElse(""), (existing, replacement) -> existing)))
+                .map(secrets -> secrets.stream().flatMap(secret -> PsiElementHelper.getKvChildren(secret).stream()).collect(toLinkedHashMap(YAMLKeyValue::getKeyText, keyValue -> getText(keyValue, "description").orElse(""))))
                 .map(map -> completionItemsOf(map, ICON_SECRET_WORKFLOW))
                 .orElseGet(ArrayList::new);
     }

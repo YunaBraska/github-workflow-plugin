@@ -60,31 +60,6 @@ public class Needs {
         });
     }
 
-    // needs field
-    public static void highlightNeeds(final AnnotationHolder holder, final PsiElement psiElement) {
-        ofNullable(psiElement)
-                .filter(PsiElementHelper::isTextElement)
-                .filter(element -> getParent(element, FIELD_NEEDS).isPresent())
-                .ifPresent(element -> {
-                    final List<String> jobsNames  = listJobs(psiElement).stream().map(YAMLKeyValue::getKeyText).toList();
-                    if (!jobsNames.contains(element.getText())) {
-                        // INVALID JOB_ID
-                        addAnnotation(holder, psiElement, new SyntaxAnnotation(
-                                "Remove invalid jobId [" + element.getText() + "] - this jobId doesn't match any previous job",
-                                null,
-                                deleteElementAction(psiElement.getTextRange())
-                        ));
-                    } else {
-                        final String tooltip = goToDeclarationString();
-                        holder.newAnnotation(HighlightSeverity.INFORMATION, tooltip)
-                                .range(psiElement)
-                                .textAttributes(DefaultLanguageHighlighterColors.HIGHLIGHTED_REFERENCE)
-                                .tooltip(tooltip)
-                                .create();
-                    }
-                });
-    }
-
     // ########## CODE COMPLETION ##########
     public static List<SimpleElement> codeCompletionNeeds(final PsiElement psiElement) {
         final List<YAMLKeyValue> jobs = listJobs(psiElement);

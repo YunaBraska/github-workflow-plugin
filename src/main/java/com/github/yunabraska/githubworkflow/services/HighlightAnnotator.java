@@ -11,6 +11,7 @@ import com.intellij.lang.annotation.HighlightSeverity;
 import com.intellij.openapi.util.Key;
 import com.intellij.openapi.util.TextRange;
 import com.intellij.psi.PsiElement;
+import com.intellij.psi.SmartPsiElementPointer;
 import com.intellij.psi.impl.source.tree.LeafPsiElement;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.yaml.psi.YAMLKeyValue;
@@ -33,6 +34,7 @@ import static com.github.yunabraska.githubworkflow.helper.PsiElementHelper.getAl
 import static com.github.yunabraska.githubworkflow.helper.PsiElementHelper.getParent;
 import static com.github.yunabraska.githubworkflow.helper.PsiElementHelper.getParentJob;
 import static com.github.yunabraska.githubworkflow.helper.PsiElementHelper.getText;
+import static com.github.yunabraska.githubworkflow.helper.PsiElementHelper.goToDeclarationString;
 import static com.github.yunabraska.githubworkflow.helper.PsiElementHelper.parseEnvVariables;
 import static com.github.yunabraska.githubworkflow.helper.PsiElementHelper.parseOutputVariables;
 import static com.github.yunabraska.githubworkflow.helper.PsiElementHelper.toYAMLKeyValue;
@@ -48,6 +50,7 @@ import static com.github.yunabraska.githubworkflow.logic.Secrets.highLightSecret
 import static com.github.yunabraska.githubworkflow.logic.Steps.highlightSteps;
 import static com.github.yunabraska.githubworkflow.model.NodeIcon.ICON_TEXT_VARIABLE;
 import static com.intellij.lang.annotation.HighlightSeverity.INFORMATION;
+import static com.intellij.openapi.editor.DefaultLanguageHighlighterColors.HIGHLIGHTED_REFERENCE;
 import static java.util.Optional.ofNullable;
 
 public class HighlightAnnotator implements Annotator {
@@ -61,7 +64,17 @@ public class HighlightAnnotator implements Annotator {
             highlightRunOutputs(holder, psiElement);
             // HIGHLIGHT ACTION INPUTS
             highlightActionInput(holder, psiElement);
-            highlightNeeds(holder, psiElement);
+
+            // NEW ACT BY TAGS
+            ofNullable(psiElement.getUserData(GHW_ANNOTATION_KEY)).ifPresent(annotation -> annotation.toAnnotation(holder, psiElement));
+            ofNullable(psiElement.getUserData(GHW_ELEMENT_REFERENCE_KEY)).map(SmartPsiElementPointer::getElement).filter(PsiElement::isValid).ifPresent(element -> {
+                final String tooltip = goToDeclarationString();
+                holder.newAnnotation(HighlightSeverity.INFORMATION, tooltip)
+                        .range(psiElement)
+                        .textAttributes(HIGHLIGHTED_REFERENCE)
+                        .tooltip(tooltip)
+                        .create();
+            });
         }
     }
 
@@ -97,11 +110,11 @@ public class HighlightAnnotator implements Annotator {
 
     private static void outputsHandler(final AnnotationHolder holder, final PsiElement psiElement) {
         getParentJob(psiElement).ifPresent(job -> {
-            final List<YAMLKeyValue> outputs = PsiElementHelper.getChildren(psiElement).stream().toList();
+            final List<YAMLKeyValue> outputs = PsiElementHelper.getKvChildren(psiElement).stream().toList();
             final String workflowText = PsiElementHelper.getChild(psiElement.getContainingFile(), FIELD_JOBS).map(PsiElement::getText).orElse("");
             final List<String> workflowOutputs = PsiElementHelper.getChild(psiElement.getContainingFile(), FIELD_ON)
                     .map(on -> getAllElements(on, FIELD_OUTPUTS))
-                    .map(list -> list.stream().flatMap(keyValue -> PsiElementHelper.getChildren(keyValue).stream().map(output -> getText(output, "value").orElse(""))).toList())
+                    .map(list -> list.stream().flatMap(keyValue -> PsiElementHelper.getKvChildren(keyValue).stream().map(output -> getText(output, "value").orElse(""))).toList())
                     .orElseGet(Collections::emptyList);
             outputs.stream().filter(output -> {
                 final String outputKey = output.getKeyText();

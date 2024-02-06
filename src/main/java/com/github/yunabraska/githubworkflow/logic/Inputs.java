@@ -46,7 +46,7 @@ public class Inputs {
     @NotNull
     public static List<YAMLKeyValue> listInputsRaw(final PsiElement psiElement) {
         return getAllElements(psiElement.getContainingFile(), FIELD_INPUTS).stream()
-                .map(PsiElementHelper::getChildren)
+                .map(PsiElementHelper::getKvChildren)
                 .flatMap(Collection::stream)
                 .toList();
     }

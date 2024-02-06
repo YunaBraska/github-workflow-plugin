@@ -42,6 +42,7 @@ import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.F
 import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.FIELD_OUTPUTS;
 import static com.github.yunabraska.githubworkflow.helper.PsiElementHelper.getChild;
 import static com.github.yunabraska.githubworkflow.helper.PsiElementHelper.hasText;
+import static com.github.yunabraska.githubworkflow.helper.PsiElementHelper.toLinkedHashMap;
 import static java.lang.Boolean.parseBoolean;
 import static java.util.Collections.unmodifiableMap;
 import static java.util.Collections.unmodifiableSet;
@@ -139,7 +140,7 @@ public class GitHubAction implements Serializable {
         if (isLocal()) {
             extractLocalParameters();
         }
-        return concatMap(inputs, ignoredInputs.stream().filter(PsiElementHelper::hasText).collect(Collectors.toMap(key -> key, value -> "*** manual added input ***")));
+        return concatMap(inputs, ignoredInputs.stream().filter(PsiElementHelper::hasText).collect(toLinkedHashMap(key -> key, value -> "*** manual added input ***")));
     }
 
     public Map<String, String> freshOutputs() {
@@ -150,7 +151,7 @@ public class GitHubAction implements Serializable {
         if (isLocal()) {
             extractLocalParameters();
         }
-        return withIgnoredItems ? concatMap(outputs, ignoredOutputs.stream().filter(PsiElementHelper::hasText).collect(Collectors.toMap(key -> key, value -> "*** manual added output ***"))) : unmodifiableMap(outputs);
+        return withIgnoredItems ? concatMap(outputs, ignoredOutputs.stream().filter(PsiElementHelper::hasText).collect(toLinkedHashMap(key -> key, value -> "*** manual added output ***"))) : unmodifiableMap(outputs);
     }
 
     public String name() {
@@ -380,8 +381,8 @@ public class GitHubAction implements Serializable {
     @NotNull
     private static Map<String, String> readActionParameters(final PsiElement psiElement, final String fieldName) {
         return getChild(psiElement.getContainingFile(), fieldName)
-                .map(PsiElementHelper::getChildren)
-                .map(children -> children.stream().collect(Collectors.toMap(YAMLKeyValue::getKeyText, field -> PsiElementHelper.getDescription(field, FIELD_INPUTS.equals(fieldName)))))
+                .map(PsiElementHelper::getKvChildren)
+                .map(children -> children.stream().collect(toLinkedHashMap(YAMLKeyValue::getKeyText, field -> PsiElementHelper.getDescription(field, FIELD_INPUTS.equals(fieldName)))))
                 .orElseGet(Collections::emptyMap);
     }
 
@@ -389,8 +390,8 @@ public class GitHubAction implements Serializable {
     private static Map<String, String> readWorkflowParameters(final PsiElement psiElement, final String fieldName) {
         return getChild(psiElement.getContainingFile(), FIELD_ON)
                 .flatMap(keyValue -> getChild(psiElement.getContainingFile(), fieldName))
-                .map(PsiElementHelper::getChildren)
-                .map(children -> children.stream().collect(Collectors.toMap(YAMLKeyValue::getKeyText, field -> PsiElementHelper.getDescription(field, FIELD_INPUTS.equals(fieldName)))))
+                .map(PsiElementHelper::getKvChildren)
+                .map(children -> children.stream().collect(toLinkedHashMap(YAMLKeyValue::getKeyText, field -> PsiElementHelper.getDescription(field, FIELD_INPUTS.equals(fieldName)))))
                 .orElseGet(Collections::emptyMap);
     }
 
@@ -405,7 +406,7 @@ public class GitHubAction implements Serializable {
     }
 
     private static <K, V> Map<K, V> concatMap(final Map<K, V> map1, final Map<K, V> map2) {
-        return Stream.concat(map1.entrySet().stream(), map2.entrySet().stream()).collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue, (v1, v2) -> v1));
+        return Stream.concat(map1.entrySet().stream(), map2.entrySet().stream()).collect(toLinkedHashMap(Map.Entry::getKey, Map.Entry::getValue));
     }
 
     @Override

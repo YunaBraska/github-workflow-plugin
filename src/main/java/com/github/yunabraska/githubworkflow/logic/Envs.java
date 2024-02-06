@@ -13,7 +13,6 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
-import java.util.stream.Collectors;
 
 import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.DEFAULT_VALUE_MAP;
 import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.FIELD_ENVS;
@@ -26,6 +25,7 @@ import static com.github.yunabraska.githubworkflow.helper.PsiElementHelper.getPa
 import static com.github.yunabraska.githubworkflow.helper.PsiElementHelper.getParentStep;
 import static com.github.yunabraska.githubworkflow.helper.PsiElementHelper.getText;
 import static com.github.yunabraska.githubworkflow.helper.PsiElementHelper.getTextElement;
+import static com.github.yunabraska.githubworkflow.helper.PsiElementHelper.toLinkedHashMap;
 import static com.github.yunabraska.githubworkflow.model.NodeIcon.ICON_ENV;
 import static com.github.yunabraska.githubworkflow.model.NodeIcon.ICON_ENV_JOB;
 import static com.github.yunabraska.githubworkflow.model.NodeIcon.ICON_ENV_ROOT;
@@ -68,14 +68,14 @@ public class Envs {
                         .filter(keyValue -> getParentStep(keyValue).map(PsiElement::getTextRange).map(TextRange::getStartOffset).orElse(currentRange.getEndOffset()) < currentRange.getStartOffset())
                         .map(PsiElementHelper::parseEnvVariables)
                         .flatMap(Collection::stream)
-                        .collect(Collectors.toMap(SimpleElement::key, SimpleElement::textNoQuotes, (existing, replacement) -> existing))
+                        .collect(toLinkedHashMap(SimpleElement::key, SimpleElement::textNoQuotes))
                 , ICON_TEXT_VARIABLE
         ));
     }
 
     private static void addWorkflowEnvs(final PsiElement psiElement, final List<SimpleElement> result) {
         getChild(psiElement.getContainingFile(), FIELD_ENVS)
-                .map(PsiElementHelper::getChildren)
+                .map(PsiElementHelper::getKvChildren)
                 .map(toMapWithKeyAndText())
                 .map(map -> completionItemsOf(map, ICON_ENV_ROOT))
                 .ifPresent(result::addAll);
@@ -84,7 +84,7 @@ public class Envs {
     private static void addJobEnvs(final PsiElement psiElement, final List<SimpleElement> result) {
         getParentJob(psiElement)
                 .flatMap(job -> getChild(job, FIELD_ENVS))
-                .map(PsiElementHelper::getChildren)
+                .map(PsiElementHelper::getKvChildren)
                 .map(toMapWithKeyAndText())
                 .map(map -> completionItemsOf(map, ICON_ENV_JOB))
                 .ifPresent(result::addAll);
@@ -93,7 +93,7 @@ public class Envs {
     private static void addStepEnvs(final PsiElement psiElement, final List<SimpleElement> result) {
         getParentStep(psiElement)
                 .flatMap(step -> getChild(step, FIELD_ENVS))
-                .map(PsiElementHelper::getChildren)
+                .map(PsiElementHelper::getKvChildren)
                 .map(toMapWithKeyAndText())
                 .map(map -> completionItemsOf(map, ICON_ENV_STEP))
                 .ifPresent(result::addAll);
@@ -102,7 +102,7 @@ public class Envs {
     private static Function<List<YAMLKeyValue>, Map<String, String>> toMapWithKeyAndText() {
         return elements -> elements.stream()
                 .filter(keyValue -> getTextElement(keyValue).isPresent())
-                .collect(Collectors.toMap(YAMLKeyValue::getKeyText, keyValue -> getText(keyValue).orElse(""), (existing, replacement) -> existing));
+                .collect(toLinkedHashMap(YAMLKeyValue::getKeyText, keyValue -> getText(keyValue).orElse("")));
     }
 
     private static void addDefaultEnvs(final List<SimpleElement> result) {

@@ -4,6 +4,7 @@ import com.github.yunabraska.githubworkflow.model.SimpleElement;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.keymap.KeymapUtil;
 import com.intellij.openapi.project.Project;
+import com.intellij.openapi.project.ProjectManager;
 import com.intellij.openapi.util.TextRange;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.psi.PsiElement;
@@ -19,23 +20,18 @@ import org.jetbrains.yaml.psi.impl.YAMLPlainTextImpl;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Optional;
+import java.util.*;
 import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.regex.Matcher;
+import java.util.stream.Collector;
 import java.util.stream.Collectors;
 
 import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.FIELD_JOBS;
 import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.FIELD_STEPS;
 import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.PATTERN_GITHUB_ENV;
 import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.PATTERN_GITHUB_OUTPUT;
+import static java.lang.Integer.parseInt;
 import static java.util.Collections.unmodifiableList;
 import static java.util.Optional.ofNullable;
 
@@ -66,7 +62,7 @@ public class PsiElementHelper {
     }
 
     public static <T> Optional<T> getChild(final PsiElement psiElement, final Class<T> clazz) {
-        return getFirstElement(getChildren(psiElement, clazz));
+        return getFirstElement(getKvChildren(psiElement, clazz));
     }
 
     public static <T> Optional<T> getFirstElement(final List<T> list) {
@@ -84,14 +80,37 @@ public class PsiElementHelper {
             return;
         }
         if (element instanceof final YAMLKeyValue keyValue && FIELD_JOBS.equals(keyValue.getKeyText())) {
-            result.addAll(getChildren(keyValue));
+            result.addAll(getKvChildren(keyValue));
         } else {
             Arrays.stream(element.getChildren()).forEach(child -> getAllJobs(result, child));
         }
     }
 
-    public static List<YAMLKeyValue> getChildren(final PsiElement psiElement) {
-        return getChildren(psiElement, YAMLKeyValue.class);
+    public static List<YAMLKeyValue> getKvChildren(final PsiElement psiElement) {
+        return getKvChildren(psiElement, YAMLKeyValue.class);
+    }
+
+    public static List<String> getTexts(final PsiElement element) {
+        final List<YAMLSequenceItem> children = PsiElementHelper.getKvChildren(element, YAMLSequenceItem.class);
+        return !children.isEmpty()
+                ? children.stream().map(yamlSequenceItem -> PsiElementHelper.getText(yamlSequenceItem).orElse(null)).filter(Objects::nonNull).toList()
+                : PsiElementHelper.getText(element).map(List::of).orElse(Collections.emptyList());
+    }
+
+    public static Optional<Integer> getInt(final PsiElement psiElement) {
+        return getText(psiElement).map(text -> parseInteger(text, null));
+    }
+
+    public static Optional<Integer> getInt(final PsiElement psiElement, final Integer fallback) {
+        return getText(psiElement).map(text -> parseInteger(text, fallback));
+    }
+
+    public static Optional<Integer> getInt(final PsiElement psiElement, final String key) {
+        return getText(psiElement, key).map(text -> parseInteger(text, null));
+    }
+
+    public static Optional<Integer> getInt(final PsiElement psiElement, final String key, final Integer fallback) {
+        return getText(psiElement, key).map(text -> parseInteger(text, fallback));
     }
 
     public static Optional<String> getText(final PsiElement psiElement) {
@@ -157,25 +176,25 @@ public class PsiElementHelper {
     public static List<YAMLSequenceItem> getChildSteps(final PsiElement psiElement) {
         return ofNullable(psiElement)
                 .map(element -> element instanceof final YAMLKeyValue keyValue && FIELD_STEPS.equals(keyValue.getKeyText()) ? List.of(keyValue) : getAllElements(element, FIELD_STEPS))
-                .map(yamlKeyValues -> yamlKeyValues.stream().flatMap(steps -> getChildren(steps, YAMLSequenceItem.class).stream().filter(Objects::nonNull)).toList())
+                .map(yamlKeyValues -> yamlKeyValues.stream().flatMap(steps -> getKvChildren(steps, YAMLSequenceItem.class).stream().filter(Objects::nonNull)).toList())
                 .orElseGet(Collections::emptyList);
     }
 
-    public static <T> List<T> getChildren(final PsiElement psiElement, final Class<T> clazz) {
+    public static <T> List<T> getKvChildren(final PsiElement psiElement, final Class<T> clazz) {
         return ofNullable(psiElement)
                 .map(PsiElement::getChildren)
                 .map(psiElements -> Arrays.stream(psiElements).filter(clazz::isInstance).map(clazz::cast).toList())
                 .filter(children -> !children.isEmpty())
                 .or(() -> ofNullable(psiElement)
                         .map(PsiElement::getChildren)
-                        .flatMap(psiElements -> Arrays.stream(psiElements).map(child -> getChildren(child, clazz)).filter(children -> !children.isEmpty()).findFirst())
+                        .flatMap(psiElements -> Arrays.stream(psiElements).map(child -> getKvChildren(child, clazz)).filter(children -> !children.isEmpty()).findFirst())
                 )
                 .orElseGet(Collections::emptyList);
     }
 
     public static Optional<YAMLKeyValue> getChild(final PsiElement psiElement, final String childKey) {
         return psiElement == null || childKey == null ? Optional.empty() : Optional.of(psiElement)
-                .map(PsiElementHelper::getChildren)
+                .map(PsiElementHelper::getKvChildren)
                 .flatMap(children -> children.stream()
                         .filter(Objects::nonNull)
                         .filter(child -> childKey.equals(child.getKeyText()))
@@ -243,8 +262,12 @@ public class PsiElementHelper {
         return psiElement != null && psiElement.isValid() ? psiElement.getProject() : null;
     }
 
+    public static Project getProjectOrDefault(final PsiElement psiElement) {
+        return psiElement != null && psiElement.isValid() ? psiElement.getProject() : ProjectManager.getInstance().getDefaultProject();
+    }
+
     public static String removeQuotes(final String result) {
-        return removeBrackets(result, '"', '\'');
+        return removeBrackets(result.replace("IntellijIdeaRulezzz ", "").replace("IntellijIdeaRulezzz", ""), '"', '\'');
     }
 
     public static boolean hasText(final String str) {
@@ -257,6 +280,58 @@ public class PsiElementHelper {
                 .map(KeymapUtil::getShortcutText)
                 .collect(Collectors.joining(", "))
         );
+    }
+
+    public static Integer parseInteger(final String integer, final Integer fallback) {
+        try {
+            return parseInt(integer);
+        } catch (final Exception ignored) {
+            return fallback;
+        }
+    }
+
+    public static <T, K, U> Collector<T, ?, Map<K, U>> toLinkedHashMap(
+            final Function<? super T, ? extends K> keyMapper,
+            final Function<? super T, ? extends U> valueMapper) {
+        return Collectors.toMap(
+                keyMapper,
+                valueMapper,
+                (existing, replacement) -> existing,
+                LinkedHashMap::new);
+    }
+
+    public static List<String> sortByProximity(final String target, final Collection<String> originalList) {
+        final List<String> result = new ArrayList<>(originalList);
+        result.sort(Comparator.comparingInt(s -> levenshteinDistance(s, target)));
+        return result;
+    }
+
+    public static int levenshteinDistance(final String a, final String b) {
+        final int[][] dp = new int[a.length() + 1][b.length() + 1];
+
+        for (int i = 0; i <= a.length(); i++) {
+            for (int j = 0; j <= b.length(); j++) {
+                if (i == 0) {
+                    dp[i][j] = j;
+                } else if (j == 0) {
+                    dp[i][j] = i;
+                } else {
+                    dp[i][j] = min(dp[i - 1][j - 1] + costOfSubstitution(a.charAt(i - 1), b.charAt(j - 1)),
+                            dp[i - 1][j] + 1,
+                            dp[i][j - 1] + 1);
+                }
+            }
+        }
+
+        return dp[a.length()][b.length()];
+    }
+
+    public static int costOfSubstitution(char a, char b) {
+        return a == b ? 0 : 1;
+    }
+
+    public static int min(int... numbers) {
+        return java.util.Arrays.stream(numbers).min().orElse(Integer.MAX_VALUE);
     }
 
     private static Map<String, String> toGithubOutputs(final String text) {

@@ -70,7 +70,7 @@ public class Steps {
     // ########## CODE COMPLETION ##########
     public static List<SimpleElement> codeCompletionSteps(final PsiElement psiElement) {
         return listSteps(psiElement).stream().map(item -> {
-            final List<YAMLKeyValue> children = PsiElementHelper.getChildren(item);
+            final List<YAMLKeyValue> children = PsiElementHelper.getKvChildren(item);
             return children.stream().filter(child -> FIELD_ID.equals(child.getKeyText())).findFirst().flatMap(PsiElementHelper::getText).map(stepId -> completionItemOf(
                     stepId,
                     children.stream().filter(child -> FIELD_USES.equals(child.getKeyText())).findFirst().flatMap(PsiElementHelper::getText).orElseGet(() -> children.stream().filter(child -> "name".equals(child.getKeyText())).findFirst().flatMap(PsiElementHelper::getText).orElse(null)),

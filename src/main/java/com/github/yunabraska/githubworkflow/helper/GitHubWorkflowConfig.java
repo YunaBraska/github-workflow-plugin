@@ -1,6 +1,12 @@
 package com.github.yunabraska.githubworkflow.helper;
 
 
+import com.github.yunabraska.githubworkflow.Annotation;
+import com.github.yunabraska.githubworkflow.WorkflowFile;
+import com.intellij.openapi.util.Key;
+import com.intellij.psi.PsiElement;
+import com.intellij.psi.SmartPsiElementPointer;
+
 import java.util.HashMap;
 import java.util.Map;
 import java.util.function.Supplier;
@@ -11,6 +17,9 @@ public class GitHubWorkflowConfig {
 
     public static final Pattern PATTERN_GITHUB_OUTPUT = Pattern.compile("echo\\s+\"(\\w+)=(.*?)\"\\s*>>\\s*\"?\\$\\w*:?\\{?GITHUB_OUTPUT\\}?\"?");
     public static final Pattern PATTERN_GITHUB_ENV = Pattern.compile("echo\\s+\"(\\w+)=(.*?)\"\\s*>>\\s*\"?\\$\\w*:?\\{?GITHUB_ENV\\}?\"?");
+    public static final Key<SmartPsiElementPointer<PsiElement>> GHW_ELEMENT_REFERENCE_KEY = new Key<>("GHW_ELEMENT_REFERENCE_KEY");
+    public static final Key<Annotation> GHW_ANNOTATION_KEY = new Key<>("GHW_REPLACE_WITH_KEY");
+    public static final Key<WorkflowFile> GHW_WORKFLOW_KEY = new Key<>("GHW_WORKFLOW_KEY");
     public static final long CACHE_ONE_DAY = 24L * 60 * 60 * 1000;
     public static final String FIELD_ON = "on";
     public static final String FIELD_IF = "if";

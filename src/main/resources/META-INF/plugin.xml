@@ -12,6 +12,9 @@
     <depends>org.jetbrains.plugins.yaml</depends>
 
     <extensions defaultExtensionNs="com.intellij">
+
+        <applicationService serviceImplementation="com.github.yunabraska.githubworkflow.services.GitHubWorkflowService"/>
+
         <!-- Auto Completion -->
         <completion.contributor language="yaml"
                                 implementationClass="com.github.yunabraska.githubworkflow.services.CodeCompletion"/>

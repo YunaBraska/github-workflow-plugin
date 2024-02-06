@@ -24,7 +24,8 @@ repositories {
 }
 
 dependencies {
-    testImplementation("org.assertj:assertj-core:3.23.1")
+    testImplementation("org.assertj:assertj-core:3.25.2")
+    compileOnly("org.jetbrains:annotations:24.1.0")
 }
 
 // Set the JVM language level used to build the project. Use Java 11 for 2020.3+, and Java 17 for 2022.2+.

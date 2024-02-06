@@ -78,7 +78,7 @@ public class GitHubActionCache implements PersistentStateComponent<GitHubActionC
         });
     }
 
-    protected GitHubAction get(final Project project, final String usesValue) {
+    public GitHubAction get(final Project project, final String usesValue) {
         final String usesCleaned = usesValue.replace("IntellijIdeaRulezzz", "");
         final boolean isLocal = !usesCleaned.contains("@");
         final String path = getAbsolutePath(isLocal, usesCleaned, project);

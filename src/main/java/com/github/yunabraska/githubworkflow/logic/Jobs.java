@@ -24,7 +24,7 @@ import static com.github.yunabraska.githubworkflow.helper.HighlightAnnotatorHelp
 import static com.github.yunabraska.githubworkflow.helper.HighlightAnnotatorHelper.isValidItem3;
 import static com.github.yunabraska.githubworkflow.helper.PsiElementHelper.getAllElements;
 import static com.github.yunabraska.githubworkflow.helper.PsiElementHelper.getChild;
-import static com.github.yunabraska.githubworkflow.helper.PsiElementHelper.getChildren;
+import static com.github.yunabraska.githubworkflow.helper.PsiElementHelper.getKvChildren;
 import static com.github.yunabraska.githubworkflow.helper.PsiElementHelper.getParent;
 import static com.github.yunabraska.githubworkflow.helper.PsiElementHelper.getText;
 import static com.github.yunabraska.githubworkflow.logic.Action.listActionsOutputs;
@@ -61,14 +61,14 @@ public class Jobs {
     }
 
     public static List<YAMLKeyValue> listAllJobs(final PsiElement psiElement) {
-        return ofNullable(psiElement).map(element -> getAllElements(element.getContainingFile(), FIELD_JOBS).stream().flatMap(jobs -> getChildren(jobs, YAMLKeyValue.class).stream()).toList()).orElseGet(Collections::emptyList);
+        return ofNullable(psiElement).map(element -> getAllElements(element.getContainingFile(), FIELD_JOBS).stream().flatMap(jobs -> getKvChildren(jobs, YAMLKeyValue.class).stream()).toList()).orElseGet(Collections::emptyList);
     }
 
     public static List<SimpleElement> listJobOutputs(final YAMLKeyValue job) {
         //JOB OUTPUTS
         final List<SimpleElement> jobOutputs = ofNullable(job)
                 .flatMap(j -> getChild(j, FIELD_OUTPUTS)
-                        .map(PsiElementHelper::getChildren)
+                        .map(PsiElementHelper::getKvChildren)
                         .map(children -> children.stream().map(child -> getText(child).map(value -> completionItemOf(child.getKeyText(), value, ICON_OUTPUT)).orElse(null)).filter(Objects::nonNull).toList())
                 ).orElseGet(Collections::emptyList);
 
@@ -77,7 +77,7 @@ public class Jobs {
     }
 
     public static SimpleElement jobToCompletionItem(final YAMLKeyValue item) {
-        final List<YAMLKeyValue> children = PsiElementHelper.getChildren(item);
+        final List<YAMLKeyValue> children = PsiElementHelper.getKvChildren(item);
         final YAMLKeyValue usesOrName = children.stream().filter(child -> FIELD_USES.equals(child.getKeyText())).findFirst().orElseGet(() -> children.stream().filter(child -> "name".equals(child.getKeyText())).findFirst().orElse(null));
         return completionItemOf(
                 children.stream().filter(child -> FIELD_ID.equals(child.getKeyText())).findFirst().flatMap(PsiElementHelper::getText).orElse(item.getKeyText()),

@@ -42,6 +42,14 @@ public class ProjectStartup implements ProjectActivity {
         final Disposable listenerDisposable = Disposer.newDisposable();
         Disposer.register(ListenerService.getInstance(project), listenerDisposable);
 
+        // Init service
+        final GitHubWorkflowService service = ApplicationManager.getApplication().getService(GitHubWorkflowService.class);
+        for (final VirtualFile openedFile : FileEditorManager.getInstance(project).getOpenFiles()) {
+            service.addToQueue(openedFile);
+        }
+
+        // ########## OLDER METHODS ##########
+
         // ON PsiElement Change
         PsiManager.getInstance(project).addPsiTreeChangeListener(new PsiElementChangeListener(), listenerDisposable);
 

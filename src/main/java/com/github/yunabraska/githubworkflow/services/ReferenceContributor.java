@@ -1,7 +1,9 @@
 package com.github.yunabraska.githubworkflow.services;
 
 import com.github.yunabraska.githubworkflow.helper.PsiElementHelper;
+import com.github.yunabraska.githubworkflow.logic.Action;
 import com.github.yunabraska.githubworkflow.model.GitHubAction;
+import com.github.yunabraska.githubworkflow.model.LocalReferenceResolver;
 import com.intellij.openapi.util.Key;
 import com.intellij.patterns.PlatformPatterns;
 import com.intellij.psi.PsiElement;
@@ -9,14 +11,15 @@ import com.intellij.psi.PsiReference;
 import com.intellij.psi.PsiReferenceContributor;
 import com.intellij.psi.PsiReferenceProvider;
 import com.intellij.psi.PsiReferenceRegistrar;
+import com.intellij.psi.SmartPsiElementPointer;
 import com.intellij.util.ProcessingContext;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.Optional;
 
+import static com.github.yunabraska.githubworkflow.services.GitHubWorkflowService.GHA_SERVICE_KEY;
+import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.GHW_ELEMENT_REFERENCE_KEY;
 import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowHelper.getWorkflowFile;
-import static com.github.yunabraska.githubworkflow.logic.Action.referenceGithubAction;
-import static com.github.yunabraska.githubworkflow.logic.Needs.referenceNeeds;
 
 public class ReferenceContributor extends PsiReferenceContributor {
 
@@ -33,16 +36,26 @@ public class ReferenceContributor extends PsiReferenceContributor {
                             @NotNull final PsiElement psiElement,
                             @NotNull final ProcessingContext context
                     ) {
-                        return getWorkflowFile(psiElement).isEmpty() ? PsiReference.EMPTY_ARRAY : Optional.of(psiElement)
-                                .filter(PsiElementHelper::isTextElement)
-                                .flatMap(element -> {
-                                            final String text = element.getText().replace("IntellijIdeaRulezzz ", "").replace("IntellijIdeaRulezzz", "");
-                                            return referenceGithubAction(element)
-                                                    .or(() -> referenceNeeds(element, text))
-                                                    ;
-                                        }
-                                )
-                                .orElse(PsiReference.EMPTY_ARRAY);
+
+                        final LocalReferenceResolver localReference = Optional.ofNullable(psiElement.getUserData(GHW_ELEMENT_REFERENCE_KEY))
+                                .map(SmartPsiElementPointer::getElement)
+                                .filter(PsiElement::isValid)
+                                .map(target -> new LocalReferenceResolver(psiElement, target)).orElse(null);
+
+                        if (localReference != null) {
+                            System.out.println("[PsiReferenceContributor] add reference to element " + psiElement.getText());
+                            return new PsiReference[]{localReference};
+                        } else {
+                            try {
+                                psiElement.getContainingFile().getVirtualFile().putUserData(GHA_SERVICE_KEY, null);
+                            } catch (final Exception ignored) {
+
+                            }
+                            return getWorkflowFile(psiElement).isEmpty() ? PsiReference.EMPTY_ARRAY : Optional.of(psiElement)
+                                    .filter(PsiElementHelper::isTextElement)
+                                    .flatMap(Action::referenceGithubAction)
+                                    .orElse(PsiReference.EMPTY_ARRAY);
+                        }
                     }
                 }
         );
