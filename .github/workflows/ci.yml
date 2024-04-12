@@ -1,0 +1,65 @@
+name: CI
+run-name: >
+  CI (${{ github.event_name }})
+  ${{ github.event_name == 'pull_request' && format('PR#{0}', github.event.number) || '' }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      ui-tests:
+        description: Run UI-tests
+        type: boolean
+        default: false
+  pull_request:
+    branches: [ main ]
+  push:
+    branches: [ main ]
+  schedule:
+    - cron: 0 0 15 * *
+
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    name: 🧪 tests
+    uses: ./.github/workflows/step_tests.yml
+    with:
+      mask-experimental: ${{ github.event_name == 'push' }}
+      ui-tests: ${{ inputs.ui-tests || false }}
+
+  static-analysis:
+    name: 🔍 Static-Analysis
+    uses: ./.github/workflows/step_static-analysis.yml
+    secrets:
+      QODANA_TOKEN: ${{ secrets.QODANA_TOKEN }}
+    permissions:
+      security-events: write
+      contents: write
+      checks: write
+      pull-requests: write
+    if: github.event_name != 'schedule'
+
+  draft:
+    name: 🚀 Release
+    needs: [ tests, static-analysis ]
+    uses: ./.github/workflows/step_draft.yml
+    permissions:
+      contents: write
+    if: github.event_name == 'push'
+
+  pass:
+    name: ✅ Pass
+    needs: [ tests, static-analysis, draft ]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check all CI jobs
+        uses: re-actors/alls-green@release/v1
+        with:
+          jobs: ${{ toJSON(needs) }}
+          allowed-skips: draft, static-analysis
+    if: always()

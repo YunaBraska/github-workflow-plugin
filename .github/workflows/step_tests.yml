@@ -1,30 +1,25 @@
-# GitHub Actions Workflow is created for testing and preparing the plugin release in the following steps:
-# - validate Gradle Wrapper,
-# - run 'test' and 'verifyPlugin' tasks,
-# - run Qodana inspections,
-# - run 'buildPlugin' task and prepare artifact for the further tests,
-# - run 'runPluginVerifier' task,
-# - create a draft release.
-#
-# Workflow is triggered on push and pull_request events.
-#
-# GitHub Actions reference: https://help.github.com/en/actions
-#
-## JBIJPPTPL
+name: 🧪 tests
 
-name: Build
 on:
-  # Trigger the workflow on pushes to only the 'main' branch (this avoids duplicate checks being run e.g. for dependabot pull requests)
-  push:
-    branches: [main]
-  # Trigger the workflow on any pull request
-  pull_request:
+  workflow_call:
+    inputs:
+      mask-experimental:
+        type: boolean
+        default: true
+        description: Always report experimental test as successful
+      ui-tests:
+        type: boolean
+        default: false
+        description: Run UI-tests
+
+permissions: {}
 
 jobs:
 
   # Run Gradle Wrapper Validation Action to verify the wrapper's checksum
   # Run verifyPlugin, IntelliJ Plugin Verifier, and test Gradle tasks
   # Build plugin and provide the artifact for the next workflow jobs
+  # TODO: Separate build and and test steps
   build:
     name: Build
     runs-on: ubuntu-latest
@@ -112,10 +107,6 @@ jobs:
           name: pluginVerifier-result
           path: ${{ github.workspace }}/build/reports/pluginVerifier
 
-      # Run Qodana inspections
-      - name: Qodana - Code Inspection
-        uses: JetBrains/qodana-action@v2022.3.4
-
       # Prepare plugin archive content for creating artifact
       - name: Prepare Plugin Artifact
         id: artifact
@@ -134,39 +125,49 @@ jobs:
           name: ${{ steps.artifact.outputs.filename }}
           path: ./build/distributions/content/*/*
 
-  # Prepare a draft release for GitHub Releases page for the manual verification
-  # If accepted and published, release workflow would be triggered
-  releaseDraft:
-    name: Release Draft
-    if: github.event_name != 'pull_request'
-    needs: build
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
+
+  testUI:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            runIde: |
+              export DISPLAY=:99.0
+              Xvfb -ac :99 -screen 0 1920x1080x16 &
+              gradle runIdeForUiTests &
+          - os: windows-latest
+            runIde: start gradlew.bat runIdeForUiTests
+          - os: macos-latest
+            runIde: ./gradlew runIdeForUiTests &
+    if: ${{ inputs.ui-tests }}
+
     steps:
 
       # Check out current repository
       - name: Fetch Sources
         uses: actions/checkout@v3
 
-      # Remove old release drafts by using the curl request for the available releases with a draft flag
-      - name: Remove Old Release Drafts
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          gh api repos/{owner}/{repo}/releases \
-            --jq '.[] | select(.draft == true) | .id' \
-            | xargs -I '{}' gh api -X DELETE repos/{owner}/{repo}/releases/{}
+      # Setup Java 11 environment for the next steps
+      - name: Setup Java
+        uses: actions/setup-java@v3
+        with:
+          distribution: zulu
+          java-version: 17
 
-      # Create a new release draft which is not publicly visible and requires manual acceptance
-      - name: Create Release Draft
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          gh release create v${{ needs.build.outputs.version }} \
-            --draft \
-            --title "v${{ needs.build.outputs.version }}" \
-            --notes "$(cat << 'EOM'
-          ${{ needs.build.outputs.changelog }}
-          EOM
-          )"
+      # Run IDEA prepared for UI testing
+      - name: Run IDE
+        run: ${{ matrix.runIde }}
+
+      # Wait for IDEA to be started
+      - name: Health Check
+        uses: jtalk/url-health-check-action@v3
+        with:
+          url: http://127.0.0.1:8082
+          max-attempts: 15
+          retry-delay: 30s
+
+      # Run tests
+      - name: Tests
+        run: ./gradlew test
