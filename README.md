@@ -8,6 +8,19 @@
 [![](https://img.shields.io/static/v1?label=Sponsor&message=%E2%9D%A4&logo=GitHub&color=%23fe8e86)](https://github.com/sponsors/YunaBraska)
 [![](https://img.shields.io/static/v1?label=DataPrivacy&message=%F0%9F%94%92&logo=springsecurity&color=%#6DB33F)](docs/DataPrivacy.md)
 
+## ⚠️ Development Pause Notice ⚠️
+
+As of 01.01.2024, active development on this plugin is **paused**. Recent updates from JetBrains have introduced several
+disruptions that significantly impact the plugin. Despite my previous year's intensive efforts.
+
+🔥 **I am actively seeking contributors** who can help tackle these challenges. If you're interested in contributing, or
+know someone who might be, please feel free to dive in. I am more than willing to guide new contributors through the
+plugin's architecture and collaborate on overcoming the current obstacles.
+
+Thank you for your understanding and support!
+
+---
+
 ## Why Choose GitHub Workflow Plugin?
 
 <!-- Plugin description -->

@@ -6,9 +6,10 @@ fun environment(key: String) = providers.environmentVariable(key)
 
 plugins {
     // Java support
+    kotlin("jvm") version "1.8.10"
     id("java")
     // Gradle IntelliJ Plugin
-    id("org.jetbrains.intellij") version "1.15.0"
+    id("org.jetbrains.intellij") version "1.16.1"
     // Gradle Changelog Plugin
     id("org.jetbrains.changelog") version "2.0.0"
     // Gradle Qodana Plugin
@@ -24,7 +25,7 @@ repositories {
 }
 
 dependencies {
-    testImplementation("org.assertj:assertj-core:3.23.1")
+    testImplementation("org.assertj:assertj-core:3.25.1")
 }
 
 // Set the JVM language level used to build the project. Use Java 11 for 2020.3+, and Java 17 for 2022.2+.
