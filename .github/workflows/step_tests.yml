@@ -23,9 +23,12 @@ jobs:
   build:
     name: Build
     runs-on: ubuntu-latest
-    outputs:
-      version: ${{ steps.properties.outputs.version }}
-      changelog: ${{ steps.properties.outputs.changelog }}
+    strategy:
+      fail-fast: false
+      matrix:
+        platform-version: [ "2023.1", "2023.2", "2023.3", "2024.1" ]
+    env:
+      ORG_GRADLE_PROJECT_platformVersion: ${{ matrix.platform-version }}
     steps:
 
       # Free GitHub Actions Environment Disk Space
