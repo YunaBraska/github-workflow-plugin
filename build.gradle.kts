@@ -8,6 +8,8 @@ plugins {
     // Java support
     kotlin("jvm") version "1.8.10"
     id("java")
+    // Jacoco support
+    id("jacoco")
     // Gradle IntelliJ Plugin
     id("org.jetbrains.intellij") version "1.16.1"
     // Gradle Changelog Plugin
@@ -126,5 +128,18 @@ tasks {
     withType<Test> {
         systemProperty("idea.test.execution.policy", "com.github.yunabraska.githubworkflow.services.PluginExecutionPolicy")
         systemProperty("PLUGIN_HOME_PATH", rootProject.file("src/test/resources"))
+        configure<JacocoTaskExtension> {
+            isIncludeNoLocationClasses = true
+            excludes = listOf("jdk.internal.*")
+        }
+        finalizedBy(jacocoTestReport)
+
+        jacocoTestReport {
+            classDirectories.setFrom(instrumentCode)
+        }
+
+        jacocoTestCoverageVerification {
+            classDirectories.setFrom(instrumentCode)
+        }
     }
 }
