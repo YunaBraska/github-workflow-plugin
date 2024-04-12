@@ -13,10 +13,7 @@ jobs:
     # What to do with this workflow?
     runs-on: ubuntu-latest
     steps:
-
-      # Check out current repository
-      - name: Fetch Sources
-        uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       # Remove old release drafts by using the curl request for the available releases with a draft flag
       - name: Remove Old Release Drafts
