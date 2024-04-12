@@ -1,11 +1,8 @@
-# Qodana configuration:
-# https://www.jetbrains.com/help/qodana/qodana-yaml.html
+version: "1.0"
 
-version: 1.0
+projectJDK: "17"
+
 profile:
   name: qodana.recommended
-  projectJDK: 17
-exclude:
-  - name: All
-    paths:
-      - .qodana
+
+linter: jetbrains/qodana-jvm-community:latest
