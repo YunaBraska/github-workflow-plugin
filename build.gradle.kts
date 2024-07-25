@@ -6,14 +6,14 @@ fun environment(key: String) = providers.environmentVariable(key)
 
 plugins {
     // Java support
-    kotlin("jvm") version "1.8.10"
+    kotlin("jvm") version "2.0.0"
     id("java")
     // Gradle IntelliJ Plugin
-    id("org.jetbrains.intellij") version "1.16.1"
+    id("org.jetbrains.intellij") version "1.17.4"
     // Gradle Changelog Plugin
     id("org.jetbrains.changelog") version "2.0.0"
     // Gradle Qodana Plugin
-    id("org.jetbrains.qodana") version "0.1.13"
+//    id("org.jetbrains.qodana") version "2024.1.5"
 }
 
 group = properties("pluginGroup").get()
@@ -25,7 +25,7 @@ repositories {
 }
 
 dependencies {
-    testImplementation("org.assertj:assertj-core:3.25.1")
+    testImplementation("org.assertj:assertj-core:3.26.3")
 }
 
 // Set the JVM language level used to build the project. Use Java 11 for 2020.3+, and Java 17 for 2022.2+.
@@ -50,13 +50,14 @@ changelog {
     repositoryUrl.set(properties("pluginRepositoryUrl"))
 }
 
+// ########## DEACTIVATED too much effort to debug changes every new version ##########
 // Configure Gradle Qodana Plugin - read more: https://github.com/JetBrains/gradle-qodana-plugin
-qodana {
-    cachePath.set(provider { file(".qodana").canonicalPath })
-    reportPath.set(provider { file("build/reports/inspections").canonicalPath })
-    saveReport.set(true)
-    showReport.set(environment("QODANA_SHOW_REPORT").map { it.toBoolean() }.getOrElse(false))
-}
+//qodana {
+//    cachePath.set(provider { file(".qodana").canonicalPath })
+//    reportPath.set(provider { file("build/reports/inspections").canonicalPath })
+//    saveReport.set(true)
+//    showReport.set(environment("QODANA_SHOW_REPORT").map { it.toBoolean() }.getOrElse(false))
+//}
 
 tasks {
     wrapper {
@@ -109,19 +110,20 @@ tasks {
         privateKey.set(environment("PRIVATE_KEY"))
         password.set(environment("PRIVATE_KEY_PASSWORD"))
     }
-
-    publishPlugin {
-        dependsOn("patchChangelog")
-        token.set(environment("PUBLISH_TOKEN"))
-        // The pluginVersion is based on the SemVer (https://semver.org) and supports pre-release labels, like 2.1.7-alpha.3
-        // Specify pre-release label to publish the plugin in a custom Release Channel automatically. Read more:
-        // https://plugins.jetbrains.com/docs/intellij/deployment.html#specifying-a-release-channel
-        channels.set(properties("pluginVersion").map {
-            listOf(
-                it.split('-').getOrElse(1) { "default" }.split('.').first()
-            )
-        })
-    }
+    
+// ########## DEACTIVATED too much effort to debug changes every new version ##########
+//    publishPlugin {
+//        dependsOn("patchChangelog")
+//        token.set(environment("PUBLISH_TOKEN"))
+//        // The pluginVersion is based on the SemVer (https://semver.org) and supports pre-release labels, like 2.1.7-alpha.3
+//        // Specify pre-release label to publish the plugin in a custom Release Channel automatically. Read more:
+//        // https://plugins.jetbrains.com/docs/intellij/deployment.html#specifying-a-release-channel
+//        channels.set(properties("pluginVersion").map {
+//            listOf(
+//                it.split('-').getOrElse(1) { "default" }.split('.').first()
+//            )
+//        })
+//    }
 
     withType<Test> {
         systemProperty("idea.test.execution.policy", "com.github.yunabraska.githubworkflow.services.PluginExecutionPolicy")
