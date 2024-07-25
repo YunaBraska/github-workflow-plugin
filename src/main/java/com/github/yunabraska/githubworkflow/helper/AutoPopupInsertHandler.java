@@ -24,7 +24,6 @@ public class AutoPopupInsertHandler<T extends LookupElement> implements InsertHa
             final int tailOffset = ctx.getTailOffset();
             final String toInsert = toInsertString(suffix, documentChars, tailOffset);
 
-            documentChars.subSequence(startOffset, startOffset + key.length());
             document.replaceString(startOffset, getEndIndex(ctx, suffix, documentChars, tailOffset), key + toInsert);
             ctx.getEditor().getCaretModel().moveToOffset(startOffset + (key + toInsert).length());
 
@@ -41,9 +40,6 @@ public class AutoPopupInsertHandler<T extends LookupElement> implements InsertHa
                     && documentChars.charAt(result) != suffix
                     && !isLineBreak(documentChars.charAt(result))
             ) {
-                result++;
-            }
-            if (!isLineBreak(documentChars.charAt(result))) {
                 result++;
             }
         }
