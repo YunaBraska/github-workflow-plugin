@@ -19,6 +19,7 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
+import java.net.URI;
 import java.net.URL;
 import java.util.Objects;
 import java.util.Optional;
@@ -75,7 +76,7 @@ public class FileDownloader {
 public static String downloadSync(final String urlString, final String userAgent) {
     HttpURLConnection connection = null;
     try {
-        connection = (HttpURLConnection) new URL(urlString).openConnection();
+        connection = (HttpURLConnection) new URI(urlString).toURL().openConnection();
         connection.setRequestMethod("GET");
         connection.setConnectTimeout(1000); // Connect timeout
         connection.setReadTimeout(1000); // Read timeout
@@ -110,13 +111,13 @@ public static String downloadSync(final String urlString, final String userAgent
         return ofNullable(ProjectUtil.getActiveProject())
                 .or(() -> Optional.of(ProjectManager.getInstance().getDefaultProject()))
                 .map(project -> GHCompatibilityUtil.getOrRequestToken(account, project))
-                .map(token -> downloadContent(downloadUrl, token))
+                .map(token -> downloadContent(downloadUrl, account, token))
                 .orElse(null);
     }
 
-    private static String downloadContent(final String downloadUrl, final String token) {
+    private static String downloadContent(final String downloadUrl, final GithubAccount account, final String token) {
         try {
-            return GithubApiRequestExecutor.Factory.getInstance().create(token).execute(new GithubApiRequest.Get<>(downloadUrl) {
+            return GithubApiRequestExecutor.Factory.getInstance().create(account.getServer(), token).execute(new GithubApiRequest.Get<>(downloadUrl) {
                 @Override
                 public String extractResult(final @NotNull GithubApiResponse response) {
                     try {

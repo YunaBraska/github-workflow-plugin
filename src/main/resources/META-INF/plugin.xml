@@ -10,6 +10,8 @@
     <depends>org.jetbrains.plugins.github</depends>
     <!-- Parsing YAML Elements -->
     <depends>org.jetbrains.plugins.yaml</depends>
+    <!-- Parsing JSON Elements (SCHEMA) -->
+    <depends>com.intellij.modules.json</depends>
 
     <extensions defaultExtensionNs="com.intellij">
         <!-- Auto Completion -->
