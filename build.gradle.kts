@@ -68,7 +68,7 @@ intellijPlatform {
 
         ideaVersion {
             sinceBuild.set(pluginSinceBuild)
-            untilBuild.set(pluginUntilBuild)
+//            untilBuild.set(pluginUntilBuild)
         }
 
         vendor {
