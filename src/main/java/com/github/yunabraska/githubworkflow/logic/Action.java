@@ -24,6 +24,8 @@ import java.util.Optional;
 import java.util.Set;
 
 import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.FIELD_USES;
+import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.FIELD_ON;
+import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.FIELD_SECRETS;
 import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.FIELD_WITH;
 import static com.github.yunabraska.githubworkflow.helper.HighlightAnnotatorHelper.addAnnotation;
 import static com.github.yunabraska.githubworkflow.helper.HighlightAnnotatorHelper.deleteElementAction;
@@ -58,7 +60,7 @@ public class Action {
                         result.add(newReloadAction(action));
                     }
                     result.add(newSuppressAction(action));
-                    highlightLocalActions(holder, element, action, result);
+                    highlightResolvedActionReference(holder, element, action, result);
                     if (element != null && !action.isResolved() && (!action.isSuppressed())) {
                         result.add(action.isLocal() ? deleteInvalidAction(element) : newUnresolvedAction(element));
                     }
@@ -69,21 +71,30 @@ public class Action {
     public static void highlightActionInput(final AnnotationHolder holder, final PsiElement psiElement) {
         toYAMLKeyValue(psiElement)
                 .filter(withItem -> getParent(withItem.getParent(), FIELD_WITH).isPresent())
-                .ifPresent(withItem -> getAction(getParentStepOrJob(withItem).orElse(null))
-                        .filter(GitHubAction::isResolved)
-                        .ifPresent(action -> {
-                            final Set<String> inputs = action.freshInputs().keySet();
-                            final String inputId = withItem.getKeyText();
-                            newSuppressInput(action, inputId).createAnnotation(withItem, ofNullable(withItem.getKey()).map(PsiElement::getTextRange).orElseGet(withItem::getTextRange), holder);
-                            if (!inputs.contains(inputId)) {
-                                addAnnotation(holder, withItem, new SyntaxAnnotation(
-                                        "Delete invalid input [" + inputId + "]",
-                                        null,
-                                        deleteElementAction(withItem.getTextRange())
-                                ));
-                            }
+                .ifPresent(withItem -> highlightCallableParameter(holder, withItem, FIELD_WITH));
+        toYAMLKeyValue(psiElement)
+                .filter(secretItem -> getParent(secretItem.getParent(), FIELD_SECRETS).filter(secrets -> getParent(secrets, FIELD_ON).isEmpty()).isPresent())
+                .ifPresent(secretItem -> highlightCallableParameter(holder, secretItem, FIELD_SECRETS));
+    }
 
-                        }));
+    private static void highlightCallableParameter(final AnnotationHolder holder, final YAMLKeyValue item, final String parameterType) {
+        getAction(getParentStepOrJob(item).orElse(null))
+                .filter(GitHubAction::isResolved)
+                .ifPresent(action -> {
+                    final Set<String> validIds = FIELD_SECRETS.equals(parameterType) ? action.freshSecrets().keySet() : action.freshInputs().keySet();
+                    final String id = item.getKeyText();
+                    if (FIELD_WITH.equals(parameterType)) {
+                        newSuppressInput(action, id).createAnnotation(item, ofNullable(item.getKey()).map(PsiElement::getTextRange).orElseGet(item::getTextRange), holder);
+                    }
+                    if (!validIds.contains(id)) {
+                        final String label = FIELD_SECRETS.equals(parameterType) ? "secret" : "input";
+                        addAnnotation(holder, item, new SyntaxAnnotation(
+                                "Delete invalid " + label + " [" + id + "]",
+                                null,
+                                deleteElementAction(item.getTextRange())
+                        ));
+                    }
+                });
     }
 
     public static List<SyntaxAnnotation> highlightActionOutputs(final YAMLSequenceItem stepItem, final SimpleElement part) {
@@ -113,8 +124,8 @@ public class Action {
                 );
     }
 
-    private static void highlightLocalActions(final AnnotationHolder holder, final YAMLKeyValue element, final GitHubAction action, final List<SyntaxAnnotation> result) {
-        if (action.isResolved() && action.isLocal()) {
+    private static void highlightResolvedActionReference(final AnnotationHolder holder, final YAMLKeyValue element, final GitHubAction action, final List<SyntaxAnnotation> result) {
+        if (action.isResolved() && !action.isSuppressed()) {
             final String tooltip = goToDeclarationString();
             getTextElement(element).ifPresent(textElement -> {
                 holder.newAnnotation(HighlightSeverity.INFORMATION, tooltip)
@@ -122,7 +133,9 @@ public class Action {
                         .textAttributes(DefaultLanguageHighlighterColors.HIGHLIGHTED_REFERENCE)
                         .tooltip(tooltip)
                         .create();
-                result.add(newJumpToFile(action));
+                if (action.isLocal()) {
+                    result.add(newJumpToFile(action));
+                }
             });
         }
     }
@@ -147,7 +160,7 @@ public class Action {
         final boolean suppressed = action.isSuppressed();
         return new SyntaxAnnotation(
                 toggleText(action.name(), suppressed),
-                suppressed ? SUPPRESS_OFF : null,
+                suppressed ? SUPPRESS_OFF : EMPTY,
                 HighlightSeverity.INFORMATION,
                 suppressed ? ProblemHighlightType.WEAK_WARNING : ProblemHighlightType.INFORMATION,
                 f -> {

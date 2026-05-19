@@ -4,6 +4,18 @@
 
 ## [Unreleased]
 
+## [2024.3.0] - 2026-05-19
+
+### Fresh Start
+
+- Better workflow editing with broader completion, highlighting, navigation, and hover help for GitHub Actions files.
+- Resolved action and reusable workflow metadata now improves `with`, `secrets`, `outputs`, and version suggestions.
+- Public GitHub and GitHub Enterprise accounts configured in the IDE are used for action metadata resolution.
+- Workflow expressions inside strings are highlighted separately from surrounding text.
+- Shell snippets inside `run` blocks can use shell-aware editing where the IDE supports it.
+- Cache controls are available from `Tools > GitHub Workflow` to refresh metadata, clear cached entries, or restore hidden warnings.
+- The plugin build, tests, verifier checks, release packaging, and local development setup are ready for the next version.
+
 ## [3.2.1] - 2023-11-04
 
 ### Investigating UI Freeze

@@ -12,37 +12,61 @@ import com.intellij.codeInsight.completion.CompletionResultSet;
 import com.intellij.codeInsight.completion.CompletionType;
 import com.intellij.codeInsight.completion.impl.CamelHumpMatcher;
 import com.intellij.codeInsight.lookup.LookupElement;
+import com.intellij.lang.injection.InjectedLanguageManager;
+import com.intellij.openapi.project.Project;
+import com.intellij.openapi.roots.ProjectFileIndex;
 import com.intellij.patterns.PlatformPatterns;
+import com.intellij.openapi.vfs.VirtualFile;
+import com.intellij.openapi.util.TextRange;
 import com.intellij.psi.PsiElement;
+import com.intellij.psi.PsiLanguageInjectionHost;
 import com.intellij.util.ProcessingContext;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.yaml.psi.YAMLKeyValue;
+import org.jetbrains.yaml.psi.YAMLSequenceItem;
 
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.nio.file.Path;
 import java.util.function.Supplier;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import java.util.stream.Stream;
 
 import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.*;
 import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowHelper.getCaretBracketItem;
 import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowHelper.getStartIndex;
 import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowHelper.getWorkflowFile;
+import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowHelper.isActionFile;
+import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowHelper.isWorkflowFile;
 import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowHelper.toLookupElement;
+import static com.github.yunabraska.githubworkflow.helper.PsiElementHelper.getAllElements;
+import static com.github.yunabraska.githubworkflow.helper.PsiElementHelper.getChildSteps;
+import static com.github.yunabraska.githubworkflow.helper.PsiElementHelper.getParentStep;
+import static com.github.yunabraska.githubworkflow.helper.PsiElementHelper.getProject;
 import static com.github.yunabraska.githubworkflow.helper.PsiElementHelper.getParent;
 import static com.github.yunabraska.githubworkflow.helper.PsiElementHelper.getParentStepOrJob;
 import static com.github.yunabraska.githubworkflow.logic.Envs.listEnvs;
+import static com.github.yunabraska.githubworkflow.logic.GitHub.codeCompletionGitea;
 import static com.github.yunabraska.githubworkflow.logic.GitHub.codeCompletionGithub;
 import static com.github.yunabraska.githubworkflow.logic.Inputs.listInputs;
+import static com.github.yunabraska.githubworkflow.logic.JobContext.codeCompletionJob;
 import static com.github.yunabraska.githubworkflow.logic.Jobs.codeCompletionJobs;
 import static com.github.yunabraska.githubworkflow.logic.Jobs.listJobs;
+import static com.github.yunabraska.githubworkflow.logic.Matrix.listMatrix;
 import static com.github.yunabraska.githubworkflow.logic.Needs.codeCompletionNeeds;
+import static com.github.yunabraska.githubworkflow.logic.Needs.codeCompletionPreviousJobs;
 import static com.github.yunabraska.githubworkflow.logic.Needs.listJobNeeds;
 import static com.github.yunabraska.githubworkflow.logic.Runner.codeCompletionRunner;
 import static com.github.yunabraska.githubworkflow.logic.Secrets.listSecrets;
 import static com.github.yunabraska.githubworkflow.logic.Steps.codeCompletionSteps;
 import static com.github.yunabraska.githubworkflow.logic.Steps.listSteps;
+import static com.github.yunabraska.githubworkflow.logic.Strategy.codeCompletionStrategy;
 import static com.github.yunabraska.githubworkflow.model.NodeIcon.ICON_JOB;
 import static com.github.yunabraska.githubworkflow.model.NodeIcon.ICON_NODE;
 import static com.github.yunabraska.githubworkflow.model.NodeIcon.ICON_OUTPUT;
@@ -52,6 +76,9 @@ import static java.util.Collections.singletonList;
 import static java.util.Optional.ofNullable;
 
 public class CodeCompletion extends CompletionContributor {
+
+    private static final Pattern REMOTE_USES_REF_PATTERN = Pattern.compile(".*\\buses\\s*:\\s*['\"]?([^\\s'\"#]+)@([^\\s'\"]*)$");
+    private static final Pattern REMOTE_USES_TARGET_PATTERN = Pattern.compile(".*\\buses\\s*:\\s*['\"]?([^\\s'\"#@]*)$");
 
     public CodeCompletion() {
         extend(CompletionType.BASIC, PlatformPatterns.psiElement(), completionProvider());
@@ -66,9 +93,10 @@ public class CodeCompletion extends CompletionContributor {
                     @NotNull final ProcessingContext processingContext,
                     @NotNull final CompletionResultSet resultSet
             ) {
-                final PsiElement position = parameters.getPosition();
+                final CompletionPsi completionPsi = completionPsi(parameters);
+                final PsiElement position = completionPsi.position();
                 getWorkflowFile(position).ifPresent(file -> {
-                    final int offset = parameters.getOffset();
+                    final int offset = completionPsi.offset();
                     final String[] prefix = new String[]{""};
                     final Optional<String[]> caretBracketItem = offset < 1 ? Optional.of(prefix) : getCaretBracketItem(position, offset, prefix);
                     caretBracketItem.ifPresent(cbi -> addCodeCompletionItems(resultSet, cbi, position, prefix));
@@ -76,19 +104,39 @@ public class CodeCompletion extends CompletionContributor {
                     //ACTIONS && WORKFLOWS
                     if (caretBracketItem.isEmpty()) {
                         if (getParent(position, FIELD_RUN).isPresent() && position.getText().contains("$IntellijIdeaRulezzz")) {
-                            // AUTO COMPLETE [$GITHUB_ENV, $GITHUB_OUTPUT]
-                            final Map<String, String> defaults = ofNullable(DEFAULT_VALUE_MAP.get(FIELD_DEFAULT)).map(Supplier::get).orElseGet(Collections::emptyMap);
-                            addLookupElements(resultSet.withPrefixMatcher(prefix[0]), Map.of("GITHUB_ENV", defaults.getOrDefault(FIELD_ENVS, ""), "GITHUB_OUTPUT", defaults.getOrDefault(FIELD_GITHUB, "")), NodeIcon.ICON_ENV, Character.MIN_VALUE);
-                        } else if (getParent(position, FIELD_NEEDS).isPresent()) {
+                            // AUTO COMPLETE DEFAULT RUNNER ENVIRONMENT VARIABLES
+                            final Map<String, String> defaults = ofNullable(DEFAULT_VALUE_MAP.get(FIELD_ENVS)).map(Supplier::get).orElseGet(Collections::emptyMap);
+                            addLookupElements(resultSet.withPrefixMatcher(prefix[0]), defaults, NodeIcon.ICON_ENV, Character.MIN_VALUE);
+                        } else if (isCompletingNeedsField(parameters, position)) {
                             //[jobs.job_name.needs] list previous jobs
-                            Optional.of(codeCompletionNeeds(position)).filter(cil -> !cil.isEmpty())
+                            Optional.of(codeCompletionPreviousJobs(position)).filter(cil -> !cil.isEmpty())
                                     .map(CodeCompletion::toLookupItems)
                                     .ifPresent(lookupElements -> addElementsWithPrefix(resultSet, getDefaultPrefix(parameters), lookupElements));
+                        } else if (isCompletingUsesField(parameters, position)) {
+                            final Optional<RemoteUsesRef> remoteUsesRef = remoteUsesRef(parameters);
+                            if (remoteUsesRef.isPresent()) {
+                                final RemoteUsesRef ref = remoteUsesRef.get();
+                                addLookupElements(
+                                        resultSet.withPrefixMatcher(ref.prefix()),
+                                        knownRemoteRefs(position, ref.usesBase()),
+                                        NodeIcon.ICON_NODE,
+                                        Character.MIN_VALUE
+                                );
+                                return;
+                            }
+                            addLookupElements(
+                                    resultSet.withPrefixMatcher(getDefaultPrefix(parameters)),
+                                    callableUsesCompletions(position, remoteUsesTargetPrefix(parameters).orElse("")),
+                                    NodeIcon.ICON_NODE,
+                                    Character.MIN_VALUE
+                            );
+                        } else if (isCompletingCallableSecrets(position)) {
+                            currentCallableAction(parameters, position)
+                                    .map(GitHubAction::freshSecrets)
+                                    .ifPresent(map -> addLookupElements(resultSet.withPrefixMatcher(getDefaultPrefix(parameters)), map, NodeIcon.ICON_SECRET_WORKFLOW, ':'));
                         } else {
                             //USES COMPLETION [jobs.job_id.steps.step_id:with]
-                            final Optional<Map<String, String>> withCompletion = getParentStepOrJob(position)
-                                    .flatMap(step -> PsiElementHelper.getChild(step, FIELD_USES))
-                                    .map(GitHubActionCache::getAction)
+                            final Optional<Map<String, String>> withCompletion = currentCallableAction(parameters, position)
                                     .filter(GitHubAction::isResolved)
                                     .map(GitHubAction::freshInputs);
                             withCompletion.ifPresent(map -> addLookupElements(resultSet.withPrefixMatcher(getDefaultPrefix(parameters)), map, NodeIcon.ICON_INPUT, ':'));
@@ -99,13 +147,205 @@ public class CodeCompletion extends CompletionContributor {
         };
     }
 
+    private static CompletionPsi completionPsi(final CompletionParameters parameters) {
+        final PsiElement position = parameters.getPosition();
+        final InjectedLanguageManager injectionManager = InjectedLanguageManager.getInstance(position.getProject());
+        final PsiLanguageInjectionHost host = injectionManager.getInjectionHost(position);
+        return host == null
+                ? new CompletionPsi(position, parameters.getOffset())
+                : new CompletionPsi(host, injectionManager.injectedToHost(position, parameters.getOffset()));
+    }
+
+    private static boolean isCompletingCallableSecrets(final PsiElement position) {
+        return getParent(position, FIELD_SECRETS)
+                .filter(secrets -> getParent(secrets, FIELD_ON).isEmpty())
+                .isPresent();
+    }
+
+    private static boolean isCompletingUsesField(final CompletionParameters parameters, final PsiElement position) {
+        if (getParent(position, FIELD_USES).isPresent()) {
+            return true;
+        }
+        final String wholeText = parameters.getOriginalFile().getText();
+        final int offset = Math.min(parameters.getOffset(), wholeText.length());
+        final int lineStart = wholeText.lastIndexOf('\n', Math.max(0, offset - 1)) + 1;
+        final String beforeCaret = wholeText.substring(lineStart, offset).replace("IntellijIdeaRulezzz", "");
+        return beforeCaret.matches("\\s*-?\\s*" + FIELD_USES + "\\s*:\\s*.*");
+    }
+
+    private static Optional<RemoteUsesRef> remoteUsesRef(final CompletionParameters parameters) {
+        final String wholeText = parameters.getOriginalFile().getText();
+        final int offset = Math.min(parameters.getOffset(), wholeText.length());
+        final int lineStart = wholeText.lastIndexOf('\n', Math.max(0, offset - 1)) + 1;
+        final String beforeCaret = wholeText.substring(lineStart, offset).replace("IntellijIdeaRulezzz", "");
+        final Matcher matcher = REMOTE_USES_REF_PATTERN.matcher(beforeCaret);
+        return matcher.matches()
+                ? Optional.of(new RemoteUsesRef(matcher.group(1), matcher.group(2)))
+                : Optional.empty();
+    }
+
+    private static Optional<String> remoteUsesTargetPrefix(final CompletionParameters parameters) {
+        final String wholeText = parameters.getOriginalFile().getText();
+        final int offset = Math.min(parameters.getOffset(), wholeText.length());
+        final int lineStart = wholeText.lastIndexOf('\n', Math.max(0, offset - 1)) + 1;
+        final String beforeCaret = wholeText.substring(lineStart, offset).replace("IntellijIdeaRulezzz", "");
+        final Matcher matcher = REMOTE_USES_TARGET_PATTERN.matcher(beforeCaret);
+        return matcher.matches() ? Optional.of(matcher.group(1)) : Optional.empty();
+    }
+
+    private static Map<String, String> callableUsesCompletions(final PsiElement position, final String usesPrefix) {
+        final Map<String, String> result = new LinkedHashMap<>(localUsesCompletions(position));
+        knownRemoteUses(position).forEach((usesBase, description) -> result.putIfAbsent(usesBase, description));
+        RemoteActionProviders.searchUses(usesPrefix, 10).forEach(result::putIfAbsent);
+        return result;
+    }
+
+    private static Map<String, String> localUsesCompletions(final PsiElement position) {
+        final Project project = getProject(position);
+        if (project == null) {
+            return Collections.emptyMap();
+        }
+        final boolean reusableWorkflowUse = isReusableWorkflowUse(position);
+        final VirtualFile currentFile = position.getContainingFile().getVirtualFile();
+        final Map<String, String> result = new LinkedHashMap<>();
+        ProjectFileIndex.getInstance(project).iterateContent(file -> {
+            toLocalUsesValue(project, currentFile, file, reusableWorkflowUse)
+                    .ifPresent(value -> result.putIfAbsent(value, reusableWorkflowUse ? "Local reusable workflow" : "Local action"));
+            return true;
+        });
+        return result;
+    }
+
+    private static Map<String, String> knownRemoteRefs(final PsiElement position, final String usesBase) {
+        final Map<String, String> result = new LinkedHashMap<>();
+        knownRemoteActions(position).stream()
+                .filter(action -> splitRemoteUses(action.usesValue()).map(uses -> usesBase.equals(uses.base())).orElse(false))
+                .flatMap(action -> action.remoteRefs().stream())
+                .forEach(ref -> result.putIfAbsent(ref, "Known workflow reference"));
+        knownRemoteUsesValues(position).stream()
+                .map(CodeCompletion::splitRemoteUses)
+                .flatMap(Optional::stream)
+                .filter(uses -> usesBase.equals(uses.base()))
+                .forEach(uses -> result.putIfAbsent(uses.ref(), "Known workflow reference"));
+        GitHubActionCache.getActionCache().remoteRefsFor(usesBase, 10)
+                .forEach(ref -> result.putIfAbsent(ref, "Remote workflow reference"));
+        return result;
+    }
+
+    private static Map<String, String> knownRemoteUses(final PsiElement position) {
+        final Map<String, String> result = new LinkedHashMap<>();
+        knownRemoteUsesValues(position).stream()
+                .map(CodeCompletion::splitRemoteUses)
+                .flatMap(Optional::stream)
+                .forEach(uses -> result.putIfAbsent(uses.base(), "Known remote action or reusable workflow"));
+        return result;
+    }
+
+    private static List<String> knownRemoteUsesValues(final PsiElement position) {
+        return Stream.concat(
+                        knownRemoteActions(position).stream().map(GitHubAction::usesValue),
+                        getAllElements(position.getContainingFile(), FIELD_USES).stream()
+                                .map(PsiElementHelper::getText)
+                                .flatMap(Optional::stream)
+                )
+                .filter(uses -> uses.contains("@") && !uses.startsWith("."))
+                .distinct()
+                .toList();
+    }
+
+    private static List<GitHubAction> knownRemoteActions(final PsiElement position) {
+        return ofNullable(GitHubActionCache.getActionCache().getState())
+                .stream()
+                .flatMap(state -> state.actions.values().stream())
+                .filter(action -> action.usesValue().contains("@") && !action.usesValue().startsWith("."))
+                .distinct()
+                .toList();
+    }
+
+    private static Optional<RemoteUses> splitRemoteUses(final String usesValue) {
+        final int refSeparator = usesValue.lastIndexOf('@');
+        if (refSeparator < 1 || refSeparator == usesValue.length() - 1) {
+            return Optional.empty();
+        }
+        return Optional.of(new RemoteUses(
+                usesValue.substring(0, refSeparator),
+                usesValue.substring(refSeparator + 1)
+        ));
+    }
+
+    private static boolean isReusableWorkflowUse(final PsiElement position) {
+        return getParentStep(position).isEmpty() && currentJob(position).isPresent();
+    }
+
+    private static Optional<String> toLocalUsesValue(
+            final Project project,
+            final VirtualFile currentFile,
+            final VirtualFile file,
+            final boolean reusableWorkflowUse
+    ) {
+        if (file == null || file.isDirectory() || file.equals(currentFile)) {
+            return Optional.empty();
+        }
+        final VirtualFile contentRoot = ProjectFileIndex.getInstance(project).getContentRootForFile(file);
+        if (contentRoot == null) {
+            return Optional.empty();
+        }
+        final Path basePath = Path.of(contentRoot.getPath());
+        final Path path = Path.of(file.getPath());
+        if (reusableWorkflowUse && isWorkflowFile(path)) {
+            return Optional.of("./" + basePath.relativize(path));
+        }
+        if (!reusableWorkflowUse && isActionFile(path)) {
+            final Path actionDirectory = path.getParent();
+            final Path relative = basePath.relativize(actionDirectory);
+            return Optional.of(relative.toString().isEmpty() ? "./" : "./" + relative);
+        }
+        return Optional.empty();
+    }
+
+    private static Optional<GitHubAction> currentCallableAction(final CompletionParameters parameters, final PsiElement position) {
+        return currentCallable(position)
+                .map(GitHubActionCache::getAction)
+                .filter(GitHubAction::isResolved)
+                .or(() -> nearestPreviousUsesValue(parameters)
+                        .map(usesValue -> GitHubActionCache.getActionCache().get(getProject(position), usesValue)));
+    }
+
+    private static Optional<YAMLKeyValue> currentCallable(final PsiElement position) {
+        return getParent(position, FIELD_WITH)
+                .flatMap(with -> getParentStepOrJob(with)
+                        .flatMap(callable -> PsiElementHelper.getChild(callable, FIELD_USES))
+                )
+                .or(() -> currentStep(position).flatMap(callable -> PsiElementHelper.getChild(callable, FIELD_USES)))
+                .or(() -> currentJob(position).flatMap(callable -> PsiElementHelper.getChild(callable, FIELD_USES)))
+                .or(() -> currentStepOrJob(position).flatMap(callable -> PsiElementHelper.getChild(callable, FIELD_USES)));
+    }
+
+    private static Optional<String> nearestPreviousUsesValue(final CompletionParameters parameters) {
+        final String wholeText = parameters.getOriginalFile().getText();
+        final int offset = Math.min(parameters.getOffset(), wholeText.length());
+        final int lineStart = wholeText.lastIndexOf('\n', Math.max(0, offset - 1)) + 1;
+        final String beforeCaret = wholeText.substring(0, lineStart);
+        final String[] lines = beforeCaret.split("\\R");
+        for (int index = lines.length - 1; index >= 0; index--) {
+            final String line = lines[index];
+            final String trimmed = line.trim();
+            if (trimmed.startsWith(FIELD_USES + ":")) {
+                return Optional.of(trimmed.substring((FIELD_USES + ":").length()).trim())
+                        .map(PsiElementHelper::removeQuotes)
+                        .filter(PsiElementHelper::hasText);
+            }
+        }
+        return Optional.empty();
+    }
+
     private static void addCodeCompletionItems(final CompletionResultSet resultSet, final String[] cbi, final PsiElement position, final String[] prefix) {
         final Map<Integer, List<SimpleElement>> completionResultMap = new HashMap<>();
         for (int i = 0; i < cbi.length; i++) {
             //DON'T AUTO COMPLETE WHEN PREVIOUS ITEM IS NOT VALID
             final List<SimpleElement> previousCompletions = ofNullable(completionResultMap.getOrDefault(i - 1, null)).orElseGet(ArrayList::new);
             final int index = i;
-            if (i != 0 && (previousCompletions.isEmpty() || previousCompletions.stream().noneMatch(item -> item.key().equals(cbi[index])))) {
+            if (i != 0 && !previousCompletions.isEmpty() && previousCompletions.stream().noneMatch(item -> item.key().equals(cbi[index]))) {
                 return;
             } else {
                 addCompletionItems(cbi, i, position, completionResultMap);
@@ -125,10 +365,59 @@ public class CodeCompletion extends CompletionContributor {
         if (i == 0) {
             handleFirstItem(cbi, i, position, completionItemMap);
         } else if (i == 1) {
-            handleSecondItem(cbi, i, completionItemMap);
+            handleSecondItem(cbi, i, position, completionItemMap);
         } else if (i == 2) {
             handleThirdItem(cbi, i, position, completionItemMap);
+        } else if (i == 3) {
+            handleFourthItem(cbi, i, position, completionItemMap);
         }
+    }
+
+    private static boolean isCompletingNeedsField(final CompletionParameters parameters, final PsiElement position) {
+        if (getParent(position, FIELD_NEEDS).isPresent()) {
+            return true;
+        }
+        final String wholeText = parameters.getOriginalFile().getText();
+        final int offset = Math.min(parameters.getOffset(), wholeText.length());
+        final int lineStart = wholeText.lastIndexOf('\n', Math.max(0, offset - 1)) + 1;
+        final String beforeCaret = wholeText.substring(lineStart, offset).replace("IntellijIdeaRulezzz", "");
+        return beforeCaret.matches("\\s*" + FIELD_NEEDS + "\\s*:\\s*.*");
+    }
+
+    private static Optional<PsiElement> currentStepOrJob(final PsiElement position) {
+        return getParentStepOrJob(position)
+                .or(() -> currentStep(position).map(PsiElement.class::cast))
+                .or(() -> currentJob(position).map(PsiElement.class::cast));
+    }
+
+    private static Optional<YAMLSequenceItem> currentStep(final PsiElement position) {
+        return ofNullable(position)
+                .map(PsiElement::getContainingFile)
+                .map(file -> currentOrPrevious(position, getAllElements(file, FIELD_STEPS).stream().flatMap(steps -> getChildSteps(steps).stream()))
+                        .findFirst()
+                        .orElse(null));
+    }
+
+    private static Optional<YAMLKeyValue> currentJob(final PsiElement position) {
+        return ofNullable(position)
+                .map(PsiElement::getContainingFile)
+                .map(file -> currentOrPrevious(position, getAllElements(file, FIELD_JOBS).stream().flatMap(jobs -> PsiElementHelper.getChildren(jobs, YAMLKeyValue.class).stream()))
+                        .findFirst()
+                        .orElse(null));
+    }
+
+    private static <T extends PsiElement> Stream<T> currentOrPrevious(final PsiElement position, final Stream<T> candidates) {
+        final int offset = ofNullable(position.getTextRange()).map(TextRange::getStartOffset).orElse(-1);
+        return candidates
+                .filter(candidate -> containsOffset(candidate, position) || candidate.getTextRange().getStartOffset() <= offset)
+                .reduce((previous, current) -> containsOffset(previous, position) ? previous : current)
+                .stream();
+    }
+
+    private static boolean containsOffset(final PsiElement candidate, final PsiElement position) {
+        final TextRange candidateRange = candidate.getTextRange();
+        final TextRange positionRange = position.getTextRange();
+        return candidateRange != null && positionRange != null && candidateRange.contains(positionRange.getStartOffset());
     }
 
     private static void handleThirdItem(final String[] cbi, final int i, final PsiElement position, final Map<Integer, List<SimpleElement>> completionItemMap) {
@@ -136,13 +425,24 @@ public class CodeCompletion extends CompletionContributor {
             case FIELD_JOBS -> completionItemMap.put(i, codeCompletionJobs(cbi[1], position));
             case FIELD_NEEDS -> completionItemMap.put(i, codeCompletionNeeds(cbi[1], position));
             case FIELD_STEPS -> completionItemMap.put(i, Steps.codeCompletionSteps(cbi[1], position));
+            case FIELD_JOB -> completionItemMap.put(i, codeCompletionJob(cbi[1], cbi[2], position));
             default -> {
                 // ignored
             }
         }
     }
 
-    private static void handleSecondItem(final String[] cbi, final int i, final Map<Integer, List<SimpleElement>> completionItemMap) {
+    private static void handleFourthItem(final String[] cbi, final int i, final PsiElement position, final Map<Integer, List<SimpleElement>> completionItemMap) {
+        if (FIELD_JOB.equals(cbi[0])) {
+            completionItemMap.put(i, codeCompletionJob(cbi[1], cbi[2], cbi[3], position));
+        } else if (FIELD_NEEDS.equals(cbi[0]) && FIELD_OUTPUTS.equals(cbi[2])) {
+            completionItemMap.put(i, codeCompletionNeeds(cbi[1], position));
+        } else if (FIELD_JOBS.equals(cbi[0]) && FIELD_OUTPUTS.equals(cbi[2])) {
+            completionItemMap.put(i, codeCompletionJobs(cbi[1], position));
+        }
+    }
+
+    private static void handleSecondItem(final String[] cbi, final int i, final PsiElement position, final Map<Integer, List<SimpleElement>> completionItemMap) {
         switch (cbi[0]) {
             case FIELD_STEPS -> completionItemMap.put(i, List.of(
                     completionItemOf(FIELD_OUTPUTS, "The set of outputs defined for the step.", ICON_OUTPUT),
@@ -150,8 +450,10 @@ public class CodeCompletion extends CompletionContributor {
                     completionItemOf(FIELD_OUTCOME, "The result of a completed step before continue-on-error is applied.", ICON_OUTPUT)
             ));
             case FIELD_JOBS, FIELD_NEEDS -> completionItemMap.put(i, List.of(
-                    completionItemOf(FIELD_OUTPUTS, "The set of outputs defined for the step.", ICON_OUTPUT)
+                    completionItemOf(FIELD_OUTPUTS, "The set of outputs defined for the job.", ICON_OUTPUT),
+                    completionItemOf(FIELD_RESULT, "The result of the job.", ICON_OUTPUT)
             ));
+            case FIELD_JOB -> completionItemMap.put(i, codeCompletionJob(cbi[1], position));
             default -> {
                 // ignored
             }
@@ -164,7 +466,11 @@ public class CodeCompletion extends CompletionContributor {
             case FIELD_JOBS -> completionItemMap.put(i, codeCompletionJobs(position));
             case FIELD_ENVS -> completionItemMap.put(i, listEnvs(position));
             case FIELD_GITHUB -> completionItemMap.put(i, codeCompletionGithub());
+            case FIELD_GITEA -> completionItemMap.put(i, codeCompletionGitea());
+            case FIELD_JOB -> completionItemMap.put(i, codeCompletionJob());
+            case FIELD_MATRIX -> completionItemMap.put(i, listMatrix(position));
             case FIELD_RUNNER -> completionItemMap.put(i, codeCompletionRunner());
+            case FIELD_STRATEGY -> completionItemMap.put(i, codeCompletionStrategy());
             case FIELD_INPUTS -> completionItemMap.put(i, listInputs(position));
             case FIELD_SECRETS -> completionItemMap.put(i, listSecrets(position));
             case FIELD_NEEDS -> completionItemMap.put(i, codeCompletionNeeds(position));
@@ -190,6 +496,7 @@ public class CodeCompletion extends CompletionContributor {
                     Optional.of(listInputs(position)).filter(List::isEmpty).ifPresent(empty -> copyMap.remove(FIELD_INPUTS));
                     Optional.of(listSecrets(position)).filter(List::isEmpty).ifPresent(empty -> copyMap.remove(FIELD_SECRETS));
                     Optional.of(listJobs(position)).filter(List::isEmpty).ifPresent(empty -> copyMap.remove(FIELD_JOBS));
+                    Optional.of(listMatrix(position)).filter(List::isEmpty).ifPresent(empty -> copyMap.remove(FIELD_MATRIX));
                     Optional.of(listSteps(position)).filter(List::isEmpty).ifPresent(empty -> copyMap.remove(FIELD_STEPS));
                     Optional.of(listJobNeeds(position)).filter(List::isEmpty).ifPresent(empty -> copyMap.remove(FIELD_NEEDS));
                     return copyMap;
@@ -202,7 +509,7 @@ public class CodeCompletion extends CompletionContributor {
         final String wholeText = parameters.getOriginalFile().getText();
         final int caretOffset = parameters.getOffset();
         final int indexStart = getStartIndex(wholeText, caretOffset - 1);
-        return wholeText.substring(indexStart, caretOffset);
+        return wholeText.substring(indexStart, caretOffset).replace("IntellijIdeaRulezzz", "").trim();
     }
 
     private static void addLookupElements(final CompletionResultSet resultSet, final Map<String, String> map, final NodeIcon icon, final char suffix) {
@@ -218,5 +525,14 @@ public class CodeCompletion extends CompletionContributor {
     @NotNull
     private static List<LookupElement> toLookupItems(final List<SimpleElement> items) {
         return items.stream().map(SimpleElement::toLookupElement).toList();
+    }
+
+    private record RemoteUses(String base, String ref) {
+    }
+
+    private record RemoteUsesRef(String usesBase, String prefix) {
+    }
+
+    private record CompletionPsi(PsiElement position, int offset) {
     }
 }

@@ -3,6 +3,7 @@
     <id>com.github.yunabraska.githubworkflowplugin</id>
     <name>Github Workflow</name>
     <vendor url="https://github.com/YunaBraska/github-workflow-plugin">Yuna Morgenstern</vendor>
+    <resource-bundle>messages.GitHubWorkflowBundle</resource-bundle>
 
     <!-- Default -->
     <depends>com.intellij.modules.platform</depends>
@@ -17,12 +18,19 @@
         <!-- Auto Completion -->
         <completion.contributor language="yaml"
                                 implementationClass="com.github.yunabraska.githubworkflow.services.CodeCompletion"/>
+        <completion.contributor language="Shell Script"
+                                implementationClass="com.github.yunabraska.githubworkflow.services.CodeCompletion"/>
         <!-- Syntax Highlighting -->
         <annotator language="yaml"
                    implementationClass="com.github.yunabraska.githubworkflow.services.HighlightAnnotator"/>
 
         <!-- Jump to position-->
         <psi.referenceContributor language="yaml" implementation="com.github.yunabraska.githubworkflow.services.ReferenceContributor"/>
+        <lang.documentationProvider id="GithubWorkflowDocumentationProvider"
+                                    language="yaml"
+                                    implementationClass="com.github.yunabraska.githubworkflow.services.WorkflowDocumentationProvider"
+                                    order="before YamlJsonSchemaDocumentationProvider"/>
+        <multiHostInjector implementation="com.github.yunabraska.githubworkflow.services.WorkflowRunLanguageInjector"/>
 
         <!-- ProjectStartup -->
         <postStartupActivity implementation="com.github.yunabraska.githubworkflow.services.ProjectStartup"/>
@@ -30,16 +38,33 @@
         <!-- Cache [Workflows, Actions, Schemas] -->
         <applicationService serviceImplementation="com.github.yunabraska.githubworkflow.services.GitHubActionCache"
                             configurationSchemaKey="GitHubActionCache"/>
+        <applicationService serviceImplementation="com.github.yunabraska.githubworkflow.services.RemoteServerSettings"/>
 
         <!-- Schema Icon provider -->
         <iconProvider implementation="com.github.yunabraska.githubworkflow.services.FileIconProvider"/>
 
         <!-- Crash Reporter -->
         <errorHandler implementation="com.github.yunabraska.githubworkflow.services.PluginErrorReportSubmitter"/>
+
+        <notificationGroup id="GitHub Workflow"
+                           displayType="BALLOON"
+                           isLogByDefault="true"/>
     </extensions>
 
     <extensions defaultExtensionNs="JavaScript.JsonSchema">
         <!-- Schema Registry -->
         <ProviderFactory implementation="com.github.yunabraska.githubworkflow.services.SchemaProvider"/>
     </extensions>
+
+    <actions resource-bundle="messages.GitHubWorkflowBundle">
+        <group id="GitHubWorkflow.Tools" popup="true">
+            <add-to-group group-id="ToolsMenu" anchor="last"/>
+            <action id="GitHubWorkflow.RefreshActionCache"
+                    class="com.github.yunabraska.githubworkflow.services.RefreshActionCacheAction"/>
+            <action id="GitHubWorkflow.RestoreActionWarnings"
+                    class="com.github.yunabraska.githubworkflow.services.RestoreActionWarningsAction"/>
+            <action id="GitHubWorkflow.ClearActionCache"
+                    class="com.github.yunabraska.githubworkflow.services.ClearActionCacheAction"/>
+        </group>
+    </actions>
 </idea-plugin>

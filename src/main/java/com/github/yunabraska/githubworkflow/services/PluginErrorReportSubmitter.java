@@ -1,12 +1,11 @@
 package com.github.yunabraska.githubworkflow.services;
 
 import com.intellij.ide.BrowserUtil;
-import com.intellij.ide.plugins.IdeaPluginDescriptor;
-import com.intellij.ide.plugins.PluginManagerCore;
 import com.intellij.openapi.application.ApplicationInfo;
 import com.intellij.openapi.diagnostic.ErrorReportSubmitter;
 import com.intellij.openapi.diagnostic.IdeaLoggingEvent;
 import com.intellij.openapi.diagnostic.SubmittedReportInfo;
+import com.intellij.openapi.extensions.PluginDescriptor;
 import com.intellij.openapi.util.SystemInfo;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.util.Consumer;
@@ -37,6 +36,11 @@ final class PluginErrorReportSubmitter extends ErrorReportSubmitter {
                           @Nullable final String additionalInfo,
                           @NotNull final Component parentComponent,
                           @NotNull final Consumer<? super SubmittedReportInfo> consumer) {
+        if (events.length == 0) {
+            consumer.consume(new SubmittedReportInfo(SubmittedReportInfo.SubmissionStatus.FAILED));
+            return false;
+        }
+
         final IdeaLoggingEvent event = events[0];
         final String throwableText = event.getThrowableText();
 
@@ -60,12 +64,11 @@ final class PluginErrorReportSubmitter extends ErrorReportSubmitter {
         sb.append(URLEncoder.encode(StringUtil.defaultIfEmpty(event.getMessage(), ""), UTF_8));
 
         sb.append(URLEncoder.encode("\n\n### Runtime Information\n", UTF_8));
-        final IdeaPluginDescriptor descriptor = PluginManagerCore.getPlugin(getPluginDescriptor().getPluginId());
-        assert descriptor != null;
+        final PluginDescriptor descriptor = getPluginDescriptor();
         sb.append(URLEncoder.encode("Plugin version : " + descriptor.getVersion() + "\n", UTF_8));
         sb.append(URLEncoder.encode("IDE: " + ApplicationInfo.getInstance().getFullApplicationName() +
                 " (" + ApplicationInfo.getInstance().getBuild().asString() + ")\n", UTF_8));
-        sb.append(URLEncoder.encode("OS: " + SystemInfo.getOsNameAndVersion(), UTF_8));
+        sb.append(URLEncoder.encode("OS: " + SystemInfo.OS_NAME + " " + SystemInfo.OS_VERSION, UTF_8));
 
         sb.append(URLEncoder.encode("\n\n### Stacktrace\n", UTF_8));
         sb.append(URLEncoder.encode("```\n", UTF_8));

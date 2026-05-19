@@ -33,6 +33,9 @@ _[See Screenshots](https://plugins.jetbrains.com/plugin/21396-github-workflow)_
 * 🌈 Autocomplete & Syntax Highlighting: Write workflow YAML files with confidence. Autocomplete suggestions and clear
   syntax highlighting will make your code look and feel pristine.
 * 🚀 Repository Access: Integrate with your private GitHub repositories for those secret projects you're working on.
+* 🏢 Self-hosted GitHub: Resolve metadata from public GitHub and GitHub Enterprise accounts already configured in
+  JetBrains settings, without storing plaintext tokens in this plugin.
+* 🧹 Cache Controls: Refresh or clear resolved action/workflow metadata from `Tools > GitHub Workflow`.
 * 🗺️ Local Path Resolution: Navigate effortlessly with one-click access to local paths.
 * ✅ Validation Engine: Validates linked local actions and workflows, but hey, you can turn this off too.
 * 🛡️ Security: We respect your privacy! The plugin doesn't use or store your personal data; it only accesses remote
@@ -44,8 +47,25 @@ _[See Screenshots](https://plugins.jetbrains.com/plugin/21396-github-workflow)_
 
 * **Installation**: Download the plugin
   from [JetBrains Marketplace](https://plugins.jetbrains.com/plugin/21396-github-workflow).
-* **Configuration**: Add your GitHub account via `File > Settings > Version Control > GitHub`.
+* **Configuration**: Add GitHub or GitHub Enterprise accounts via `File > Settings > Version Control > GitHub`. The
+  plugin does not add a second server settings screen.
+* **Cache**: Use `Tools > GitHub Workflow` to refresh stale remote metadata or clear cached action/workflow metadata.
 * **Usage**: Enjoy autocomplete, syntax highlighting, and much more as you code your GitHub Workflows and Actions.
+
+## Local Development
+
+The project uses the Gradle wrapper and Java 25. No manual JetBrains JDK path is needed; the IntelliJ Platform Gradle
+Plugin downloads the IDE, bundled plugins, verifier, and test runtime.
+
+1. Install Java 25 and make it available as `java`.
+2. Run `./gradlew test` for the fast regression suite.
+3. Run `./gradlew check verifyPlugin buildPlugin` before publishing or opening a release PR.
+
+For manual IDE testing, run `./gradlew runIde`. The first run downloads IDE artifacts and can take a while. This is
+annoying, but at least it is predictable. Progress.
+
+Current UX/DX gaps are tracked in [UX/DX Gaps](doc/spec/ux-dx-gaps.md); editor behavior coverage is tracked in
+[Editor Test Matrix](doc/spec/editor-test-matrix.md).
 
 ## Dependencies
 
@@ -73,23 +93,22 @@ Yuna Morgenstern, your GitHub Jedi.
 
 #### TODO
 
-- [ ] Autocomplete workflow and actions refs e.g. `@main`, `@v1`, ...
-- [ ] Add links to Workflows and action files (GitHubUrl && MarketplaceUrl)
-- [ ] Add links to Definitions (jobs, steps, needs, secrets, inputs, envs)
+- [x] Autocomplete workflow and actions refs from resolved remote tags/branches e.g. `@main`, `@v1`, ...
+- [x] Add links to Workflows and action files (GitHubUrl && MarketplaceUrl)
+- [x] Add links to Definitions (jobs, steps, needs, secrets, inputs, envs)
   e.g. (https://github.com/cunla/ghactions-manager/blob/master/src/main/kotlin/com/dsoftware/ghmanager/api/Workflows.kt)
-- [ ] Autogenerate `getGitHubContextEnvs`
-  from (https://docs.github.com/en/actions/learn-github-actions/contexts#github-context)
-- [ ] Autogenerate `getGitHubEnvs`
-  from (https://docs.github.com/en/actions/learn-github-actions/variables#using-the-vars-context-to-access-configuration-variable-values)
+- [x] Generate GitHub context data from (https://docs.github.com/en/actions/reference/workflows-and-actions/contexts#github-context)
+- [x] Generate default environment variable data from (https://docs.github.com/en/actions/reference/workflows-and-actions/variables#default-environment-variables)
 
 ## Learning List
 
-- [ ] Create Tests
+- [x] Create Tests
 - [ ] Refactor - less custom elements == less memory leaks
-- [ ] Auto Complete Uses with local action files
-- [ ] Auto Complete Uses field with Tags & Branches
-- [ ] Link local files action files aka find usages
-- [ ] implement CMD+B
+- [x] Auto Complete Uses with local action files
+- [x] Auto Complete Uses with cached/current workflow refs
+- [x] Auto Complete Uses field with Tags & Branches
+- [x] Link local action/workflow files aka find usages
+- [x] implement CMD+B
 - [x] Create a new [IntelliJ Platform Plugin Template][template] project.
 - [x] Get familiar with the [template documentation][template].
 - [x] Adjust the [pluginGroup](./gradle.properties), [plugin ID](./src/main/resources/META-INF/plugin.xml).

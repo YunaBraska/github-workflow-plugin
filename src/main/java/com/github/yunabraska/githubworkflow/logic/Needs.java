@@ -23,6 +23,7 @@ import java.util.Optional;
 import java.util.stream.Collectors;
 
 import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.FIELD_NEEDS;
+import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.FIELD_RESULT;
 import static com.github.yunabraska.githubworkflow.helper.HighlightAnnotatorHelper.addAnnotation;
 import static com.github.yunabraska.githubworkflow.helper.HighlightAnnotatorHelper.deleteElementAction;
 import static com.github.yunabraska.githubworkflow.helper.HighlightAnnotatorHelper.ifEnoughItems;
@@ -49,13 +50,18 @@ public class Needs {
 
     // variable field
     public static void highlightNeeds(final AnnotationHolder holder, final LeafPsiElement element, final SimpleElement[] parts) {
-        ifEnoughItems(holder, element, parts, 4, 4, jobId -> {
+        ifEnoughItems(holder, element, parts, 3, 4, jobId -> {
             final List<String> jobIds = listJobNeeds(element);
-            if (isDefinedItem0(element, holder, jobId, jobIds) && isField2Valid(element, holder, parts[2])) {
+            if (isDefinedItem0(element, holder, jobId, jobIds) && isField2Valid(element, holder, parts[2], List.of("outputs", FIELD_RESULT))) {
+                if (FIELD_RESULT.equals(parts[2].text())) {
+                    return;
+                }
                 // TODO: find target for highlighting reference
                 // TODO: implement reference ... does highlighting comes after reference which could add an reference indicator?
                 final List<String> outputs = listJobOutputs(listAllJobs(element).stream().filter(job -> job.getKeyText().equals(jobId.text())).findFirst().orElse(null)).stream().map(SimpleElement::key).toList();
-                isValidItem3(element, holder, parts[3], outputs);
+                if (parts.length > 3) {
+                    isValidItem3(element, holder, parts[3], outputs);
+                }
             }
         });
     }
@@ -86,6 +92,10 @@ public class Needs {
     }
 
     // ########## CODE COMPLETION ##########
+    public static List<SimpleElement> codeCompletionPreviousJobs(final PsiElement psiElement) {
+        return listJobs(psiElement).stream().map(Jobs::jobToCompletionItem).toList();
+    }
+
     public static List<SimpleElement> codeCompletionNeeds(final PsiElement psiElement) {
         final List<YAMLKeyValue> jobs = listJobs(psiElement);
         return listJobNeeds(psiElement).stream()
@@ -128,7 +138,16 @@ public class Needs {
 
     // ########## COMMONS ##########
     private static List<YAMLKeyValue> listJobs(final PsiElement psiElement) {
-        return getParentJob(psiElement).map(job -> listAllJobs(psiElement).stream().takeWhile(j -> !j.getKeyText().equals(job.getKeyText())).toList()).orElseGet(Collections::emptyList);
+        return currentJob(psiElement).map(job -> listAllJobs(psiElement).stream().takeWhile(j -> !j.getKeyText().equals(job.getKeyText())).toList()).orElseGet(Collections::emptyList);
+    }
+
+    private static Optional<YAMLKeyValue> currentJob(final PsiElement psiElement) {
+        final int offset = ofNullable(psiElement).map(PsiElement::getTextRange).map(range -> range.getStartOffset()).orElse(-1);
+        return getParentJob(psiElement).or(() -> ofNullable(psiElement)
+                .map(element -> listAllJobs(element).stream()
+                        .filter(job -> job.getTextRange().contains(element.getTextRange().getStartOffset()) || job.getTextRange().getStartOffset() <= offset)
+                        .reduce((previous, current) -> previous.getTextRange().contains(offset) ? previous : current)
+                        .orElse(null)));
     }
 
     public static List<String> listJobNeeds(final PsiElement psiElement) {

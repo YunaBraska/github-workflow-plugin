@@ -6,8 +6,7 @@ import com.github.yunabraska.githubworkflow.helper.PsiElementChangeListener;
 import com.github.yunabraska.githubworkflow.helper.PsiElementHelper;
 import com.github.yunabraska.githubworkflow.model.GitHubAction;
 import com.intellij.openapi.Disposable;
-import com.intellij.openapi.actionSystem.ex.ActionManagerEx;
-import com.intellij.openapi.application.ApplicationManager;
+import com.intellij.openapi.application.ReadAction;
 import com.intellij.openapi.fileEditor.FileEditorManager;
 import com.intellij.openapi.fileEditor.FileEditorManagerListener;
 import com.intellij.openapi.project.DumbService;
@@ -16,6 +15,7 @@ import com.intellij.openapi.startup.ProjectActivity;
 import com.intellij.openapi.util.Disposer;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.psi.PsiManager;
+import com.intellij.util.concurrency.AppExecutorUtil;
 import com.intellij.util.messages.MessageBusConnection;
 import kotlin.Unit;
 import kotlin.coroutines.Continuation;
@@ -24,9 +24,9 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 
 import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.FIELD_USES;
@@ -51,7 +51,7 @@ public class ProjectStartup implements ProjectActivity {
             asyncInitAllActions(project, openedFile);
         }
 
-        final MessageBusConnection connection = project.getMessageBus().connect();
+        final MessageBusConnection connection = project.getMessageBus().connect(listenerDisposable);
         connection.subscribe(FileEditorManagerListener.FILE_EDITOR_MANAGER, new FileEditorManagerListener() {
             @Override
             public void fileOpened(@NotNull final FileEditorManager source, @NotNull final VirtualFile file) {
@@ -61,48 +61,48 @@ public class ProjectStartup implements ProjectActivity {
 
 
         // CLEANUP ACTION CACHE SCHEDULER
-        final ScheduledExecutorService executorService = Executors.newSingleThreadScheduledExecutor();
-        executorService.scheduleAtFixedRate(() -> getActionCache().cleanUp(), 0, 30, TimeUnit.MINUTES);
+        final ScheduledFuture<?> cleanupTask = AppExecutorUtil.getAppScheduledExecutorService()
+                .scheduleWithFixedDelay(() -> getActionCache().cleanUp(), 0, 30, TimeUnit.MINUTES);
 
         // Ensure the executor is shut down when the project is disposed
         Disposer.register(ListenerService.getInstance(project), () -> {
-            executorService.shutdown();
-            unregisterAction(project);
+            cleanupTask.cancel(false);
         });
         return null;
     }
 
-    private void unregisterAction(final Project project) {
-        final ActionManagerEx actionManager = ActionManagerEx.getInstanceEx();
-        for (final String oldId : actionManager.getActionIdList("GHWP_" + project.getLocationHash())) {
-            actionManager.unregisterAction(oldId);
-        }
-    }
-
     private static void asyncInitAllActions(final Project project, final VirtualFile virtualFile) {
         final Runnable task = () -> {
-            if (virtualFile != null && (GitHubWorkflowHelper.isWorkflowPath(toPath(virtualFile.getPath())))) {
-                final List<GitHubAction> actions = new ArrayList<>();
-                // READ CONTEXT
-                ApplicationManager.getApplication().runReadAction(() -> Optional.of(PsiManager.getInstance(project))
-                        .map(psiManager -> psiManager.findFile(virtualFile))
-                        .map(psiFile -> PsiElementHelper.getAllElements(psiFile, FIELD_USES))
-                        .ifPresent(usesList -> usesList.stream().map(GitHubActionCache::getAction).filter(action -> !action.isSuppressed()).filter(action -> !action.isResolved()).forEach(actions::add))
-                );
-
-                // ASYNC HTTP CONTEXT
-                GitHubActionCache.resolveActionsAsync(actions);
+            if (virtualFile != null && virtualFile.isValid() && (GitHubWorkflowHelper.isWorkflowPath(toPath(virtualFile.getPath())))) {
+                ReadAction.nonBlocking(() -> unresolvedActions(project, virtualFile))
+                        .inSmartMode(project)
+                        .submit(AppExecutorUtil.getAppExecutorService())
+                        .onSuccess(GitHubActionCache::resolveActionsAsync);
             }
         };
 
         threadPoolExec(project, task);
     }
 
+    private static List<GitHubAction> unresolvedActions(final Project project, final VirtualFile virtualFile) {
+        final List<GitHubAction> actions = new ArrayList<>();
+        Optional.of(PsiManager.getInstance(project))
+                .map(psiManager -> psiManager.findFile(virtualFile))
+                .map(psiFile -> PsiElementHelper.getAllElements(psiFile, FIELD_USES))
+                .ifPresent(usesList -> usesList.stream()
+                        .map(GitHubActionCache::getAction)
+                        .filter(Objects::nonNull)
+                        .filter(action -> !action.isSuppressed())
+                        .filter(action -> !action.isResolved())
+                        .forEach(actions::add));
+        return actions;
+    }
+
     public static void threadPoolExec(final Project project, final Runnable task) {
         if (!DumbService.isDumb(project)) {
-            ApplicationManager.getApplication().executeOnPooledThread(task);
+            AppExecutorUtil.getAppExecutorService().execute(task);
         } else {
-            DumbService.getInstance(project).runWhenSmart(() -> ApplicationManager.getApplication().executeOnPooledThread(task));
+            DumbService.getInstance(project).runWhenSmart(() -> AppExecutorUtil.getAppExecutorService().execute(task));
         }
     }
 }

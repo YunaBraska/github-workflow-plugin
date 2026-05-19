@@ -91,13 +91,21 @@ public class Steps {
             final YAMLSequenceItem currentStep = getParentStep(psiElement).orElse(null);
             final boolean isOutput = getParent(psiElement, FIELD_OUTPUTS).isPresent();
             return getChildSteps(job).stream().takeWhile(step -> isOutput || step != currentStep).toList();
-        }).orElseGet(() -> getParent(psiElement, FIELD_OUTPUTS)
+        }).orElseGet(() -> getParent(psiElement, FIELD_RUNS)
+                // Composite action [runs.steps]
+                .flatMap(runs -> getChild(runs, FIELD_STEPS))
+                .map(steps -> {
+                    final YAMLSequenceItem currentStep = getParentStep(psiElement).orElse(null);
+                    final boolean isOutput = getParent(psiElement, FIELD_OUTPUTS).isPresent();
+                    return getChildSteps(steps).stream().takeWhile(step -> isOutput || step != currentStep).toList();
+                })
+                .orElseGet(() -> getParent(psiElement, FIELD_OUTPUTS)
                 //Action.yaml [runs.steps]
                 .map(outputs -> psiElement.getContainingFile())
                 .flatMap(psiFile -> getChild(psiFile, FIELD_RUNS))
                 .flatMap(runs -> getChild(runs, FIELD_STEPS))
                 .map(PsiElementHelper::getChildSteps)
-                .orElseGet(Collections::emptyList)
+                .orElseGet(Collections::emptyList))
         );
     }
 

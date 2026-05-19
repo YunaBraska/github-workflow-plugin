@@ -7,6 +7,7 @@ import com.github.yunabraska.githubworkflow.model.SyntaxAnnotation;
 import com.github.yunabraska.githubworkflow.services.GitHubActionCache;
 import com.intellij.codeInspection.ProblemHighlightType;
 import com.intellij.ide.util.PsiNavigationSupport;
+import com.intellij.lang.injection.InjectedLanguageManager;
 import com.intellij.lang.annotation.AnnotationHolder;
 import com.intellij.lang.annotation.HighlightSeverity;
 import com.intellij.openapi.application.ApplicationManager;
@@ -19,6 +20,7 @@ import com.intellij.openapi.util.TextRange;
 import com.intellij.openapi.vfs.LocalFileSystem;
 import com.intellij.psi.PsiDocumentManager;
 import com.intellij.psi.PsiElement;
+import com.intellij.psi.PsiFile;
 import com.intellij.psi.PsiManager;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.yaml.psi.YAMLKeyValue;
@@ -75,9 +77,8 @@ public class HighlightAnnotatorHelper {
                     null
             ).createAnnotation(psiElement, new TextRange(range.getStartOffset() + parts[0].startIndexOffset(), range.getStartOffset() + parts[parts.length - 1].endIndexOffset()), holder);
         } else if (max != -1 && parts.length > max) {
-            final TextRange range = psiElement.getTextRange();
             final SimpleElement[] tooLongPart = Arrays.copyOfRange(parts, max, parts.length);
-            final TextRange textRange = new TextRange(range.getStartOffset() + tooLongPart[0].startIndexOffset(), range.getStartOffset() + tooLongPart[tooLongPart.length - 1].endIndexOffset());
+            final TextRange textRange = textRangeIncludingPreviousDot(psiElement, tooLongPart[0], tooLongPart[tooLongPart.length - 1]);
             new SyntaxAnnotation(
                     "Remove invalid suffix [" + Arrays.stream(tooLongPart).map(SimpleElement::text).collect(Collectors.joining(".")) + "]",
                     null,
@@ -109,9 +110,9 @@ public class HighlightAnnotatorHelper {
 
     public static boolean isField2Valid(@NotNull final PsiElement psiElement, @NotNull final AnnotationHolder holder, final SimpleElement itemId, final List<String> validFields) {
         if (!validFields.contains(itemId.text())) {
-            final TextRange textRange = simpleTextRange(psiElement, itemId);
+            final TextRange textRange = textRangeIncludingPreviousDot(psiElement, itemId, itemId);
             new SyntaxAnnotation(
-                    "Remove invalid [" + itemId + "]",
+                    "Remove invalid [" + itemId.text() + "]",
                     null,
                     deleteElementAction(textRange)
             ).createAnnotation(psiElement, textRange, holder);
@@ -145,7 +146,7 @@ public class HighlightAnnotatorHelper {
     @NotNull
     public static SyntaxAnnotation newUnresolvedAction(final YAMLKeyValue element) {
         return new SyntaxAnnotation(
-                "Unresolved [" + removeQuotes(element.getValueText()) + "] - you may need to connect your GitHub",
+                "Unresolved [" + removeQuotes(element.getValueText()) + "] - check GitHub account access, private repository permissions, rate limits, missing refs, or missing action/workflow metadata",
                 SETTINGS,
                 HighlightSeverity.WEAK_WARNING,
                 ProblemHighlightType.WEAK_WARNING,
@@ -200,7 +201,8 @@ public class HighlightAnnotatorHelper {
         return fix -> {
             final PsiElement psiElement = fix.file().findElementAt(fix.editor().getCaretModel().getOffset());
             if (psiElement != null) {
-                final Document document = PsiDocumentManager.getInstance(fix.project()).getDocument(psiElement.getContainingFile());
+                final PsiFile topLevelFile = InjectedLanguageManager.getInstance(fix.project()).getTopLevelFile(psiElement);
+                final Document document = PsiDocumentManager.getInstance(fix.project()).getDocument(topLevelFile);
                 if (document != null) {
                     WriteCommandAction.runWriteCommandAction(fix.project(), () -> document.replaceString(textRange.getStartOffset(), textRange.getEndOffset(), newValue));
                 }
@@ -218,6 +220,23 @@ public class HighlightAnnotatorHelper {
         return new TextRange(
                 Math.max(startOffset + item.startIndexOffset(), startOffset),
                 Math.min(startOffset + item.endIndexOffset(), textRange.getEndOffset())
+        );
+    }
+
+    private static TextRange textRangeIncludingPreviousDot(
+            @NotNull final PsiElement psiElement,
+            @NotNull final SimpleElement firstItem,
+            @NotNull final SimpleElement lastItem
+    ) {
+        final TextRange textRange = psiElement.getTextRange();
+        final int startOffset = textRange.getStartOffset();
+        final int localStart = firstItem.startIndexOffset();
+        final int start = localStart > 0 && psiElement.getText().charAt(localStart - 1) == '.'
+                ? startOffset + localStart - 1
+                : startOffset + localStart;
+        return new TextRange(
+                Math.max(start, startOffset),
+                Math.min(startOffset + lastItem.endIndexOffset(), textRange.getEndOffset())
         );
     }
 

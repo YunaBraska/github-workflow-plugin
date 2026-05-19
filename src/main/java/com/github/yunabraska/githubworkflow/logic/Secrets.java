@@ -10,9 +10,10 @@ import com.intellij.psi.PsiElement;
 import com.intellij.psi.impl.source.tree.LeafPsiElement;
 import org.jetbrains.yaml.psi.YAMLKeyValue;
 
-import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.FIELD_IF;
@@ -32,6 +33,8 @@ import static com.github.yunabraska.githubworkflow.model.SimpleElement.completio
 import static com.github.yunabraska.githubworkflow.model.SyntaxAnnotation.createAnnotation;
 
 public class Secrets {
+
+    private static final String GITHUB_TOKEN = "GITHUB_TOKEN";
 
     public static void highLightSecrets(
             final AnnotationHolder holder,
@@ -68,11 +71,20 @@ public class Secrets {
 
     public static List<SimpleElement> listSecrets(final PsiElement psiElement) {
         //WORKFLOW SECRETS
-        return getParent(psiElement, FIELD_IF).isPresent() ? Collections.emptyList() : getChild(psiElement.getContainingFile(), FIELD_ON)
+        if (getParent(psiElement, FIELD_IF).isPresent()) {
+            return Collections.emptyList();
+        }
+        final Map<String, String> result = getChild(psiElement.getContainingFile(), FIELD_ON)
                 .map(on -> getAllElements(on, FIELD_SECRETS))
-                .map(secrets -> secrets.stream().flatMap(secret -> getChildren(secret).stream()).collect(Collectors.toMap(YAMLKeyValue::getKeyText, keyValue -> getText(keyValue, "description").orElse(""), (existing, replacement) -> existing)))
-                .map(map -> completionItemsOf(map, ICON_SECRET_WORKFLOW))
-                .orElseGet(ArrayList::new);
+                .map(secrets -> secrets.stream().flatMap(secret -> getChildren(secret).stream()).collect(Collectors.toMap(
+                        YAMLKeyValue::getKeyText,
+                        keyValue -> getText(keyValue, "description").orElse(""),
+                        (existing, replacement) -> existing,
+                        LinkedHashMap::new
+                )))
+                .orElseGet(LinkedHashMap::new);
+        result.putIfAbsent(GITHUB_TOKEN, "Automatically created token for each workflow run.");
+        return completionItemsOf(result, ICON_SECRET_WORKFLOW);
     }
 
     private Secrets() {
