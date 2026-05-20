@@ -67,6 +67,7 @@ Official syntax references:
 - Completion/reference/styling synchronization for workflow-call input defaults.
 - Expression validation in `runs-on` scalar and sequence values, folded block scalars, and multiline block-scalar expressions.
 - Job output unused/used highlighting.
+- Job outputs used inside expression functions such as `fromJson(needs.<job>.outputs.<output>)`.
 - Folded scalar expression highlighting and alias-backed scalar/map environment keys.
 - Composite action metadata input references and `runs.steps` output references/completion.
 - Composite action `runs.steps` can reference outputs from previous `uses` steps.

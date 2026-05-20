@@ -25,9 +25,19 @@ public class GitHubActionTest {
     public void createGithubActionBuildsNestedRemoteActionUrls() {
         final GitHubAction action = GitHubAction.createGithubAction(false, "owner/repo/path/to/action@main", "owner/repo/path/to/action@main");
 
-        assertThat(action.name()).isEqualTo("owner/repo");
+        assertThat(action.name()).isEqualTo("owner/repo/path/to/action");
         assertThat(action.downloadUrl()).isEqualTo("https://raw.githubusercontent.com/owner/repo/main/path/to/action/action.yml");
         assertThat(action.githubUrl()).isEqualTo("https://github.com/owner/repo/tree/main/path/to/action#readme");
+        assertThat(action.isAction()).isTrue();
+    }
+
+    @Test
+    public void createGithubActionKeepsNestedRemoteActionNameForIssue48() {
+        final GitHubAction action = GitHubAction.createGithubAction(false, "github/codeql-action/init@v2", "github/codeql-action/init@v2");
+
+        assertThat(action.name()).isEqualTo("github/codeql-action/init");
+        assertThat(action.downloadUrl()).isEqualTo("https://raw.githubusercontent.com/github/codeql-action/v2/init/action.yml");
+        assertThat(action.githubUrl()).isEqualTo("https://github.com/github/codeql-action/tree/v2/init#readme");
         assertThat(action.isAction()).isTrue();
     }
 

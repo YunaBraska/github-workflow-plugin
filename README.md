@@ -46,7 +46,8 @@ _[See Screenshots](https://plugins.jetbrains.com/plugin/21396-github-workflow)_
   from [JetBrains Marketplace](https://plugins.jetbrains.com/plugin/21396-github-workflow).
 * **Configuration**: Add GitHub or GitHub Enterprise accounts via `File > Settings > Version Control > GitHub`. The
   plugin does not add a second server settings screen.
-* **Cache**: Use `Tools > GitHub Workflow` to refresh stale remote metadata or clear cached action/workflow metadata.
+* **Cache**: Use Find Action (`Shift` twice) for `Refresh Action Cache`, `Clear Action Cache`, or `Restore Action
+  Warnings`. IDEs with the classic Tools menu also show these under `Tools > GitHub Workflow`.
 * **Usage**: Enjoy autocomplete, syntax highlighting, and much more as you code your GitHub Workflows and Actions.
 
 ## Local Development
@@ -58,8 +59,9 @@ Plugin downloads the IDE, bundled plugins, verifier, and test runtime.
 2. Run `./gradlew test` for the fast regression suite.
 3. Run `./gradlew check verifyPlugin buildPlugin` before publishing or opening a release PR.
 
-For manual IDE testing, run `./gradlew runIde`. The first run downloads IDE artifacts and can take a while. This is
-annoying, but at least it is predictable. Progress.
+For manual IDE testing, run `./gradlew runIde`. The default target tracks the latest stable IntelliJ IDEA platform that
+the Gradle tooling can resolve (`platformVersion` in `gradle.properties`). The first run downloads IDE artifacts and can
+take a while. This is annoying, but at least it is predictable. Progress.
 
 Current UX/DX gaps are tracked in [UX/DX Gaps](doc/spec/ux-dx-gaps.md); editor behavior coverage is tracked in
 [Editor Test Matrix](doc/spec/editor-test-matrix.md).

@@ -80,7 +80,7 @@ dependencies {
     testImplementation 'org.assertj:assertj-core:3.26.3'
 
     intellijPlatform {
-        intellijIdeaCommunity(requiredProperty('platformVersion'))
+        intellijIdea(requiredProperty('platformVersion'))
         bundledPlugins(csvProperty('platformPlugins'))
         pluginVerifier()
         testFramework(TestFrameworkType.Platform.INSTANCE)

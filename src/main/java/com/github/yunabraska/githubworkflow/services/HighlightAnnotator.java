@@ -157,9 +157,10 @@ public class HighlightAnnotator implements Annotator {
                     .orElseGet(Collections::emptyList);
             outputs.stream().filter(output -> {
                 final String outputKey = output.getKeyText();
-                return workflowOutputs.stream().noneMatch(
-                        wo -> wo.contains(FIELD_JOBS + "." + job.getKeyText() + "." + FIELD_OUTPUTS + "." + outputKey + " ") || wo.contains(FIELD_JOBS + "." + job.getKeyText() + "." + FIELD_OUTPUTS + "." + outputKey + "}")
-                ) && !workflowText.contains(FIELD_NEEDS + "." + job.getKeyText() + "." + FIELD_OUTPUTS + "." + outputKey + " ") && !workflowText.contains(FIELD_NEEDS + "." + job.getKeyText() + "." + FIELD_OUTPUTS + "." + outputKey + "}");
+                final String reusableOutputReference = FIELD_JOBS + "." + job.getKeyText() + "." + FIELD_OUTPUTS + "." + outputKey;
+                final String needsOutputReference = FIELD_NEEDS + "." + job.getKeyText() + "." + FIELD_OUTPUTS + "." + outputKey;
+                return workflowOutputs.stream().noneMatch(value -> containsOutputReference(value, reusableOutputReference))
+                        && !containsOutputReference(workflowText, needsOutputReference);
             }).forEach(output -> new SyntaxAnnotation(
                     "Unused [" + output.getKeyText() + "]",
                     null,
@@ -170,6 +171,18 @@ public class HighlightAnnotator implements Annotator {
             ).createAnnotation(output, output.getTextRange(), holder));
 
         });
+    }
+
+    private static boolean containsOutputReference(final String text, final String reference) {
+        int index = ofNullable(text).orElse("").indexOf(reference);
+        while (index >= 0) {
+            final int end = index + reference.length();
+            if (end >= text.length() || !isIdentifierChar(text.charAt(end))) {
+                return true;
+            }
+            index = text.indexOf(reference, end);
+        }
+        return false;
     }
 
     @NotNull

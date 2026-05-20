@@ -1244,6 +1244,29 @@ public class WorkflowHighlightingTest extends EditorFeatureTestCase {
                 """);
     }
 
+    public void testIssue46JobOutputUsedInsideFromJsonIsAccepted() {
+        assertWorkflowHighlights("""
+                name: Issue 46
+                on: workflow_dispatch
+                jobs:
+                  list-folders:
+                    runs-on: ubuntu-latest
+                    outputs:
+                      folders: ${{ steps.list.outputs.folders }}
+                    steps:
+                      - id: list
+                        run: echo "folders=[]" >> "$GITHUB_OUTPUT"
+                  update-all:
+                    runs-on: ubuntu-latest
+                    needs: list-folders
+                    strategy:
+                      matrix:
+                        folder: ${{ fromJson(needs.list-folders.outputs.folders) }}
+                    steps:
+                      - run: echo "${{ matrix.folder }}"
+                """);
+    }
+
     public void testJobStatusContextReferenceIsAccepted() {
         assertWorkflowHighlights("""
                 name: Job Context

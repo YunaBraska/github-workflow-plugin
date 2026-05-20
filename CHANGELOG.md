@@ -13,8 +13,14 @@
 - Public GitHub and GitHub Enterprise accounts configured in the IDE are used for action metadata resolution.
 - Workflow expressions inside strings are highlighted separately from surrounding text.
 - Shell snippets inside `run` blocks can use shell-aware editing where the IDE supports it.
-- Cache controls are available from `Tools > GitHub Workflow` to refresh metadata, clear cached entries, or restore hidden warnings.
-- The plugin build, tests, verifier checks, release packaging, and local development setup are ready for the next version.
+- Cache controls are available through Find Action and, where visible, `Tools > GitHub Workflow` to refresh metadata,
+  clear cached entries, or restore hidden warnings.
+- The plugin build, tests, verifier checks, release packaging, PR build checks, and local development setup are ready for the next version.
+- Release automation now supports manual workflow runs, PR/branch testing, merged-PR tagging, tag-based GitHub releases,
+  and release-based JetBrains Marketplace publishing.
+- Thanks to @SilverNicktail, @tomsit-ionos, @jbw9964, @nyurik, @Lordfirespeed, @ris58h, @holomekc,
+  @InSyncWithFoo, @LecrisUT, @enobrev, @bartei, @gilzow, @zaaraungkam, @PeerHofmannGSG, and @zwj-cheer for reports and
+  context that shaped this hardening round.
 
 ## [3.2.1] - 2023-11-04
 

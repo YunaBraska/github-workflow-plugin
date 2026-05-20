@@ -109,7 +109,7 @@ public class GitHubAction implements Serializable {
         // END [EXTRACT PARTS]
 
         return new GitHubAction()
-                .name(slug != null ? slug : tmpName)
+                .name(slug != null ? slug + ofNullable(tmpSub).orElse("") : tmpName)
                 .usesValue(usesValue)
                 .downloadUrl(isLocal ? absolutePath : toRemoteDownloadUrl(isAction, ref, slug, tmpSub, tmpName))
                 .githubUrl(isAction ? toGitHubActionUrl(ref, slug, tmpSub) : toGitHubWorkflowUrl(ref, slug, tmpName))

@@ -63,6 +63,22 @@ public class FileDownloaderTest {
     }
 
     @Test
+    public void downloadSyncReturnsEmptyStringForSlowResponses() {
+        server.createContext("/slow", exchange -> {
+            try {
+                Thread.sleep(1500);
+                exchange.sendResponseHeaders(200, -1);
+            } catch (final InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+            } finally {
+                exchange.close();
+            }
+        });
+
+        assertThat(FileDownloader.downloadSync(baseUrl + "/slow", "JUnitAgent/1")).isEmpty();
+    }
+
+    @Test
     public void downloadSyncReturnsEmptyStringForInvalidUrls() {
         assertThat(FileDownloader.downloadSync("://not-a-url", "JUnitAgent/1")).isEmpty();
     }
