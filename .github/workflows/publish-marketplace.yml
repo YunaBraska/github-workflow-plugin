@@ -1,0 +1,104 @@
+name: Publish Marketplace
+
+on:
+  release:
+    types:
+      - published
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to publish or dry-run.
+        required: true
+        type: string
+      dry_run:
+        description: Build and validate without publishing to JetBrains Marketplace.
+        required: true
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-marketplace-${{ github.event.release.tag_name || inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Publish JetBrains Marketplace
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      RELEASE_TAG: ${{ github.event.release.tag_name || inputs.tag }}
+      DRY_RUN: ${{ inputs.dry_run || 'false' }}
+
+    steps:
+      - name: Validate tag
+        shell: sh
+        run: |
+          if ! printf '%s\n' "$RELEASE_TAG" | grep -Eq '^v[0-9]+[.][0-9]+[.][0-9]+([-+][0-9A-Za-z._-]+)?$'; then
+            echo "Tag must look like v2024.3.0 or v2024.3.0-rc.1: $RELEASE_TAG" >&2
+            exit 1
+          fi
+
+      - name: Fetch sources
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ env.RELEASE_TAG }}
+
+      - name: Set up Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 25
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Test, verify, and build plugin
+        shell: sh
+        run: ./gradlew --no-daemon check verifyPlugin buildPlugin --warning-mode all
+
+      - name: Validate Marketplace secrets
+        if: env.DRY_RUN != 'true'
+        shell: sh
+        env:
+          PUBLISH_TOKEN: ${{ secrets.PUBLISH_TOKEN }}
+          CERTIFICATE_CHAIN: ${{ secrets.CERTIFICATE_CHAIN }}
+          PRIVATE_KEY: ${{ secrets.PRIVATE_KEY }}
+          PRIVATE_KEY_PASSWORD: ${{ secrets.PRIVATE_KEY_PASSWORD }}
+        run: |
+          missing=""
+          if [ -z "$PUBLISH_TOKEN" ]; then
+            missing="$missing PUBLISH_TOKEN"
+          fi
+          if [ -z "$CERTIFICATE_CHAIN" ]; then
+            missing="$missing CERTIFICATE_CHAIN"
+          fi
+          if [ -z "$PRIVATE_KEY" ]; then
+            missing="$missing PRIVATE_KEY"
+          fi
+          if [ -z "$PRIVATE_KEY_PASSWORD" ]; then
+            missing="$missing PRIVATE_KEY_PASSWORD"
+          fi
+
+          if [ -n "$missing" ]; then
+            echo "Missing Marketplace secret(s):$missing" >&2
+            exit 1
+          fi
+
+      - name: Publish plugin
+        if: env.DRY_RUN != 'true'
+        shell: sh
+        env:
+          PUBLISH_TOKEN: ${{ secrets.PUBLISH_TOKEN }}
+          CERTIFICATE_CHAIN: ${{ secrets.CERTIFICATE_CHAIN }}
+          PRIVATE_KEY: ${{ secrets.PRIVATE_KEY }}
+          PRIVATE_KEY_PASSWORD: ${{ secrets.PRIVATE_KEY_PASSWORD }}
+        run: ./gradlew --no-daemon publishPlugin --warning-mode all
+
+      - name: Dry-run summary
+        if: env.DRY_RUN == 'true'
+        shell: sh
+        run: |
+          echo "Dry run: Marketplace publish skipped for $RELEASE_TAG"
