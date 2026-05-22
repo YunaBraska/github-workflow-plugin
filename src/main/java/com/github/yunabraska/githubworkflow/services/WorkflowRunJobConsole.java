@@ -15,6 +15,18 @@ interface WorkflowRunJobConsole {
         return jobStdout(job, text);
     }
 
+    default void workflowStatus(final String text, final boolean error) {
+    }
+
+    default void runFinished(final long runId, final String conclusion) {
+    }
+
+    default void runDeleted(final long runId) {
+    }
+
+    default void runDeleteFailed(final long runId) {
+    }
+
     default void close() {
     }
 

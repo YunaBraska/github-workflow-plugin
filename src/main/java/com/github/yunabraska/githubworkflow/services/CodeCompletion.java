@@ -137,16 +137,29 @@ public class CodeCompletion extends CompletionContributor {
                                     NodeIcon.ICON_NODE,
                                     Character.MIN_VALUE
                             );
-                        } else if (isCompletingCallableSecrets(position)) {
-                            currentCallableAction(parameters, position)
-                                    .map(GitHubAction::freshSecrets)
-                                    .ifPresent(map -> addLookupElements(resultSet.withPrefixMatcher(getDefaultPrefix(parameters)), map, NodeIcon.ICON_SECRET_WORKFLOW, ':'));
                         } else {
-                            //USES COMPLETION [jobs.job_id.steps.step_id:with]
-                            final Optional<Map<String, String>> withCompletion = currentCallableAction(parameters, position)
-                                    .filter(GitHubAction::isResolved)
-                                    .map(GitHubAction::freshInputs);
-                            withCompletion.ifPresent(map -> addLookupElements(resultSet.withPrefixMatcher(getDefaultPrefix(parameters)), map, NodeIcon.ICON_INPUT, ':'));
+                            final Optional<StructureCompletion> structureCompletion = workflowTriggerStructureCompletion(parameters);
+                            if (structureCompletion.isPresent()) {
+                                final StructureCompletion completion = structureCompletion.get();
+                                addLookupElements(
+                                        resultSet.withPrefixMatcher(getDefaultPrefix(parameters)),
+                                        completion.items(),
+                                        ICON_NODE,
+                                        completion.suffix()
+                                );
+                                return;
+                            }
+                            if (isCompletingCallableSecrets(position)) {
+                                currentCallableAction(parameters, position)
+                                        .map(GitHubAction::freshSecrets)
+                                        .ifPresent(map -> addLookupElements(resultSet.withPrefixMatcher(getDefaultPrefix(parameters)), map, NodeIcon.ICON_SECRET_WORKFLOW, ':'));
+                            } else {
+                                //USES COMPLETION [jobs.job_id.steps.step_id:with]
+                                final Optional<Map<String, String>> withCompletion = currentCallableAction(parameters, position)
+                                        .filter(GitHubAction::isResolved)
+                                        .map(GitHubAction::freshInputs);
+                                withCompletion.ifPresent(map -> addLookupElements(resultSet.withPrefixMatcher(getDefaultPrefix(parameters)), map, NodeIcon.ICON_INPUT, ':'));
+                            }
                         }
                     }
                 });
@@ -189,6 +202,140 @@ public class CodeCompletion extends CompletionContributor {
         final int lineStart = wholeText.lastIndexOf('\n', Math.max(0, offset - 1)) + 1;
         final String beforeCaret = wholeText.substring(lineStart, offset).replace("IntellijIdeaRulezzz", "");
         return beforeCaret.matches("\\s*" + FIELD_SHELL + "\\s*:\\s*.*");
+    }
+
+    private static Optional<StructureCompletion> workflowTriggerStructureCompletion(final CompletionParameters parameters) {
+        final Optional<YamlKeyContext> context = yamlKeyContext(parameters);
+        if (context.isEmpty() || isYamlValueCompletion(context.get().currentLine())) {
+            return Optional.empty();
+        }
+        final List<String> path = context.get().path();
+        if (pathEndsWith(path, FIELD_ON, "workflow_dispatch")) {
+            return Optional.of(new StructureCompletion(workflowDispatchTriggerKeys(), ':'));
+        }
+        if (pathEndsWith(path, FIELD_ON, "workflow_call")) {
+            return Optional.of(new StructureCompletion(workflowCallTriggerKeys(), ':'));
+        }
+        if (pathEndsWith(path, FIELD_ON, "workflow_dispatch", FIELD_INPUTS)
+                || pathEndsWith(path, FIELD_ON, "workflow_call", FIELD_INPUTS)) {
+            return Optional.empty();
+        }
+        if (isChildOf(path, FIELD_ON, "workflow_dispatch", FIELD_INPUTS)
+                || isChildOf(path, FIELD_ON, "workflow_call", FIELD_INPUTS)) {
+            return Optional.of(new StructureCompletion(workflowInputPropertyKeys(), ':'));
+        }
+        if (pathEndsWith(path, FIELD_ON, "workflow_call", FIELD_OUTPUTS)) {
+            return Optional.empty();
+        }
+        if (isChildOf(path, FIELD_ON, "workflow_call", FIELD_OUTPUTS)) {
+            return Optional.of(new StructureCompletion(workflowOutputPropertyKeys(), ':'));
+        }
+        return Optional.empty();
+    }
+
+    private static Optional<YamlKeyContext> yamlKeyContext(final CompletionParameters parameters) {
+        final String wholeText = parameters.getOriginalFile().getText();
+        final int offset = Math.min(parameters.getOffset(), wholeText.length());
+        final int lineStart = wholeText.lastIndexOf('\n', Math.max(0, offset - 1)) + 1;
+        final String currentLine = wholeText.substring(lineStart, offset).replace("IntellijIdeaRulezzz", "");
+        final int currentIndent = leadingSpaces(currentLine);
+        final List<YamlAncestor> stack = new ArrayList<>();
+        wholeText.substring(0, lineStart).lines().forEach(raw -> {
+            final String content = raw.trim();
+            if (!content.isBlank() && !content.startsWith("#")) {
+                final Optional<String> key = yamlKey(content);
+                key.ifPresent(value -> {
+                    final int indent = leadingSpaces(raw);
+                    while (!stack.isEmpty() && stack.get(stack.size() - 1).indent() >= indent) {
+                        stack.remove(stack.size() - 1);
+                    }
+                    stack.add(new YamlAncestor(indent, value));
+                });
+            }
+        });
+        while (!stack.isEmpty() && stack.get(stack.size() - 1).indent() >= currentIndent) {
+            stack.remove(stack.size() - 1);
+        }
+        return stack.isEmpty()
+                ? Optional.empty()
+                : Optional.of(new YamlKeyContext(stack.stream().map(YamlAncestor::key).toList(), currentLine));
+    }
+
+    private static Optional<String> yamlKey(final String content) {
+        final String normalized = content.startsWith("- ") ? content.substring(2).trim() : content;
+        final int separator = normalized.indexOf(':');
+        if (separator <= 0) {
+            return Optional.empty();
+        }
+        return Optional.of(stripYamlKeyQuotes(normalized.substring(0, separator).trim()))
+                .filter(key -> !key.isBlank());
+    }
+
+    private static boolean isYamlValueCompletion(final String currentLine) {
+        return currentLine.replace("IntellijIdeaRulezzz", "").matches("\\s*[^:#]+:\\s*.*");
+    }
+
+    private static int leadingSpaces(final String value) {
+        int result = 0;
+        while (result < value.length() && value.charAt(result) == ' ') {
+            result++;
+        }
+        return result;
+    }
+
+    private static String stripYamlKeyQuotes(final String value) {
+        if (value.length() >= 2 && (value.startsWith("\"") && value.endsWith("\"") || value.startsWith("'") && value.endsWith("'"))) {
+            return value.substring(1, value.length() - 1);
+        }
+        return value;
+    }
+
+    private static boolean pathEndsWith(final List<String> path, final String... expected) {
+        if (path.size() < expected.length) {
+            return false;
+        }
+        final int offset = path.size() - expected.length;
+        for (int index = 0; index < expected.length; index++) {
+            if (!expected[index].equals(path.get(offset + index))) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static boolean isChildOf(final List<String> path, final String... expectedParent) {
+        return path.size() == expectedParent.length + 1 && pathEndsWith(path.subList(0, path.size() - 1), expectedParent);
+    }
+
+    private static Map<String, String> workflowDispatchTriggerKeys() {
+        final Map<String, String> result = new LinkedHashMap<>();
+        result.put(FIELD_INPUTS, GitHubWorkflowBundle.message("completion.context.inputs"));
+        return result;
+    }
+
+    private static Map<String, String> workflowCallTriggerKeys() {
+        final Map<String, String> result = new LinkedHashMap<>();
+        result.put(FIELD_INPUTS, GitHubWorkflowBundle.message("completion.context.inputs"));
+        result.put(FIELD_OUTPUTS, GitHubWorkflowBundle.message("completion.jobs.outputs"));
+        result.put(FIELD_SECRETS, GitHubWorkflowBundle.message("completion.context.secrets"));
+        return result;
+    }
+
+    private static Map<String, String> workflowInputPropertyKeys() {
+        final Map<String, String> result = new LinkedHashMap<>();
+        result.put("description", GitHubWorkflowBundle.message("documentation.description.label"));
+        result.put("type", GitHubWorkflowBundle.message("documentation.type", "string | boolean | choice | number | environment"));
+        result.put("required", GitHubWorkflowBundle.message("documentation.required", true));
+        result.put("default", GitHubWorkflowBundle.message("documentation.default", ""));
+        result.put("options", GitHubWorkflowBundle.message("documentation.value.label"));
+        return result;
+    }
+
+    private static Map<String, String> workflowOutputPropertyKeys() {
+        final Map<String, String> result = new LinkedHashMap<>();
+        result.put("description", GitHubWorkflowBundle.message("documentation.description.label"));
+        result.put("value", GitHubWorkflowBundle.message("documentation.value.label"));
+        return result;
     }
 
     private static Optional<RemoteUsesRef> remoteUsesRef(final CompletionParameters parameters) {
@@ -551,6 +698,15 @@ public class CodeCompletion extends CompletionContributor {
     }
 
     private record RemoteUsesRef(String usesBase, String prefix) {
+    }
+
+    private record StructureCompletion(Map<String, String> items, char suffix) {
+    }
+
+    private record YamlAncestor(int indent, String key) {
+    }
+
+    private record YamlKeyContext(List<String> path, String currentLine) {
     }
 
     private record CompletionPsi(PsiElement position, int offset) {

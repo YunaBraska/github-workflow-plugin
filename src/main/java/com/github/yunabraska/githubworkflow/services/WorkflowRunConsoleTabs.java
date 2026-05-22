@@ -3,7 +3,6 @@ package com.github.yunabraska.githubworkflow.services;
 import com.intellij.execution.Executor;
 import com.intellij.execution.filters.TextConsoleBuilderFactory;
 import com.intellij.execution.process.ProcessEvent;
-import com.intellij.execution.process.ProcessHandler;
 import com.intellij.execution.process.ProcessListener;
 import com.intellij.execution.process.ProcessOutputTypes;
 import com.intellij.execution.ui.ConsoleView;
@@ -29,6 +28,7 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import javax.swing.Icon;
+import javax.swing.JButton;
 import javax.swing.JComponent;
 import javax.swing.JPanel;
 import javax.swing.JProgressBar;
@@ -62,7 +62,7 @@ final class WorkflowRunConsoleTabs implements WorkflowRunJobConsole {
 
     private final Project project;
     private final @Nullable Executor executor;
-    private final ProcessHandler processHandler;
+    private final WorkflowRunProcessHandler processHandler;
     private final WorkflowNode workflow = new WorkflowNode();
     private final ConcurrentMap<Long, JobNode> jobs = new ConcurrentHashMap<>();
     private final ConcurrentMap<String, GroupNode> groups = new ConcurrentHashMap<>();
@@ -84,9 +84,12 @@ final class WorkflowRunConsoleTabs implements WorkflowRunJobConsole {
     private @Nullable DefaultMutableTreeNode rootNode;
     private @Nullable Tree tree;
     private @Nullable JProgressBar progressBar;
+    private @Nullable JButton deleteRunButton;
     private @Nullable Timer animationTimer;
+    private volatile long terminalRunId = -1;
+    private volatile String terminalConclusion = "";
 
-    WorkflowRunConsoleTabs(final Project project, final @Nullable Executor executor, final ProcessHandler processHandler) {
+    WorkflowRunConsoleTabs(final Project project, final @Nullable Executor executor, final WorkflowRunProcessHandler processHandler) {
         this.project = project;
         this.executor = executor;
         this.processHandler = processHandler;
@@ -118,6 +121,36 @@ final class WorkflowRunConsoleTabs implements WorkflowRunJobConsole {
     @Override
     public boolean jobStderr(final WorkflowRunClient.JobStatus job, final String text) {
         return print(job, text, ConsoleViewContentType.ERROR_OUTPUT);
+    }
+
+    @Override
+    public void workflowStatus(final String text, final boolean error) {
+        workflow.print(text, error ? ConsoleViewContentType.ERROR_OUTPUT : ConsoleViewContentType.SYSTEM_OUTPUT);
+        scheduleAttach();
+    }
+
+    @Override
+    public void runFinished(final long runId, final String conclusion) {
+        terminalRunId = runId;
+        terminalConclusion = normalizeConclusion(conclusion);
+        jobs.values().forEach(job -> job.finish(terminalConclusion));
+        refreshTree();
+        ApplicationManager.getApplication().invokeLater(this::stopAnimationTimer);
+    }
+
+    @Override
+    public void runDeleted(final long runId) {
+        ApplicationManager.getApplication().invokeLater(this::closeRunContent);
+    }
+
+    @Override
+    public void runDeleteFailed(final long runId) {
+        ApplicationManager.getApplication().invokeLater(() -> {
+            final JButton button = deleteRunButton;
+            if (button != null && terminalRunId == runId && !project.isDisposed()) {
+                button.setEnabled(true);
+            }
+        });
     }
 
     @Override
@@ -194,8 +227,20 @@ final class WorkflowRunConsoleTabs implements WorkflowRunJobConsole {
         createdProgress.setStringPainted(false);
         createdProgress.setPreferredSize(new Dimension(0, JBUI.scale(3)));
 
+        final JButton createdDeleteRunButton = new JButton(GitHubWorkflowBundle.message("workflow.run.delete.button"));
+        createdDeleteRunButton.setToolTipText(GitHubWorkflowBundle.message("workflow.run.delete.tooltip"));
+        createdDeleteRunButton.setVisible(false);
+        createdDeleteRunButton.addActionListener(ignored -> {
+            createdDeleteRunButton.setEnabled(false);
+            processHandler.deleteRemoteRun();
+        });
+
+        final JPanel progressPanel = new JPanel(new BorderLayout());
+        progressPanel.add(createdProgress, BorderLayout.CENTER);
+        progressPanel.add(createdDeleteRunButton, BorderLayout.EAST);
+
         final JPanel detailPanel = new JPanel(new BorderLayout());
-        detailPanel.add(createdProgress, BorderLayout.NORTH);
+        detailPanel.add(progressPanel, BorderLayout.NORTH);
         detailPanel.add(createdConsole.getComponent(), BorderLayout.CENTER);
 
         final OnePixelSplitter splitter = new OnePixelSplitter(false, 0.32f);
@@ -223,6 +268,7 @@ final class WorkflowRunConsoleTabs implements WorkflowRunJobConsole {
             treeModel = createdModel;
             tree = createdTree;
             progressBar = createdProgress;
+            deleteRunButton = createdDeleteRunButton;
         }
         refreshTree();
         createdTree.setSelectionPath(new TreePath(createdRoot.getPath()));
@@ -241,6 +287,13 @@ final class WorkflowRunConsoleTabs implements WorkflowRunJobConsole {
             }
         }
         layout.selectAndFocus(workflowContent, false, true);
+    }
+
+    private void closeRunContent() {
+        if (project.isDisposed() || executor == null) {
+            return;
+        }
+        descriptor().ifPresent(descriptor -> RunContentManager.getInstance(project).removeRunContent(executor, descriptor));
     }
 
     private void addJobNode(final JobNode node) {
@@ -342,10 +395,15 @@ final class WorkflowRunConsoleTabs implements WorkflowRunJobConsole {
             if (progress != null && !project.isDisposed()) {
                 final int total = jobs.size();
                 final int completed = (int) jobs.values().stream().filter(JobNode::completed).count();
-                progress.setIndeterminate(total == 0 && !workflow.completed());
+                progress.setIndeterminate(total == 0 && !terminal());
                 progress.setMaximum(Math.max(1, total));
-                progress.setValue(Math.min(completed, Math.max(1, total)));
-                progress.setVisible(total > 0 || !workflow.completed());
+                progress.setValue(terminal() ? Math.max(1, total) : Math.min(completed, Math.max(1, total)));
+                progress.setVisible(total > 0 || !terminal());
+            }
+            final JButton deleteButton = deleteRunButton;
+            if (deleteButton != null && !project.isDisposed()) {
+                deleteButton.setVisible(terminal() && terminalRunId > 0);
+                deleteButton.setEnabled(terminal() && terminalRunId > 0);
             }
             updateAnimationTimer();
         });
@@ -394,6 +452,7 @@ final class WorkflowRunConsoleTabs implements WorkflowRunJobConsole {
         return !closed.get()
                 && !project.isDisposed()
                 && !processHandler.isProcessTerminated()
+                && !terminal()
                 && (jobs.isEmpty() || jobs.values().stream().anyMatch(JobNode::running));
     }
 
@@ -414,6 +473,20 @@ final class WorkflowRunConsoleTabs implements WorkflowRunJobConsole {
 
     private static boolean successful(final String conclusion) {
         return "success".equals(conclusion) || "skipped".equals(conclusion) || "neutral".equals(conclusion);
+    }
+
+    private static boolean cancelled(final String conclusion) {
+        return "cancelled".equals(conclusion) || "canceled".equals(conclusion);
+    }
+
+    private static String normalizeConclusion(final String conclusion) {
+        return conclusion == null || conclusion.isBlank()
+                ? "failure"
+                : conclusion.toLowerCase(Locale.ROOT);
+    }
+
+    private boolean terminal() {
+        return !terminalConclusion.isBlank();
     }
 
     static JobDisplayName splitJobName(final String name) {
@@ -483,11 +556,19 @@ final class WorkflowRunConsoleTabs implements WorkflowRunJobConsole {
             if (shouldAnimate()) {
                 return AnimatedIcon.Default.INSTANCE;
             }
+            if (cancelled(terminalConclusion) || jobs.values().stream().anyMatch(JobNode::cancelled)) {
+                return AllIcons.RunConfigurations.TestTerminated;
+            }
             if (jobs.values().stream().anyMatch(JobNode::failed)) {
                 return AllIcons.RunConfigurations.TestState.Red2;
             }
             if (jobs.values().stream().anyMatch(JobNode::skipped)) {
                 return AllIcons.RunConfigurations.TestState.Yellow2;
+            }
+            if (jobs.isEmpty() && terminal()) {
+                return successful(terminalConclusion)
+                        ? AllIcons.RunConfigurations.TestState.Green2
+                        : AllIcons.RunConfigurations.TestState.Red2;
             }
             return AllIcons.RunConfigurations.TestState.Green2;
         }
@@ -500,7 +581,7 @@ final class WorkflowRunConsoleTabs implements WorkflowRunJobConsole {
         }
 
         private boolean completed() {
-            return !jobs.isEmpty() && jobs.values().stream().allMatch(JobNode::completed);
+            return terminal() || (!jobs.isEmpty() && jobs.values().stream().allMatch(JobNode::completed));
         }
     }
 
@@ -543,6 +624,9 @@ final class WorkflowRunConsoleTabs implements WorkflowRunJobConsole {
             final List<JobNode> children = children();
             if (children.stream().anyMatch(JobNode::running)) {
                 return AnimatedIcon.Default.INSTANCE;
+            }
+            if (children.stream().anyMatch(JobNode::cancelled)) {
+                return AllIcons.RunConfigurations.TestTerminated;
             }
             if (children.stream().anyMatch(JobNode::failed)) {
                 return AllIcons.RunConfigurations.TestState.Red2;
@@ -591,7 +675,7 @@ final class WorkflowRunConsoleTabs implements WorkflowRunJobConsole {
             this.jobId = job.id();
             updateDisplayName(job);
             this.status = job.status();
-            this.conclusion = job.conclusion();
+            this.conclusion = normalizeConclusion(job.conclusion());
             final long now = System.currentTimeMillis();
             this.firstSeenMillis = now;
             updateTiming(job, now);
@@ -631,7 +715,7 @@ final class WorkflowRunConsoleTabs implements WorkflowRunJobConsole {
         private void update(final WorkflowRunClient.JobStatus job) {
             updateDisplayName(job);
             status = job.status();
-            conclusion = job.conclusion();
+            conclusion = normalizeConclusion(job.conclusion());
             updateTiming(job, System.currentTimeMillis());
         }
 
@@ -680,7 +764,7 @@ final class WorkflowRunConsoleTabs implements WorkflowRunJobConsole {
                 if (skipped()) {
                     return AllIcons.RunConfigurations.TestState.Yellow2;
                 }
-                if ("cancelled".equals(conclusion)) {
+                if (cancelled()) {
                     return AllIcons.RunConfigurations.TestTerminated;
                 }
                 return successful(conclusion) ? AllIcons.RunConfigurations.TestState.Green2 : AllIcons.RunConfigurations.TestState.Red2;
@@ -712,11 +796,31 @@ final class WorkflowRunConsoleTabs implements WorkflowRunJobConsole {
         }
 
         private boolean failed() {
-            return completed() && !successful(conclusion);
+            return completed() && !successful(conclusion) && !cancelled();
         }
 
         private boolean skipped() {
             return completed() && ("skipped".equals(conclusion) || "neutral".equals(conclusion));
+        }
+
+        private boolean cancelled() {
+            return completed() && WorkflowRunConsoleTabs.cancelled(conclusion);
+        }
+
+        private void finish(final String runConclusion) {
+            if (completed()) {
+                return;
+            }
+            final long now = System.currentTimeMillis();
+            if (firstSeenMillis == 0) {
+                firstSeenMillis = now;
+            }
+            if (startedMillis == 0) {
+                startedMillis = firstSeenMillis;
+            }
+            status = "completed";
+            conclusion = runConclusion;
+            completedMillis = now;
         }
 
         private String duration() {

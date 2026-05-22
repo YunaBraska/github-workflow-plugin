@@ -53,11 +53,13 @@ public class WorkflowRunClientTest extends TestCase {
 
             final WorkflowRunClient.RunStatus status = client.status(request, 42);
             final WorkflowRunClient.CancelResult cancel = client.cancel(request, 42);
+            final WorkflowRunClient.DeleteResult delete = client.delete(request, 42);
             final String logs = client.logs(request, 42);
 
             assertThat(status.completed()).isTrue();
             assertThat(status.conclusion()).isEqualTo("success");
             assertThat(cancel.accepted()).isTrue();
+            assertThat(delete.accepted()).isTrue();
             assertThat(logs).contains("== build [completed/success]", "hello from job log");
             assertThat(server.requests()).contains(
                     "/repos/acme/tool/actions/runs/42",
@@ -65,6 +67,7 @@ public class WorkflowRunClientTest extends TestCase {
                     "/repos/acme/tool/actions/runs/42/jobs",
                     "/repos/acme/tool/actions/jobs/100/logs"
             );
+            assertThat(server.methods()).contains("DELETE");
         }
     }
 
@@ -254,6 +257,7 @@ public class WorkflowRunClientTest extends TestCase {
     private static final class FakeWorkflowRunServer implements AutoCloseable {
         private final HttpServer server;
         private final List<String> requests = new ArrayList<>();
+        private final List<String> methods = new ArrayList<>();
         private final List<String> bodies = new ArrayList<>();
         private final List<String> authorizations = new ArrayList<>();
         private final boolean legacyDispatch;
@@ -274,6 +278,7 @@ public class WorkflowRunClientTest extends TestCase {
             server.createContext("/", exchange -> {
                 final URI uri = exchange.getRequestURI();
                 final String body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+                methods.add(exchange.getRequestMethod());
                 requests.add(uri.getPath() + (uri.getRawQuery() == null ? "" : "?" + uri.getRawQuery()));
                 bodies.add(body);
                 authorizations.add(exchange.getRequestHeaders().getFirst("Authorization") == null
@@ -300,6 +305,10 @@ public class WorkflowRunClientTest extends TestCase {
 
         List<String> requests() {
             return List.copyOf(requests);
+        }
+
+        List<String> methods() {
+            return List.copyOf(methods);
         }
 
         List<String> bodies() {

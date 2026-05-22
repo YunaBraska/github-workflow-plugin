@@ -273,6 +273,22 @@ public class WorkflowCompletionTest extends EditorFeatureTestCase {
                 """)).contains("deploy-target");
     }
 
+    public void testInputsCompletionUsesWorkflowDispatchInputs() {
+        assertThat(completeWorkflow("""
+                name: Completion
+                on:
+                  workflow_dispatch:
+                    inputs:
+                      release-tag:
+                        type: string
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo "${{ inputs.<caret> }}"
+                """)).contains("release-tag");
+    }
+
     public void testWorkflowCallInputDefaultCompletionSuggestsInputs() {
         assertThat(completeWorkflow("""
                 name: Completion
@@ -330,6 +346,82 @@ public class WorkflowCompletionTest extends EditorFeatureTestCase {
                     steps:
                       - run: echo ok
                 """)).contains("fail-fast");
+    }
+
+    public void testWorkflowDispatchTriggerCompletionSuggestsInputs() {
+        assertThat(completeWorkflow("""
+                name: Completion
+                on:
+                  workflow_dispatch:
+                    <caret>
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo ok
+                """)).contains("inputs");
+    }
+
+    public void testWorkflowCallTriggerCompletionSuggestsInputsOutputsAndSecrets() {
+        assertThat(completeWorkflow("""
+                name: Completion
+                on:
+                  workflow_call:
+                    <caret>
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo ok
+                """)).contains("inputs", "outputs", "secrets");
+    }
+
+    public void testWorkflowCallOutputCompletionSuggestsValueAndDescription() {
+        assertThat(completeWorkflow("""
+                name: Completion
+                on:
+                  workflow_call:
+                    outputs:
+                      artifact:
+                        <caret>
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo ok
+                """)).contains("value", "description");
+    }
+
+    public void testWorkflowDispatchInputDefinitionCompletionSuggestsInputProperties() {
+        assertThat(completeWorkflow("""
+                name: Completion
+                on:
+                  workflow_dispatch:
+                    inputs:
+                      release-tag:
+                        <caret>
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo ok
+                """)).contains("description", "type", "required", "default", "options");
+    }
+
+    public void testWorkflowCallInputDefinitionCompletionSuggestsInputProperties() {
+        assertThat(completeWorkflow("""
+                name: Completion
+                on:
+                  workflow_call:
+                    inputs:
+                      release-tag:
+                        <caret>
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo ok
+                """)).contains("description", "type", "required", "default");
     }
 
     public void testBracketInputCompletionUsesWorkflowCallInputs() {

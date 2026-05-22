@@ -36,6 +36,7 @@ public final class WorkflowRunProcessHandler extends ProcessHandler {
     private WorkflowRunJobConsole jobConsole = WorkflowRunJobConsole.none();
     private final AtomicBoolean stopping = new AtomicBoolean(false);
     private final AtomicBoolean terminated = new AtomicBoolean(false);
+    private final AtomicBoolean deleteRequested = new AtomicBoolean(false);
     private final AtomicLong runId = new AtomicLong(-1);
     private final AtomicReference<Future<?>> task = new AtomicReference<>();
 
@@ -111,7 +112,7 @@ public final class WorkflowRunProcessHandler extends ProcessHandler {
                 stderr(GitHubWorkflowBundle.message("workflow.run.cancel.failed", exception.getMessage()) + "\n");
             }
         }
-        terminate(1);
+        terminate(1, "cancelled");
     }
 
     @Override
@@ -142,20 +143,23 @@ public final class WorkflowRunProcessHandler extends ProcessHandler {
             if (id > 0) {
                 runId.set(id);
             }
-            poll(id);
-            terminate(stopping.get() ? 1 : 0);
+            final String conclusion = poll(id);
+            final String terminalConclusion = stopping.get()
+                    ? "cancelled"
+                    : hasText(conclusion) ? conclusion : "success";
+            terminate(successful(terminalConclusion) ? 0 : 1, terminalConclusion);
         } catch (final IOException | RuntimeException exception) {
             if (exception instanceof WorkflowRunClient.WorkflowRunHttpException httpException && httpException.accountActionRecommended()) {
                 notifyAuthenticationHelp();
             }
             stderr(exception.getMessage() + "\n");
-            terminate(1);
+            terminate(1, "failure");
         } catch (final InterruptedException exception) {
             Thread.currentThread().interrupt();
             if (!stopping.get()) {
                 stderr(GitHubWorkflowBundle.message("workflow.run.interrupted") + "\n");
             }
-            terminate(1);
+            terminate(1, stopping.get() ? "cancelled" : "failure");
         }
     }
 
@@ -182,9 +186,9 @@ public final class WorkflowRunProcessHandler extends ProcessHandler {
         return -1;
     }
 
-    private void poll(final long id) throws IOException, InterruptedException {
+    private String poll(final long id) throws IOException, InterruptedException {
         if (id <= 0) {
-            return;
+            return "";
         }
         WorkflowRunClient.RunStatus previous = new WorkflowRunClient.RunStatus(id, "", "", "");
         final Map<Long, JobLogState> jobLogs = new LinkedHashMap<>();
@@ -196,11 +200,12 @@ public final class WorkflowRunProcessHandler extends ProcessHandler {
             }
             if (status.completed()) {
                 streamJobLogs(id, jobLogs, true);
-                return;
+                return hasText(status.conclusion()) ? status.conclusion() : "success";
             }
             streamJobLogs(id, jobLogs, false);
             TimeUnit.MILLISECONDS.sleep(pollSettings.statusPollMillis());
         }
+        return "cancelled";
     }
 
     private void streamJobLogs(final long id, final Map<Long, JobLogState> jobLogs, final boolean finalPass) throws IOException, InterruptedException {
@@ -434,9 +439,51 @@ public final class WorkflowRunProcessHandler extends ProcessHandler {
         return value != null && !value.isBlank();
     }
 
-    private void terminate(final int exitCode) {
+    void deleteRemoteRun() {
+        final long id = runId.get();
+        if (id <= 0) {
+            workflowStatus(GitHubWorkflowBundle.message("workflow.run.delete.noRun") + "\n", true);
+            return;
+        }
+        if (!deleteRequested.compareAndSet(false, true)) {
+            return;
+        }
+        workflowStatus(GitHubWorkflowBundle.message("workflow.run.delete.requested", id) + "\n", false);
+        ApplicationManager.getApplication().executeOnPooledThread(() -> {
+            try {
+                final WorkflowRunClient.DeleteResult result = client.delete(request, id);
+                final String message = result.accepted()
+                        ? GitHubWorkflowBundle.message("workflow.run.delete.done", id)
+                        : GitHubWorkflowBundle.message("workflow.run.delete.http", result.statusCode());
+                workflowStatus(message + "\n", !result.accepted());
+                if (result.accepted()) {
+                    jobConsole.runDeleted(id);
+                } else {
+                    jobConsole.runDeleteFailed(id);
+                    deleteRequested.set(false);
+                }
+            } catch (final IOException | InterruptedException exception) {
+                if (exception instanceof InterruptedException) {
+                    Thread.currentThread().interrupt();
+                }
+                workflowStatus(GitHubWorkflowBundle.message("workflow.run.delete.failed", exception.getMessage()) + "\n", true);
+                jobConsole.runDeleteFailed(id);
+                deleteRequested.set(false);
+            }
+        });
+    }
+
+    private void workflowStatus(final String text, final boolean error) {
+        jobConsole.workflowStatus(text, error);
+        if (!isProcessTerminated()) {
+            notifyTextAvailable(text, error ? ProcessOutputTypes.STDERR : ProcessOutputTypes.STDOUT);
+        }
+    }
+
+    private void terminate(final int exitCode, final String conclusion) {
         if (terminated.compareAndSet(false, true)) {
             WorkflowRunTracker.getInstance(project).unregister(request.workflowPath(), this);
+            jobConsole.runFinished(runId.get(), conclusion);
             jobConsole.close();
             notifyProcessTerminated(exitCode);
         }

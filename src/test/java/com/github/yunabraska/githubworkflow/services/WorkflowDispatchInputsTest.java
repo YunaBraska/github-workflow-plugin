@@ -22,16 +22,23 @@ public class WorkflowDispatchInputsTest extends TestCase {
                       dry_run:
                         type: boolean
                         default: "true"
+                      environment:
+                        description: Target
+                        type: choice
+                        options:
+                          - dev
+                          - prod
                 jobs:
                   build:
                     runs-on: ubuntu-latest
                 """)).containsExactly(
                 new WorkflowDispatchInputs.Input("ref", "string", true, "main", "Branch"),
-                new WorkflowDispatchInputs.Input("dry_run", "boolean", false, "true", "")
+                new WorkflowDispatchInputs.Input("dry_run", "boolean", false, "true", ""),
+                new WorkflowDispatchInputs.Input("environment", "choice", false, "", "Target", java.util.List.of("dev", "prod"))
         );
     }
 
-    public void testDefaultsTextUsesKeyValueLines() {
+    public void testDefaultsTextBuildsPlainKeyValueLines() {
         final WorkflowDispatchInputs inputs = new WorkflowDispatchInputs();
 
         assertThat(inputs.defaultsText("""
@@ -39,7 +46,11 @@ public class WorkflowDispatchInputsTest extends TestCase {
                   workflow_dispatch:
                     inputs:
                       ref:
+                        description: Branch
+                        type: choice
+                        required: true
                         default: main
+                        options: [main, "release, candidate"]
                 """)).isEqualTo("ref=main\n");
     }
 
@@ -51,4 +62,5 @@ public class WorkflowDispatchInputsTest extends TestCase {
                 dry_run=true
                 """)).containsEntry("ref", "main").containsEntry("dry_run", "true");
     }
+
 }

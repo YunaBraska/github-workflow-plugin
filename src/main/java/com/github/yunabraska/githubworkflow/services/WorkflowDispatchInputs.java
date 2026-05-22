@@ -67,6 +67,7 @@ public final class WorkflowDispatchInputs {
         String required = "false";
         String defaultValue = "";
         String description = "";
+        final List<String> options = new ArrayList<>();
         for (int index = inputIndex + 1; index < lines.size(); index++) {
             final Line line = lines.get(index);
             if (line.indent() <= inputIndent) {
@@ -81,10 +82,66 @@ public final class WorkflowDispatchInputs {
                     defaultValue = line.value();
                 } else if ("description".equals(line.keyValue().orElse(""))) {
                     description = line.value();
+                } else if ("options".equals(line.keyValue().orElse(""))) {
+                    options.addAll(readOptions(lines, index, inputIndent + 2));
                 }
             }
         }
-        return new Input(name, type, Boolean.parseBoolean(required), defaultValue, description);
+        return new Input(name, type, Boolean.parseBoolean(required), defaultValue, description, List.copyOf(options));
+    }
+
+    private static List<String> readOptions(final List<Line> lines, final int optionsIndex, final int optionsIndent) {
+        final List<String> result = new ArrayList<>(inlineOptions(lines.get(optionsIndex).value()));
+        for (int index = optionsIndex + 1; index < lines.size(); index++) {
+            final Line line = lines.get(index);
+            if (line.indent() <= optionsIndent) {
+                break;
+            }
+            if (line.content().startsWith("- ")) {
+                result.add(stripQuotes(line.content().substring(2).trim()));
+            }
+        }
+        return List.copyOf(result);
+    }
+
+    private static List<String> inlineOptions(final String value) {
+        final String trimmed = value == null ? "" : value.trim();
+        if (!trimmed.startsWith("[") || !trimmed.endsWith("]")) {
+            return List.of();
+        }
+        final String body = trimmed.substring(1, trimmed.length() - 1);
+        if (body.isBlank()) {
+            return List.of();
+        }
+        return splitInlineList(body).stream()
+                .filter(option -> !option.isBlank())
+                .map(WorkflowDispatchInputs::stripQuotes)
+                .toList();
+    }
+
+    private static List<String> splitInlineList(final String body) {
+        final List<String> result = new ArrayList<>();
+        final StringBuilder current = new StringBuilder();
+        char quote = 0;
+        for (int index = 0; index < body.length(); index++) {
+            final char character = body.charAt(index);
+            if (quote != 0) {
+                current.append(character);
+                if (character == quote) {
+                    quote = 0;
+                }
+            } else if (character == '\'' || character == '"') {
+                quote = character;
+                current.append(character);
+            } else if (character == ',') {
+                result.add(current.toString().trim());
+                current.setLength(0);
+            } else {
+                current.append(character);
+            }
+        }
+        result.add(current.toString().trim());
+        return List.copyOf(result);
     }
 
     private static Optional<Integer> workflowDispatchIndex(final List<Line> lines) {
@@ -145,7 +202,20 @@ public final class WorkflowDispatchInputs {
         return value;
     }
 
-    public record Input(String name, String type, boolean required, String defaultValue, String description) {
+    public record Input(String name, String type, boolean required, String defaultValue, String description, List<String> options) {
+        public Input(
+                final String name,
+                final String type,
+                final boolean required,
+                final String defaultValue,
+                final String description
+        ) {
+            this(name, type, required, defaultValue, description, List.of());
+        }
+
+        public Input {
+            options = options == null ? List.of() : List.copyOf(options);
+        }
     }
 
     private record Line(int indent, String content, String key, String value) {

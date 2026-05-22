@@ -83,9 +83,6 @@ take a while. The task also repairs stale custom color-scheme references in the 
 local theme is less likely to kick the test IDE back into light-mode betrayal. This is annoying, but at least it is
 predictable. Progress.
 
-Current UX/DX gaps are tracked in [UX/DX Gaps](doc/spec/ux-dx-gaps.md); editor behavior coverage is tracked in
-[Editor Test Matrix](doc/spec/editor-test-matrix.md).
-
 ## Dependencies
 
 This plugin depends on:

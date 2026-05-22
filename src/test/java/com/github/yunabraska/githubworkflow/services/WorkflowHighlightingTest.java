@@ -627,6 +627,20 @@ public class WorkflowHighlightingTest extends EditorFeatureTestCase {
                 """);
     }
 
+    public void testLiteralGithubUrlInsideRunBlockIsNotTreatedAsExpression() {
+        assertWorkflowHighlights("""
+                name: Github Context
+                on: workflow_dispatch
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: |
+                          echo "https://github.com/YunaBraska/github-workflow-plugin"
+                          printf -- '- https://github.com/%s/compare/%s...%s\\n' "$REPOSITORY" "$OLD_TAG" "$TAG_NAME"
+                """);
+    }
+
     public void testJobContainerNetworkContextReferenceIsAccepted() {
         assertWorkflowHighlights("""
                 name: Job Context

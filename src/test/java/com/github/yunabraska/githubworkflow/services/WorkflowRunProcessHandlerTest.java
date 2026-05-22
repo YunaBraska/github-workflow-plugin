@@ -86,6 +86,7 @@ public class WorkflowRunProcessHandlerTest extends BasePlatformTestCase {
     public void testDestroyCancelsRemoteRunAndTerminates() throws Exception {
         final CountDownLatch statusSeen = new CountDownLatch(1);
         final CountDownLatch cancelSeen = new CountDownLatch(1);
+        final CapturingJobConsole jobConsole = new CapturingJobConsole();
         final WorkflowRunClient client = new WorkflowRunClient(
                 request -> cancellationResponseFor(request, statusSeen, cancelSeen),
                 request -> List.of(GitHubRequestAuthorizations.Authorization.anonymous())
@@ -103,7 +104,8 @@ public class WorkflowRunProcessHandlerTest extends BasePlatformTestCase {
                 getProject(),
                 request,
                 client,
-                new WorkflowRunProcessHandler.PollSettings(1_000, 1_000, 10)
+                new WorkflowRunProcessHandler.PollSettings(1_000, 1_000, 10),
+                jobConsole
         );
         final CountDownLatch terminated = new CountDownLatch(1);
         final StringBuilder output = new StringBuilder();
@@ -126,6 +128,49 @@ public class WorkflowRunProcessHandlerTest extends BasePlatformTestCase {
         assertThat(cancelSeen.await(5, TimeUnit.SECONDS)).isTrue();
         assertThat(terminated.await(5, TimeUnit.SECONDS)).isTrue();
         assertThat(output.toString()).contains("Cancel requested for GitHub workflow run 42.");
+        assertThat(jobConsole.finished()).containsExactly("42:cancelled");
+    }
+
+    public void testDeleteRemoteRunUsesCompletedRunIdAndReportsToWorkflowConsole() throws Exception {
+        final CountDownLatch deleteSeen = new CountDownLatch(1);
+        final CapturingJobConsole jobConsole = new CapturingJobConsole();
+        final WorkflowRunClient client = new WorkflowRunClient(
+                request -> completedRunWithDeleteResponseFor(request, deleteSeen),
+                request -> List.of(GitHubRequestAuthorizations.Authorization.anonymous())
+        );
+        final WorkflowRunRequest request = new WorkflowRunRequest(
+                "https://api.github.test",
+                "acme",
+                "tool",
+                ".github/workflows/test.yml",
+                "main",
+                Map.of(),
+                ""
+        );
+        final WorkflowRunProcessHandler handler = new WorkflowRunProcessHandler(
+                getProject(),
+                request,
+                client,
+                new WorkflowRunProcessHandler.PollSettings(10, 10, 10),
+                jobConsole
+        );
+        final CountDownLatch terminated = new CountDownLatch(1);
+        handler.addProcessListener(new ProcessListener() {
+            @Override
+            public void processTerminated(@NotNull final ProcessEvent event) {
+                terminated.countDown();
+            }
+        });
+
+        handler.startNotify();
+
+        assertThat(terminated.await(5, TimeUnit.SECONDS)).isTrue();
+        handler.deleteRemoteRun();
+
+        assertThat(deleteSeen.await(5, TimeUnit.SECONDS)).isTrue();
+        assertThat(waitForWorkflowOutput(jobConsole, "GitHub workflow run 42 was deleted.")).isTrue();
+        assertThat(jobConsole.workflowOutput()).contains("Deleting GitHub workflow run 42.", "GitHub workflow run 42 was deleted.");
+        assertThat(jobConsole.deleted()).containsExactly(42L);
     }
 
     public void testProcessRoutesEachJobLogToSeparateJobConsole() throws Exception {
@@ -452,6 +497,27 @@ public class WorkflowRunProcessHandlerTest extends BasePlatformTestCase {
         return response(request, 404, "{}");
     }
 
+    private static HttpResponse<String> completedRunWithDeleteResponseFor(
+            final HttpRequest request,
+            final CountDownLatch deleteSeen
+    ) {
+        final String path = request.uri().getPath();
+        if (path.endsWith("/dispatches")) {
+            return response(request, 200, "{\"workflow_run_id\":42,\"html_url\":\"html-run\"}");
+        }
+        if ("DELETE".equals(request.method()) && path.endsWith("/runs/42")) {
+            deleteSeen.countDown();
+            return response(request, 204, "");
+        }
+        if (path.endsWith("/runs/42/jobs")) {
+            return response(request, 200, "{\"jobs\":[]}");
+        }
+        if (path.endsWith("/runs/42")) {
+            return response(request, 200, "{\"id\":42,\"status\":\"completed\",\"conclusion\":\"success\",\"html_url\":\"html-run\"}");
+        }
+        return response(request, 404, "{}");
+    }
+
     private static HttpResponse<String> adminLiveLogResponseFor(
             final HttpRequest request,
             final AtomicInteger statusCalls,
@@ -550,6 +616,16 @@ public class WorkflowRunProcessHandlerTest extends BasePlatformTestCase {
         return new Response(request, status, body);
     }
 
+    private static boolean waitForWorkflowOutput(final CapturingJobConsole console, final String text) throws InterruptedException {
+        for (int attempt = 0; attempt < 50; attempt++) {
+            if (console.workflowOutput().contains(text)) {
+                return true;
+            }
+            TimeUnit.MILLISECONDS.sleep(100);
+        }
+        return false;
+    }
+
     private record Response(HttpRequest request, int statusCode, String body) implements HttpResponse<String> {
         @Override
         public HttpHeaders headers() {
@@ -579,6 +655,9 @@ public class WorkflowRunProcessHandlerTest extends BasePlatformTestCase {
 
     private static final class CapturingJobConsole implements WorkflowRunJobConsole {
         private final Map<Long, StringBuilder> output = new HashMap<>();
+        private final StringBuilder workflowOutput = new StringBuilder();
+        private final java.util.ArrayList<String> finished = new java.util.ArrayList<>();
+        private final java.util.ArrayList<Long> deleted = new java.util.ArrayList<>();
 
         @Override
         public boolean jobStatus(final WorkflowRunClient.JobStatus job, final String text) {
@@ -604,12 +683,39 @@ public class WorkflowRunProcessHandlerTest extends BasePlatformTestCase {
             return true;
         }
 
+        @Override
+        public void workflowStatus(final String text, final boolean error) {
+            workflowOutput.append(text);
+        }
+
+        @Override
+        public void runFinished(final long runId, final String conclusion) {
+            finished.add(runId + ":" + conclusion);
+        }
+
+        @Override
+        public void runDeleted(final long runId) {
+            deleted.add(runId);
+        }
+
         private void append(final WorkflowRunClient.JobStatus job, final String text) {
             output.computeIfAbsent(job.id(), ignored -> new StringBuilder()).append(text);
         }
 
         private String output(final long jobId) {
             return output.getOrDefault(jobId, new StringBuilder()).toString();
+        }
+
+        private String workflowOutput() {
+            return workflowOutput.toString();
+        }
+
+        private List<String> finished() {
+            return List.copyOf(finished);
+        }
+
+        private List<Long> deleted() {
+            return List.copyOf(deleted);
         }
     }
 }

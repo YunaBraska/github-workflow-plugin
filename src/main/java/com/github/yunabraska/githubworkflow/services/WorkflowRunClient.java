@@ -98,6 +98,26 @@ public final class WorkflowRunClient {
         return new CancelResult(response.statusCode(), response.statusCode() / 100 == 2);
     }
 
+    /**
+     * Deletes one completed workflow run from the remote repository.
+     *
+     * @param request workflow repository and authorization context
+     * @param runId GitHub Actions run id
+     * @return HTTP status and whether GitHub accepted the deletion
+     * @throws IOException when GitHub rejects the request or the network call fails
+     * @throws InterruptedException when the IDE cancels the remote call
+     */
+    public DeleteResult delete(final WorkflowRunRequest request, final long runId) throws IOException, InterruptedException {
+        final HttpResponse<String> response = send(
+                request,
+                "DELETE",
+                runUrl(request, runId),
+                "",
+                "GitHub workflow run delete"
+        );
+        return new DeleteResult(response.statusCode(), response.statusCode() / 100 == 2);
+    }
+
     public Optional<RunStatus> latestRun(final WorkflowRunRequest request) throws IOException, InterruptedException {
         final HttpResponse<String> response = send(
                 request,
@@ -247,6 +267,8 @@ public final class WorkflowRunClient {
         }
         if ("POST".equals(method)) {
             builder.header("Content-Type", "application/json").POST(HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8));
+        } else if ("DELETE".equals(method)) {
+            builder.DELETE();
         } else {
             builder.GET();
         }
@@ -426,6 +448,9 @@ public final class WorkflowRunClient {
     }
 
     public record CancelResult(int statusCode, boolean accepted) {
+    }
+
+    public record DeleteResult(int statusCode, boolean accepted) {
     }
 
     public record JobStatus(long id, String name, String status, String conclusion, String htmlUrl) {
