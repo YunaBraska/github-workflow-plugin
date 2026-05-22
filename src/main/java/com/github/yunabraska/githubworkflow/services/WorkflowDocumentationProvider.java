@@ -121,11 +121,12 @@ public final class WorkflowDocumentationProvider extends AbstractDocumentationPr
         final boolean secret = getParent(item.getParent(), FIELD_SECRETS).isPresent();
         final String name = item.getKeyText();
         final String details = secret ? action.freshSecrets().get(name) : action.freshInputs().get(name);
+        final String label = secret ? message("documentation.secret.label") : message("documentation.input.label");
         return ofNullable(details)
                 .map(text -> new DocPayload(
-                        (secret ? "Secret " : "Input ") + name,
-                        renderParameter(secret ? "Secret" : "Input", name, text, action.githubUrl()),
-                        plainParameter(secret ? "Secret" : "Input", name, text)
+                        label + " " + name,
+                        renderParameter(label, name, text, action.githubUrl()),
+                        plainParameter(label, name, text)
                 ));
     }
 
@@ -141,20 +142,20 @@ public final class WorkflowDocumentationProvider extends AbstractDocumentationPr
 
     private static DocPayload referenceDoc(final ExpressionReferenceTarget target) {
         return switch (target.kind()) {
-            case "input" -> yamlParameterDoc("Input", target.segment().text(), target.target());
-            case "secret" -> yamlParameterDoc("Secret", target.segment().text(), target.target());
-            case "env" -> yamlValueDoc("Environment variable", target.segment().text(), target.target());
-            case "matrix" -> yamlValueDoc("Matrix property", target.segment().text(), target.target());
+            case "input" -> yamlParameterDoc(message("documentation.input.label"), true, target.segment().text(), target.target());
+            case "secret" -> yamlParameterDoc(message("documentation.secret.label"), false, target.segment().text(), target.target());
+            case "env" -> yamlValueDoc(message("documentation.env.label"), target.segment().text(), target.target());
+            case "matrix" -> yamlValueDoc(message("documentation.matrix.label"), target.segment().text(), target.target());
             case "step" -> stepDoc(target.target());
             case "step-output" -> stepOutputDoc(target.segment().text(), target.target());
-            case "need" -> simpleDoc("Needed job", target.segment().text(), "Direct job dependency.");
-            case "need-output" -> outputDoc("Needed job output", target.segment().text(), target.target());
-            case "job" -> simpleDoc("Reusable workflow job", target.segment().text(), "Job declared in this reusable workflow.");
-            case "job-output" -> outputDoc("Reusable workflow job output", target.segment().text(), target.target());
-            case "service" -> yamlValueDoc("Service container", target.segment().text(), target.target());
-            case "service-port" -> yamlValueDoc("Service port", target.segment().text(), target.target());
-            case "container" -> yamlValueDoc("Job container", target.segment().text(), target.target());
-            default -> simpleDoc("Workflow symbol", target.segment().text(), "Resolved workflow expression.");
+            case "need" -> simpleDoc(message("documentation.need.label"), target.segment().text(), message("documentation.need.description"));
+            case "need-output" -> outputDoc(message("documentation.needOutput.label"), target.segment().text(), target.target());
+            case "job" -> simpleDoc(message("documentation.reusableJob.label"), target.segment().text(), message("documentation.reusableJob.description"));
+            case "job-output" -> outputDoc(message("documentation.reusableJobOutput.label"), target.segment().text(), target.target());
+            case "service" -> yamlValueDoc(message("documentation.service.label"), target.segment().text(), target.target());
+            case "service-port" -> yamlValueDoc(message("documentation.servicePort.label"), target.segment().text(), target.target());
+            case "container" -> yamlValueDoc(message("documentation.container.label"), target.segment().text(), target.target());
+            default -> simpleDoc(message("documentation.symbol.label"), target.segment().text(), message("documentation.symbol.description"));
         };
     }
 
@@ -173,31 +174,35 @@ public final class WorkflowDocumentationProvider extends AbstractDocumentationPr
     }
 
     private static String outputLabel(final YAMLKeyValue output) {
-        return getParent(output, FIELD_ON).isPresent() ? "Workflow output" : "Job output";
+        return getParent(output, FIELD_ON).isPresent()
+                ? message("documentation.workflowOutput.label")
+                : message("documentation.jobOutput.label");
     }
 
     private static DocPayload actionDoc(final GitHubAction action) {
         final String title = action.displayName();
         final StringBuilder html = new StringBuilder();
         html.append("<h3>").append(escape(title)).append("</h3>");
-        html.append("<p><b>").append(action.isAction() ? "Action" : "Reusable workflow").append("</b>");
+        html.append("<p><b>").append(action.isAction()
+                ? message("documentation.action.label")
+                : message("documentation.reusableWorkflow.label")).append("</b>");
         if (action.isResolved()) {
-            html.append(" resolved from <code>").append(escape(action.usesValue())).append("</code>");
+            html.append(" ").append(message("documentation.resolvedFrom", "<code>" + escape(action.usesValue()) + "</code>"));
         } else {
-            html.append(" not resolved yet");
+            html.append(" ").append(message("documentation.notResolved"));
         }
         html.append("</p>");
         appendParagraph(html, action.description());
         appendLink(html, action.githubUrl());
-        appendMap(html, "Inputs", action.freshInputs());
-        appendMap(html, "Outputs", action.freshOutputs());
-        appendMap(html, "Secrets", action.freshSecrets());
+        appendMap(html, message("documentation.inputs.title"), action.freshInputs());
+        appendMap(html, message("documentation.outputs.title"), action.freshOutputs());
+        appendMap(html, message("documentation.secrets.title"), action.freshSecrets());
         return new DocPayload(title, html.toString(), title + "\n" + action.usesValue());
     }
 
-    private static DocPayload yamlParameterDoc(final String label, final String name, final PsiElement target) {
+    private static DocPayload yamlParameterDoc(final String label, final boolean input, final String name, final PsiElement target) {
         final String details = target instanceof YAMLKeyValue keyValue
-                ? PsiElementHelper.getDescription(keyValue, "Input".equals(label))
+                ? PsiElementHelper.getDescription(keyValue, input)
                 : "";
         return new DocPayload(
                 label + " " + name,
@@ -209,7 +214,7 @@ public final class WorkflowDocumentationProvider extends AbstractDocumentationPr
     private static DocPayload yamlValueDoc(final String label, final String name, final PsiElement target) {
         final String value = target instanceof YAMLKeyValue keyValue ? getText(keyValue).orElse("") : target.getText();
         final String html = "<h3>" + escape(label) + " <code>" + escape(name) + "</code></h3>"
-                + (value.isBlank() ? "" : "<p><b>Value:</b> <code>" + escape(value) + "</code></p>");
+                + (value.isBlank() ? "" : "<p><b>" + escape(message("documentation.value.label")) + ":</b> <code>" + escape(value) + "</code></p>");
         return new DocPayload(label + " " + name, html, label + " " + name);
     }
 
@@ -217,38 +222,41 @@ public final class WorkflowDocumentationProvider extends AbstractDocumentationPr
         final YAMLKeyValue id = target instanceof YAMLKeyValue keyValue ? keyValue : null;
         final Optional<org.jetbrains.yaml.psi.YAMLSequenceItem> stepItem = PsiElementHelper.getParentStep(target);
         final String name = id == null ? target.getText() : getText(id).orElse(id.getKeyText());
-        final String title = "Step " + name;
+        final String title = message("documentation.step.title", name);
         final StringBuilder html = new StringBuilder("<h3>").append(escape(title)).append("</h3>");
-        stepItem.flatMap(step -> getChild(step, "name")).flatMap(PsiElementHelper::getText).ifPresent(value -> appendDetail(html, "Name", value));
-        stepItem.flatMap(step -> getChild(step, FIELD_USES)).flatMap(PsiElementHelper::getText).ifPresent(value -> appendDetail(html, "Uses", value));
+        stepItem.flatMap(step -> getChild(step, "name")).flatMap(PsiElementHelper::getText).ifPresent(value -> appendDetail(html, message("documentation.name.label"), value));
+        stepItem.flatMap(step -> getChild(step, FIELD_USES)).flatMap(PsiElementHelper::getText).ifPresent(value -> appendDetail(html, message("documentation.uses.label"), value));
         stepItem.flatMap(step -> getChild(step, FIELD_USES))
                 .map(GitHubActionCache::getAction)
                 .filter(action -> action != null && action.isResolved())
                 .ifPresent(action -> {
-                    appendDetail(html, action.isAction() ? "Action" : "Reusable workflow", action.displayName());
+                    appendDetail(html, action.isAction()
+                            ? message("documentation.action.label")
+                            : message("documentation.reusableWorkflow.label"), action.displayName());
                     appendParagraph(html, action.description());
                 });
-        stepItem.flatMap(step -> getChild(step, "run")).flatMap(PsiElementHelper::getText).ifPresent(value -> appendDetail(html, "Run", value));
-        stepItem.ifPresent(step -> appendList(html, "Outputs", listStepOutputs(step).stream().map(output -> output.key()).toList()));
+        stepItem.flatMap(step -> getChild(step, "run")).flatMap(PsiElementHelper::getText).ifPresent(value -> appendDetail(html, message("documentation.run.label"), value));
+        stepItem.ifPresent(step -> appendList(html, message("documentation.outputs.title"), listStepOutputs(step).stream().map(output -> output.key()).toList()));
         return new DocPayload(title, html.toString(), title);
     }
 
     private static DocPayload stepOutputDoc(final String outputName, final PsiElement target) {
         final Optional<StepOutputSource> source = stepOutputSource(target);
         final StringBuilder details = new StringBuilder();
-        source.flatMap(value -> value.outputDescription(outputName)).ifPresent(value -> appendLine(details, "Description", value));
+        source.flatMap(value -> value.outputDescription(outputName)).ifPresent(value -> appendLine(details, message("documentation.description.label"), value));
         source.ifPresent(value -> {
-            appendLine(details, "Step", value.stepLabel());
-            appendLine(details, "Uses", value.usesValue());
-            appendLine(details, "Source", value.sourceLabel());
+            appendLine(details, message("documentation.step.label"), value.stepLabel());
+            appendLine(details, message("documentation.uses.label"), value.usesValue());
+            appendLine(details, message("documentation.source.label"), value.sourceLabel());
         });
         final String plainDetails = details.toString();
-        final StringBuilder html = new StringBuilder(renderParameter("Step output", outputName, plainDetails, ""));
+        final String label = message("documentation.stepOutput.label");
+        final StringBuilder html = new StringBuilder(renderParameter(label, outputName, plainDetails, ""));
         source.flatMap(StepOutputSource::url).ifPresent(url -> appendLink(html, url, source.map(StepOutputSource::usesValue).orElse(url)));
         return new DocPayload(
-                "Step output " + outputName,
+                label + " " + outputName,
                 html.toString(),
-                plainParameter("Step output", outputName, plainDetails)
+                plainParameter(label, outputName, plainDetails)
         );
     }
 
@@ -268,9 +276,9 @@ public final class WorkflowDocumentationProvider extends AbstractDocumentationPr
     private static DocPayload outputDoc(final String label, final String name, final PsiElement target) {
         final StringBuilder details = new StringBuilder();
         keyValueAt(target).ifPresent(output -> {
-            appendLine(details, "Description", getText(output, "description").orElse(""));
-            appendLine(details, "Value", getText(output, "value").or(() -> getText(output)).orElse(""));
-            outputSourceDetails(output).ifPresent(source -> appendLine(details, "Source", source));
+            appendLine(details, message("documentation.description.label"), getText(output, "description").orElse(""));
+            appendLine(details, message("documentation.value.label"), getText(output, "value").or(() -> getText(output)).orElse(""));
+            outputSourceDetails(output).ifPresent(source -> appendLine(details, message("documentation.source.label"), source));
         });
         return new DocPayload(
                 label + " " + name,
@@ -304,21 +312,25 @@ public final class WorkflowDocumentationProvider extends AbstractDocumentationPr
     private static Optional<DocPayload> contextDoc(final com.github.yunabraska.githubworkflow.model.SimpleElement segment) {
         final String text = segment.text();
         return switch (text) {
-            case "github" -> Optional.of(simpleDoc("github context", "github", "Information about the current workflow run and event."));
-            case "gitea" -> Optional.of(simpleDoc("gitea context", "gitea", "Gitea-compatible alias for the GitHub Actions context."));
-            case "inputs" -> Optional.of(simpleDoc("inputs context", "inputs", "Workflow, dispatch, or action inputs available here."));
-            case "secrets" -> Optional.of(simpleDoc("secrets context", "secrets", "Secret values available to this workflow or reusable workflow call."));
-            case "env" -> Optional.of(simpleDoc("env context", "env", "Environment variables visible at this location."));
-            case "matrix" -> Optional.of(simpleDoc("matrix context", "matrix", "Matrix values for the current job."));
-            case "steps" -> Optional.of(simpleDoc("steps context", "steps", "Previous steps in the current job, including outputs and status."));
-            case "needs" -> Optional.of(simpleDoc("needs context", "needs", "Direct job dependencies and their outputs/results."));
-            case "jobs" -> Optional.of(simpleDoc("jobs context", "jobs", "Reusable workflow jobs and outputs."));
-            case "outputs" -> Optional.of(simpleDoc("outputs", "outputs", "Output values exposed by this step or job."));
-            case "result" -> Optional.of(simpleDoc("result", "result", "Job result: success, failure, cancelled, or skipped."));
-            case "outcome" -> Optional.of(simpleDoc("outcome", "outcome", "Step result before continue-on-error is applied."));
-            case "conclusion" -> Optional.of(simpleDoc("conclusion", "conclusion", "Step result after continue-on-error is applied."));
+            case "github" -> Optional.of(simpleDoc(message("documentation.context.github"), "github", message("documentation.context.github.description")));
+            case "gitea" -> Optional.of(simpleDoc(message("documentation.context.gitea"), "gitea", message("documentation.context.gitea.description")));
+            case "inputs" -> Optional.of(simpleDoc(message("documentation.context.inputs"), "inputs", message("documentation.context.inputs.description")));
+            case "secrets" -> Optional.of(simpleDoc(message("documentation.context.secrets"), "secrets", message("documentation.context.secrets.description")));
+            case "env" -> Optional.of(simpleDoc(message("documentation.context.env"), "env", message("documentation.context.env.description")));
+            case "matrix" -> Optional.of(simpleDoc(message("documentation.context.matrix"), "matrix", message("documentation.context.matrix.description")));
+            case "steps" -> Optional.of(simpleDoc(message("documentation.context.steps"), "steps", message("documentation.context.steps.description")));
+            case "needs" -> Optional.of(simpleDoc(message("documentation.context.needs"), "needs", message("documentation.context.needs.description")));
+            case "jobs" -> Optional.of(simpleDoc(message("documentation.context.jobs"), "jobs", message("documentation.context.jobs.description")));
+            case "outputs" -> Optional.of(simpleDoc(message("documentation.context.outputs"), "outputs", message("documentation.context.outputs.description")));
+            case "result" -> Optional.of(simpleDoc(message("documentation.context.result"), "result", message("documentation.context.result.description")));
+            case "outcome" -> Optional.of(simpleDoc(message("documentation.context.outcome"), "outcome", message("documentation.context.outcome.description")));
+            case "conclusion" -> Optional.of(simpleDoc(message("documentation.context.conclusion"), "conclusion", message("documentation.context.conclusion.description")));
             default -> Optional.empty();
         };
+    }
+
+    private static String message(final String key, final Object... params) {
+        return GitHubWorkflowBundle.message(key, params);
     }
 
     private static DocPayload simpleDoc(final String label, final String name, final String description) {
@@ -452,7 +464,9 @@ public final class WorkflowDocumentationProvider extends AbstractDocumentationPr
             if (action == null) {
                 return "";
             }
-            final String kind = action.isAction() ? "External action" : "Reusable workflow";
+            final String kind = action.isAction()
+                    ? message("documentation.externalAction.label")
+                    : message("documentation.reusableWorkflow.label");
             final String displayName = action.displayName();
             final String description = action.description();
             return kind + (displayName.isBlank() ? "" : ": " + displayName)

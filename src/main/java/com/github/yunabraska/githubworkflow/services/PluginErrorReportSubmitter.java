@@ -28,7 +28,7 @@ final class PluginErrorReportSubmitter extends ErrorReportSubmitter {
     @NotNull
     @Override
     public String getReportActionText() {
-        return "Report Exception";
+        return GitHubWorkflowBundle.message("error.report.action");
     }
 
     @Override
@@ -54,23 +54,24 @@ final class PluginErrorReportSubmitter extends ErrorReportSubmitter {
                 .ifPresent(sb::append);
 
         sb.append("&body=");
-        sb.append(URLEncoder.encode("\n\n### Description\n", UTF_8));
+        sb.append(URLEncoder.encode("\n\n### " + GitHubWorkflowBundle.message("error.report.description") + "\n", UTF_8));
         sb.append(URLEncoder.encode(StringUtil.defaultIfEmpty(additionalInfo, ""), UTF_8));
 
-        sb.append(URLEncoder.encode("\n\n### Steps to Reproduce\n", UTF_8));
-        sb.append(URLEncoder.encode("Please provide code sample if applicable", UTF_8));
+        sb.append(URLEncoder.encode("\n\n### " + GitHubWorkflowBundle.message("error.report.steps") + "\n", UTF_8));
+        sb.append(URLEncoder.encode(GitHubWorkflowBundle.message("error.report.sample"), UTF_8));
 
-        sb.append(URLEncoder.encode("\n\n### Message\n", UTF_8));
+        sb.append(URLEncoder.encode("\n\n### " + GitHubWorkflowBundle.message("error.report.message") + "\n", UTF_8));
         sb.append(URLEncoder.encode(StringUtil.defaultIfEmpty(event.getMessage(), ""), UTF_8));
 
-        sb.append(URLEncoder.encode("\n\n### Runtime Information\n", UTF_8));
+        sb.append(URLEncoder.encode("\n\n### " + GitHubWorkflowBundle.message("error.report.runtime") + "\n", UTF_8));
         final PluginDescriptor descriptor = getPluginDescriptor();
-        sb.append(URLEncoder.encode("Plugin version : " + descriptor.getVersion() + "\n", UTF_8));
-        sb.append(URLEncoder.encode("IDE: " + ApplicationInfo.getInstance().getFullApplicationName() +
-                " (" + ApplicationInfo.getInstance().getBuild().asString() + ")\n", UTF_8));
-        sb.append(URLEncoder.encode("OS: " + SystemInfo.OS_NAME + " " + SystemInfo.OS_VERSION, UTF_8));
+        sb.append(URLEncoder.encode(GitHubWorkflowBundle.message("error.report.pluginVersion", descriptor.getVersion()) + "\n", UTF_8));
+        final String ideInfo = ApplicationInfo.getInstance().getFullApplicationName() +
+                " (" + ApplicationInfo.getInstance().getBuild().asString() + ")";
+        sb.append(URLEncoder.encode(GitHubWorkflowBundle.message("error.report.ide", ideInfo) + "\n", UTF_8));
+        sb.append(URLEncoder.encode(GitHubWorkflowBundle.message("error.report.os", SystemInfo.OS_NAME + " " + SystemInfo.OS_VERSION), UTF_8));
 
-        sb.append(URLEncoder.encode("\n\n### Stacktrace\n", UTF_8));
+        sb.append(URLEncoder.encode("\n\n### " + GitHubWorkflowBundle.message("error.report.stacktrace") + "\n", UTF_8));
         sb.append(URLEncoder.encode("```\n", UTF_8));
         sb.append(URLEncoder.encode(throwableText, UTF_8));
         sb.append(URLEncoder.encode("```\n", UTF_8));

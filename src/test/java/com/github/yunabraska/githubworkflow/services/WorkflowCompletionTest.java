@@ -1238,4 +1238,17 @@ public class WorkflowCompletionTest extends EditorFeatureTestCase {
                       - run: echo "$<caret>"
                 """)).contains("GITHUB_TRIGGERING_ACTOR", "GITHUB_REPOSITORY_OWNER_ID", "RUNNER_ENVIRONMENT");
     }
+
+    public void testShellCompletionSuggestsSupportedGithubShells() {
+        assertThat(completeWorkflow("""
+                name: Completion
+                on: workflow_dispatch
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - shell: <caret>
+                        run: echo ok
+                """)).contains("bash", "sh", "pwsh", "powershell", "cmd", "python");
+    }
 }

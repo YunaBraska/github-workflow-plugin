@@ -162,7 +162,7 @@ public class HighlightAnnotator implements Annotator {
                 return workflowOutputs.stream().noneMatch(value -> containsOutputReference(value, reusableOutputReference))
                         && !containsOutputReference(workflowText, needsOutputReference);
             }).forEach(output -> new SyntaxAnnotation(
-                    "Unused [" + output.getKeyText() + "]",
+                    GitHubWorkflowBundle.message("inspection.output.unused", output.getKeyText()),
                     null,
                     HighlightSeverity.WEAK_WARNING,
                     ProblemHighlightType.LIKE_UNUSED_SYMBOL,
@@ -216,6 +216,9 @@ public class HighlightAnnotator implements Annotator {
 
     @NotNull
     public static List<SimpleElement> toSimpleElements(final PsiElement element) {
+        if (getParent(element, FIELD_RUN).isPresent()) {
+            return toSimpleElementsInExpressions(element);
+        }
         final List<SimpleElement> result = new ArrayList<>();
         final String text = element.getText();
         int lineStart = 0;
@@ -241,6 +244,36 @@ public class HighlightAnnotator implements Annotator {
                 break;
             }
             lineStart = lineEnd + 1;
+        }
+        return result;
+    }
+
+    @NotNull
+    private static List<SimpleElement> toSimpleElementsInExpressions(final PsiElement element) {
+        final List<SimpleElement> result = new ArrayList<>();
+        final String text = element.getText();
+        int index = 0;
+        while (index < text.length()) {
+            final int expressionStart = text.indexOf("${{", index);
+            if (expressionStart < 0) {
+                break;
+            }
+            final int bodyStart = expressionStart + 3;
+            final int expressionEnd = text.indexOf("}}", bodyStart);
+            if (expressionEnd < 0) {
+                break;
+            }
+            final String body = text.substring(bodyStart, expressionEnd);
+            findDottedExpressions(body).stream()
+                    .map(expression -> new SimpleElement(
+                            expression.text(),
+                            new TextRange(
+                                    bodyStart + expression.range().getStartOffset(),
+                                    bodyStart + expression.range().getEndOffset()
+                            )
+                    ))
+                    .forEach(result::add);
+            index = expressionEnd + 2;
         }
         return result;
     }

@@ -6,7 +6,7 @@
 [![Version](https://img.shields.io/jetbrains/plugin/v/21396-github-workflow.svg)](https://plugins.jetbrains.com/plugin/21396-github-workflow)
 [![Downloads](https://img.shields.io/jetbrains/plugin/d/21396-github-workflow.svg)](https://plugins.jetbrains.com/plugin/21396-github-workflow)
 [![](https://img.shields.io/static/v1?label=Sponsor&message=%E2%9D%A4&logo=GitHub&color=%23fe8e86)](https://github.com/sponsors/YunaBraska)
-[![](https://img.shields.io/static/v1?label=DataPrivacy&message=%F0%9F%94%92&logo=springsecurity&color=%#6DB33F)](docs/DataPrivacy.md)
+[![](https://img.shields.io/static/v1?label=DataPrivacy&message=%F0%9F%94%92&logo=springsecurity&color=%#6DB33F)](doc/DataPrivacy.md)
 
 ## Development Is Active Again
 
@@ -32,7 +32,15 @@ _[See Screenshots](https://plugins.jetbrains.com/plugin/21396-github-workflow)_
 * 🚀 Repository Access: Integrate with your private GitHub repositories for those secret projects you're working on.
 * 🏢 Self-hosted GitHub: Resolve metadata from public GitHub and GitHub Enterprise accounts already configured in
   JetBrains settings, without storing plaintext tokens in this plugin.
-* 🧹 Cache Controls: Refresh or clear resolved action/workflow metadata from `Tools > GitHub Workflow`.
+* 🧹 Cache Controls: Refresh, inspect, export, import, or clear resolved action/workflow metadata from Find Action,
+  `Tools > GitHub Workflow`, or `Settings > Tools > GitHub Workflow`.
+* ▶️ Workflow Runs: Create a GitHub Workflow Run Configuration from `workflow_dispatch`, default to the current branch,
+  provide inputs, follow job progress in a Run tool-window tree, inspect selected job logs, and stop remote runs through
+  the IDE or the `workflow_dispatch` gutter action. Job nodes use test-result style status icons and color warnings/errors in logs.
+  GitHub log groups render as named blocks with stable `0001 |` line numbers, `run:` command lines, and stripped ANSI
+  noise.
+* ⬆️ Action Updates: Resolved major-version action refs such as `actions/checkout@v3` can offer a quick fix when newer
+  cached refs such as `v4` are available.
 * 🗺️ Local Path Resolution: Navigate effortlessly with one-click access to local paths.
 * ✅ Validation Engine: Validates linked local actions and workflows, but hey, you can turn this off too.
 * 🛡️ Security: We respect your privacy! The plugin doesn't use or store your personal data; it only accesses remote
@@ -47,7 +55,17 @@ _[See Screenshots](https://plugins.jetbrains.com/plugin/21396-github-workflow)_
 * **Configuration**: Add GitHub or GitHub Enterprise accounts via `File > Settings > Version Control > GitHub`. The
   plugin does not add a second server settings screen.
 * **Cache**: Use Find Action (`Shift` twice) for `Refresh Action Cache`, `Clear Action Cache`, or `Restore Action
-  Warnings`. IDEs with the classic Tools menu also show these under `Tools > GitHub Workflow`.
+  Warnings`. IDEs with the classic Tools menu also show these under `Tools > GitHub Workflow`. For review/delete,
+  import/export, plugin cache size, and language override, use
+  `Settings > Tools > GitHub Workflow`.
+* **Workflow Runs**: Add GitHub accounts in `File > Settings > Version Control > GitHub`, then use the gutter play
+  action on `workflow_dispatch` or create a `GitHub Workflow` Run Configuration. GitHub jobs appear in one Run tree with
+  selected-node log output.
+  Context-created runs default to the checked-out Git branch and print clickable workflow/job URLs where GitHub exposes
+  them. The gutter play action is shown only when the workflow file belongs to a resolvable GitHub repository. Runs try
+  matching IDE accounts first, then other IDE GitHub accounts, then `GITHUB_TOKEN`, `GH_TOKEN`, `GITHUB_PAT`, then
+  anonymous access. An optional token environment variable can still be set explicitly for custom setups. GitHub log
+  timestamps, groups, command markers, and ANSI color codes are compacted before display.
 * **Usage**: Enjoy autocomplete, syntax highlighting, and much more as you code your GitHub Workflows and Actions.
 
 ## Local Development
@@ -61,7 +79,9 @@ Plugin downloads the IDE, bundled plugins, verifier, and test runtime.
 
 For manual IDE testing, run `./gradlew runIde`. The default target tracks the latest stable IntelliJ IDEA platform that
 the Gradle tooling can resolve (`platformVersion` in `gradle.properties`). The first run downloads IDE artifacts and can
-take a while. This is annoying, but at least it is predictable. Progress.
+take a while. The task also repairs stale custom color-scheme references in the generated sandbox only, so a missing
+local theme is less likely to kick the test IDE back into light-mode betrayal. This is annoying, but at least it is
+predictable. Progress.
 
 Current UX/DX gaps are tracked in [UX/DX Gaps](doc/spec/ux-dx-gaps.md); editor behavior coverage is tracked in
 [Editor Test Matrix](doc/spec/editor-test-matrix.md).
@@ -90,7 +110,7 @@ Yuna Morgenstern, your GitHub Jedi.
 
 <!-- Plugin description end -->
 
-#### TODO
+#### Project Checklist
 
 - [x] Autocomplete workflow and actions refs from resolved remote tags/branches e.g. `@main`, `@v1`, ...
 - [x] Add links to Workflows and action files (GitHubUrl && MarketplaceUrl)
@@ -102,7 +122,8 @@ Yuna Morgenstern, your GitHub Jedi.
 ## Learning List
 
 - [x] Create Tests
-- [ ] Refactor - less custom elements == less memory leaks
+- [ ] Refactor remaining custom editor UI into smaller JetBrains-native pieces where it reduces gutter noise, disposal
+  risk, or maintenance cost.
 - [x] Auto Complete Uses with local action files
 - [x] Auto Complete Uses with cached/current workflow refs
 - [x] Auto Complete Uses field with Tags & Branches
@@ -116,13 +137,12 @@ Yuna Morgenstern, your GitHub Jedi.
   the [Legal Agreements](https://plugins.jetbrains.com/docs/marketplace/legal-agreements.html?from=IJPluginTemplate).
 - [x] [Publish a plugin manually](https://plugins.jetbrains.com/docs/intellij/publishing-plugin.html?from=IJPluginTemplate)
   for the first time.
-- [ ] Set the `21396-github-workflow` in the above README badges.
-- [ ] Set the [Plugin Signing](https://plugins.jetbrains.com/docs/intellij/plugin-signing.html?from=IJPluginTemplate)
+- [x] Set the `21396-github-workflow` in the above README badges.
+- [ ] Confirm the [Plugin Signing](https://plugins.jetbrains.com/docs/intellij/plugin-signing.html?from=IJPluginTemplate)
   related [secrets](https://github.com/JetBrains/intellij-platform-plugin-template#environment-variables).
-- [ ] Set
+- [ ] Confirm
   the [Deployment Token](https://plugins.jetbrains.com/docs/marketplace/plugin-upload.html?from=IJPluginTemplate).
-- [ ] Click the <kbd>Watch</kbd> button on the top of the [IntelliJ Platform Plugin Template][template] to be notified
-  about releases containing new features and fixes.
+- [ ] Watch IntelliJ Platform Gradle Plugin and template releases during maintenance rounds.
 
 Plugin based on the [IntelliJ Platform Plugin Template][template].
 

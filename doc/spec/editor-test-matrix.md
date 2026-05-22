@@ -18,13 +18,15 @@ Official syntax references:
 - Remote `uses` target completion can discover matching owner repositories from configured GitHub servers before the
   callable metadata has been resolved.
 - Remote `uses` ref completion can discover the latest 10 refs for a typed callable such as `actions/checkout@`.
+- Resolved actions with cached major-version refs show an update quick-fix for older `v?\d+` refs.
 - Remote `uses` ref completion for tags/branches resolved from public GitHub and GitHub Enterprise-shaped servers
   through fake HTTP servers.
 - GitHub Enterprise servers registered in JetBrains GitHub settings are used as remote metadata sources; the plugin does
   not add a parallel server settings UI.
-- Cache actions are registered through `plugin.xml`, localized through resource bundles, and covered by cache summary
-  and clear behavior tests.
-- The default resource bundle and 20 locale resource bundles keep matching key sets with nonblank values.
+- Cache actions and settings are registered through `plugin.xml`, localized through resource bundles, and covered by
+  cache summary, clear, inspect, selected-delete, import, and export behavior tests.
+- The default resource bundle and 20 locale resource bundles keep matching key sets with nonblank values. Settings,
+  inspection, workflow-run, and issue-report keys resolve for every configured locale.
 - Local reusable workflow `uses` reference resolution to project workflow files.
 - Remote action and reusable workflow `uses` reference creation through IntelliJ `WebReference`, including exact GitHub URL target metadata.
 - Configured GitHub Enterprise action references and styling keep the configured server URL instead of hard-coding github.com.
@@ -73,11 +75,30 @@ Official syntax references:
 - Composite action `runs.steps` can reference outputs from previous `uses` steps.
 - Root expression completion for locally available contexts.
 - `$GITHUB_ENV` and `$GITHUB_OUTPUT` completion in `run` blocks.
+- `shell:` completion for GitHub-supported shells.
 - Quick-fix text for invalid action inputs, unknown workflow inputs, secrets in `if`, and unused job outputs.
 - Quick-fix execution for input replacement, invalid action input deletion, invalid reusable workflow secret deletion, invalid suffix deletion, and invalid member deletion.
 - Gutter/info action execution for action suppression, input suppression, and local action jump action dispatch.
 - Gutter/info action execution for remote reload is tested with a controllable resolver boundary and no sleeps.
 - Cache tools can refresh metadata, clear metadata, and restore suppressed action/input/output warnings.
+- GitHub Workflow run configuration registration, workflow_dispatch input parsing, repository remote resolution,
+  current-branch ref selection, dispatch/cancel/status/log client behavior, and gutter play registration for dispatchable
+  workflows.
+- `workflow_dispatch` does not show a run gutter action when no GitHub repository can be resolved.
+- Workflow run HTTP behavior retries configured GitHub authorizations before anonymous access and reports 401/rate-limit
+  failures with a GitHub settings hint.
+- Workflow run HTTP behavior tries matching IDE accounts, then other IDE GitHub accounts, then configured/default
+  environment tokens (`GITHUB_TOKEN`, `GH_TOKEN`, `GITHUB_PAT`), then anonymous access.
+- Workflow run HTTP behavior reuses the first successful account authorization across polling calls and does not fall
+  back to anonymous requests after an authenticated rate-limit response.
+- Workflow run process behavior streams job log deltas without auth-strategy noise, routes each GitHub job to the
+  Run-window job tree/detail console, prints job URLs before status lines, prints compact ASCII job progress with
+  elapsed times and `[WAIT]` / `[RUN]` / `[OK]` / `[FAIL]` markers, summarizes temporary HTML/504 log failures as short
+  "logs will appear" notices, quietly retries in-progress HTTP log failures, fetches completed job logs before the whole
+  run completes, and the `workflow_dispatch` gutter marker switches to Stop while a run is tracked.
+- Workflow run log rendering strips GitHub timestamps, strips ANSI controls while preserving warning/error/system
+  meaning, formats GitHub `##[group]` / `##[endgroup]` / `##[/group]` markers as named blocks with four-digit line
+  numbers, formats `##[command]` markers as `run:` lines, and classifies warning/error output for IDE console coloring.
 - Regression tests cover prior issues for multiline outputs, `tee` outputs, composite `uses` step outputs,
   `needs.<job>.result` inside conditions, action metadata fallback to `action.yaml`, GitHub Enterprise metadata, failed
   remote downloads, and invalid virtual-file paths.

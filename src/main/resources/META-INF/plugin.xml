@@ -31,6 +31,10 @@
                                     implementationClass="com.github.yunabraska.githubworkflow.services.WorkflowDocumentationProvider"
                                     order="before YamlJsonSchemaDocumentationProvider"/>
         <multiHostInjector implementation="com.github.yunabraska.githubworkflow.services.WorkflowRunLanguageInjector"/>
+        <configurationType implementation="com.github.yunabraska.githubworkflow.services.WorkflowRunConfigurationType"/>
+        <runConfigurationProducer implementation="com.github.yunabraska.githubworkflow.services.WorkflowRunConfigurationProducer"/>
+        <runLineMarkerContributor language="yaml"
+                                  implementationClass="com.github.yunabraska.githubworkflow.services.WorkflowRunLineMarkerContributor"/>
 
         <!-- ProjectStartup -->
         <postStartupActivity implementation="com.github.yunabraska.githubworkflow.services.ProjectStartup"/>
@@ -39,6 +43,12 @@
         <applicationService serviceImplementation="com.github.yunabraska.githubworkflow.services.GitHubActionCache"
                             configurationSchemaKey="GitHubActionCache"/>
         <applicationService serviceImplementation="com.github.yunabraska.githubworkflow.services.RemoteServerSettings"/>
+        <applicationService serviceImplementation="com.github.yunabraska.githubworkflow.services.PluginSettings"/>
+        <applicationConfigurable instance="com.github.yunabraska.githubworkflow.services.GitHubWorkflowSettingsConfigurable"
+                                 id="github.workflow.settings"
+                                 parentId="tools"
+                                 displayName="GitHub Workflow"/>
+        <projectService serviceImplementation="com.github.yunabraska.githubworkflow.services.WorkflowRunTracker"/>
 
         <!-- Schema Icon provider -->
         <iconProvider implementation="com.github.yunabraska.githubworkflow.services.FileIconProvider"/>

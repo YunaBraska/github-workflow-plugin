@@ -7,6 +7,7 @@ import com.intellij.codeInsight.lookup.LookupElement;
 import com.intellij.openapi.actionSystem.AnAction;
 import com.intellij.openapi.actionSystem.AnActionEvent;
 import com.intellij.openapi.actionSystem.ActionUiKind;
+import com.intellij.openapi.actionSystem.ActionGroup;
 import com.intellij.openapi.actionSystem.DataContext;
 import com.intellij.openapi.actionSystem.Presentation;
 import com.intellij.openapi.editor.DefaultLanguageHighlighterColors;
@@ -155,17 +156,38 @@ abstract class EditorFeatureTestCase extends BasePlatformTestCase {
                 .findFirst()
                 .orElseThrow(() -> new AssertionError("Missing gutter action containing [" + text + "], found " + tooltips));
         final AnAction action = renderer.getClickAction();
-        if (action == null) {
+        final AnAction resolvedAction = action == null ? popupActionContaining(renderer, text) : action;
+        if (resolvedAction == null) {
             throw new AssertionError("Gutter action has no click action [" + text + "]");
         }
-        action.actionPerformed(AnActionEvent.createEvent(
-                action,
+        resolvedAction.actionPerformed(AnActionEvent.createEvent(
+                resolvedAction,
                 DataContext.EMPTY_CONTEXT,
                 new Presentation(),
                 "GithubWorkflowPluginTest",
                 ActionUiKind.NONE,
                 null
         ));
+    }
+
+    protected final List<GutterIconRenderer> gutterIcons() {
+        return myFixture.doHighlighting().stream()
+                .map(HighlightInfo::getGutterIconRenderer)
+                .filter(GutterIconRenderer.class::isInstance)
+                .map(GutterIconRenderer.class::cast)
+                .toList();
+    }
+
+    private static AnAction popupActionContaining(final GutterIconRenderer renderer, final String text) {
+        final ActionGroup group = renderer.getPopupMenuActions();
+        if (group == null) {
+            return null;
+        }
+        return Arrays.stream(group.getChildren(null))
+                .filter(action -> action.getTemplatePresentation().getText() != null)
+                .filter(action -> action.getTemplatePresentation().getText().contains(text))
+                .findFirst()
+                .orElse(null);
     }
 
     protected final void invokeHighlightFixContaining(final String text) {

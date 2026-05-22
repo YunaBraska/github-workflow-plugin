@@ -5,6 +5,7 @@ import com.github.yunabraska.githubworkflow.model.QuickFixExecution;
 import com.github.yunabraska.githubworkflow.model.SimpleElement;
 import com.github.yunabraska.githubworkflow.model.SyntaxAnnotation;
 import com.github.yunabraska.githubworkflow.services.GitHubActionCache;
+import com.github.yunabraska.githubworkflow.services.GitHubWorkflowBundle;
 import com.intellij.codeInspection.ProblemHighlightType;
 import com.intellij.ide.util.PsiNavigationSupport;
 import com.intellij.lang.injection.InjectedLanguageManager;
@@ -56,8 +57,8 @@ public class HighlightAnnotatorHelper {
     }
 
     public static void addAnnotation(final AnnotationHolder holder, final PsiElement element, final List<SyntaxAnnotation> result) {
-        if (holder != null) {
-            result.forEach(annotation -> annotation.createAnnotation(element, holder));
+        if (holder != null && element != null && result != null && !result.isEmpty()) {
+            createAnnotation(element, element.getTextRange(), holder, result);
         }
     }
 
@@ -72,7 +73,7 @@ public class HighlightAnnotatorHelper {
         if (parts.length < min || parts.length < 2) {
             final TextRange range = psiElement.getTextRange();
             new SyntaxAnnotation(
-                    "Incomplete statement [" + Arrays.stream(parts).map(SimpleElement::text).collect(Collectors.joining(".")) + "]",
+                    GitHubWorkflowBundle.message("inspection.statement.incomplete", Arrays.stream(parts).map(SimpleElement::text).collect(Collectors.joining("."))),
                     null,
                     null
             ).createAnnotation(psiElement, new TextRange(range.getStartOffset() + parts[0].startIndexOffset(), range.getStartOffset() + parts[parts.length - 1].endIndexOffset()), holder);
@@ -80,7 +81,7 @@ public class HighlightAnnotatorHelper {
             final SimpleElement[] tooLongPart = Arrays.copyOfRange(parts, max, parts.length);
             final TextRange textRange = textRangeIncludingPreviousDot(psiElement, tooLongPart[0], tooLongPart[tooLongPart.length - 1]);
             new SyntaxAnnotation(
-                    "Remove invalid suffix [" + Arrays.stream(tooLongPart).map(SimpleElement::text).collect(Collectors.joining(".")) + "]",
+                    GitHubWorkflowBundle.message("inspection.invalid.suffix.remove", Arrays.stream(tooLongPart).map(SimpleElement::text).collect(Collectors.joining("."))),
                     null,
                     deleteElementAction(textRange)
             ).createAnnotation(psiElement, textRange, holder);
@@ -95,7 +96,7 @@ public class HighlightAnnotatorHelper {
         } else if (!items.contains(itemId.text())) {
             final TextRange textRange = simpleTextRange(psiElement, itemId);
             createAnnotation(psiElement, textRange, holder, items.stream().map(item -> new SyntaxAnnotation(
-                    "Replace with [" + item + "]",
+                    GitHubWorkflowBundle.message("inspection.replace.with", item),
                     null,
                     replaceAction(textRange, item)
             )).toList());
@@ -112,7 +113,7 @@ public class HighlightAnnotatorHelper {
         if (!validFields.contains(itemId.text())) {
             final TextRange textRange = textRangeIncludingPreviousDot(psiElement, itemId, itemId);
             new SyntaxAnnotation(
-                    "Remove invalid [" + itemId.text() + "]",
+                    GitHubWorkflowBundle.message("inspection.invalid.remove", itemId.text()),
                     null,
                     deleteElementAction(textRange)
             ).createAnnotation(psiElement, textRange, holder);
@@ -125,7 +126,7 @@ public class HighlightAnnotatorHelper {
         if (!isEmpty(outputs, itemId, psiElement, holder) && itemId != null && !outputs.contains(itemId.text())) {
             final TextRange textRange = simpleTextRange(psiElement, itemId);
             createAnnotation(psiElement, textRange, holder, outputs.stream().filter(PsiElementHelper::hasText).map(item -> new SyntaxAnnotation(
-                    "Replace with [" + item + "]",
+                    GitHubWorkflowBundle.message("inspection.replace.with", item),
                     null,
                     replaceAction(textRange, item)
             )).toList());
@@ -135,7 +136,7 @@ public class HighlightAnnotatorHelper {
     @NotNull
     public static SyntaxAnnotation newReloadAction(final GitHubAction action) {
         return new SyntaxAnnotation(
-                "Reload [" + action.name() + "]",
+                GitHubWorkflowBundle.message("inspection.action.reload", action.name()),
                 RELOAD,
                 HighlightSeverity.INFORMATION,
                 ProblemHighlightType.INFORMATION,
@@ -146,7 +147,7 @@ public class HighlightAnnotatorHelper {
     @NotNull
     public static SyntaxAnnotation newUnresolvedAction(final YAMLKeyValue element) {
         return new SyntaxAnnotation(
-                "Unresolved [" + removeQuotes(element.getValueText()) + "] - check GitHub account access, private repository permissions, rate limits, missing refs, or missing action/workflow metadata",
+                GitHubWorkflowBundle.message("inspection.action.unresolved", removeQuotes(element.getValueText())),
                 SETTINGS,
                 HighlightSeverity.WEAK_WARNING,
                 ProblemHighlightType.WEAK_WARNING,
@@ -160,7 +161,7 @@ public class HighlightAnnotatorHelper {
     public static SyntaxAnnotation deleteInvalidAction(final YAMLKeyValue element) {
         final TextRange textRange = ofNullable(element.getValue()).map(PsiElement::getTextRange).orElseGet(element::getTextRange);
         return new SyntaxAnnotation(
-                "Remove invalid [" + element.getValueText() + "]",
+                GitHubWorkflowBundle.message("inspection.invalid.remove", element.getValueText()),
                 null,
                 HighlightSeverity.WEAK_WARNING,
                 ProblemHighlightType.WEAK_WARNING,
@@ -172,7 +173,7 @@ public class HighlightAnnotatorHelper {
     public static SyntaxAnnotation newJumpToFile(final GitHubAction action) {
         //TODO: List Workflows connected to the action file
         return new SyntaxAnnotation(
-                "Jump to file [" + action.name() + "]",
+                GitHubWorkflowBundle.message("inspection.action.jump", action.name()),
                 JUMP_TO_IMPLEMENTATION,
                 HighlightSeverity.INFORMATION,
                 ProblemHighlightType.INFORMATION,
@@ -244,7 +245,7 @@ public class HighlightAnnotatorHelper {
         if (itemId != null && items.isEmpty()) {
             final TextRange textRange = simpleTextRange(psiElement, itemId);
             createAnnotation(psiElement, textRange, holder, List.of(new SyntaxAnnotation(
-                    "Delete invalid [" + itemId.text() + "]",
+                    GitHubWorkflowBundle.message("inspection.invalid.remove", itemId.text()),
                     null,
                     deleteElementAction(textRange)
             )));

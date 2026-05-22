@@ -147,29 +147,38 @@ public final class RemoteActionProviders {
     }
 
     private static Optional<JsonElement> getJson(final RemoteServerSettings.Server server, final String url) {
-        try {
-            final HttpRequest.Builder builder = HttpRequest.newBuilder(URI.create(url))
-                    .timeout(Duration.ofSeconds(3))
-                    .header("Accept", "application/json")
-                    .header("User-Agent", "GitHub-Workflow-Plugin");
-            if (!server.authorizationHeader().isBlank()) {
-                builder.header("Authorization", server.authorizationHeader());
-            }
-            final HttpResponse<String> response = CLIENT.send(builder.GET().build(), HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
-            if (response.statusCode() / 100 != 2) {
+        for (final GitHubRequestAuthorizations.Authorization authorization : GitHubRequestAuthorizations.forApiUrl(server.apiUrl, server.tokenEnvVar, null)) {
+            try {
+                final HttpRequest.Builder builder = HttpRequest.newBuilder(URI.create(url))
+                        .timeout(Duration.ofSeconds(3))
+                        .header("Accept", "application/json")
+                        .header("User-Agent", "GitHub-Workflow-Plugin");
+                if (authorization.authenticated()) {
+                    builder.header("Authorization", authorization.authorizationHeader());
+                }
+                final HttpResponse<String> response = CLIENT.send(builder.GET().build(), HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+                if (response.statusCode() / 100 == 2) {
+                    return Optional.of(JsonParser.parseString(response.body()));
+                }
+                if (!shouldTryNextAuthorization(response.statusCode())) {
+                    return Optional.empty();
+                }
+            } catch (final IOException exception) {
+                LOG.warn("Remote request failed [" + url + "]", exception);
+                return Optional.empty();
+            } catch (final InterruptedException exception) {
+                Thread.currentThread().interrupt();
+                return Optional.empty();
+            } catch (final RuntimeException exception) {
+                LOG.warn("Remote response failed [" + url + "]", exception);
                 return Optional.empty();
             }
-            return Optional.of(JsonParser.parseString(response.body()));
-        } catch (final IOException exception) {
-            LOG.warn("Remote request failed [" + url + "]", exception);
-            return Optional.empty();
-        } catch (final InterruptedException exception) {
-            Thread.currentThread().interrupt();
-            return Optional.empty();
-        } catch (final RuntimeException exception) {
-            LOG.warn("Remote response failed [" + url + "]", exception);
-            return Optional.empty();
         }
+        return Optional.empty();
+    }
+
+    private static boolean shouldTryNextAuthorization(final int statusCode) {
+        return statusCode == 401 || statusCode == 403 || statusCode == 404 || statusCode == 429;
     }
 
     private static Optional<ContentResponse> contentFromJson(final JsonElement json, final String fallbackDownloadUrl) {
@@ -211,7 +220,7 @@ public final class RemoteActionProviders {
                     if (name.filter(value -> value.startsWith(prefix.repoPrefix())).isPresent()) {
                         result.putIfAbsent(
                                 fullName.orElse(prefix.owner() + "/" + name.get()),
-                                stringValue(object, "description").orElse("Remote repository")
+                                stringValue(object, "description").orElse(GitHubWorkflowBundle.message("completion.remote.repository"))
                         );
                     }
                 }

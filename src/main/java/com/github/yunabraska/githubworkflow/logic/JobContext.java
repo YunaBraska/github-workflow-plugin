@@ -1,6 +1,7 @@
 package com.github.yunabraska.githubworkflow.logic;
 
 import com.github.yunabraska.githubworkflow.model.SimpleElement;
+import com.github.yunabraska.githubworkflow.services.GitHubWorkflowBundle;
 import com.intellij.lang.annotation.AnnotationHolder;
 import com.intellij.psi.PsiElement;
 import com.intellij.psi.impl.source.tree.LeafPsiElement;
@@ -58,22 +59,22 @@ public class JobContext {
 
     public static List<SimpleElement> codeCompletionJob(final String parent, final PsiElement position) {
         return switch (parent) {
-            case FIELD_CONTAINER -> completionItemsOf(toMap(CONTAINER_FIELDS, "Job container field"), ICON_NODE);
-            case FIELD_SERVICES -> completionItemsOf(toMap(listServiceIds(position), "Job service"), ICON_NODE);
+            case FIELD_CONTAINER -> completionItemsOf(toMap(CONTAINER_FIELDS, GitHubWorkflowBundle.message("completion.job.containerField")), ICON_NODE);
+            case FIELD_SERVICES -> completionItemsOf(toMap(listServiceIds(position), GitHubWorkflowBundle.message("completion.job.service")), ICON_NODE);
             default -> List.of();
         };
     }
 
     public static List<SimpleElement> codeCompletionJob(final String parent, final String child, final PsiElement position) {
         if (FIELD_SERVICES.equals(parent) && listServiceIds(position).contains(child)) {
-            return completionItemsOf(toMap(SERVICE_FIELDS, "Job service field"), ICON_NODE);
+            return completionItemsOf(toMap(SERVICE_FIELDS, GitHubWorkflowBundle.message("completion.job.serviceField")), ICON_NODE);
         }
         return List.of();
     }
 
     public static List<SimpleElement> codeCompletionJob(final String parent, final String serviceId, final String serviceField, final PsiElement position) {
         if (FIELD_SERVICES.equals(parent) && FIELD_PORTS.equals(serviceField)) {
-            return completionItemsOf(toMap(listServicePorts(position, serviceId), "Mapped service port"), ICON_NODE);
+            return completionItemsOf(toMap(listServicePorts(position, serviceId), GitHubWorkflowBundle.message("completion.job.mappedServicePort")), ICON_NODE);
         }
         return List.of();
     }

@@ -2,7 +2,12 @@ package com.github.yunabraska.githubworkflow.services;
 
 import com.intellij.openapi.actionSystem.ActionGroup;
 import com.intellij.openapi.actionSystem.ActionManager;
+import com.intellij.openapi.actionSystem.ActionUiKind;
 import com.intellij.openapi.actionSystem.AnAction;
+import com.intellij.openapi.actionSystem.AnActionEvent;
+import com.intellij.openapi.actionSystem.DataContext;
+import com.intellij.openapi.actionSystem.Presentation;
+import com.intellij.execution.configurations.ConfigurationTypeUtil;
 import com.intellij.testFramework.fixtures.BasePlatformTestCase;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -42,5 +47,36 @@ public class WorkflowActionRegistrationTest extends BasePlatformTestCase {
         assertThat(action.getTemplatePresentation().getText()).isEqualTo("Restore Action Warnings");
         assertThat(action.getTemplatePresentation().getDescription())
                 .isEqualTo("Restore suppressed action, input, and output validation warnings");
+    }
+
+    public void testActionUpdateUsesConfiguredPluginLanguageOverride() {
+        final PluginSettings settings = PluginSettings.getInstance();
+        final String previousLanguage = settings.languageTag();
+        try {
+            settings.languageTag("de");
+            final AnAction action = ActionManager.getInstance().getAction("GitHubWorkflow.RefreshActionCache");
+            final Presentation presentation = new Presentation();
+
+            action.update(AnActionEvent.createEvent(
+                    action,
+                    DataContext.EMPTY_CONTEXT,
+                    presentation,
+                    "GithubWorkflowPluginTest",
+                    ActionUiKind.NONE,
+                    null
+            ));
+
+            assertThat(presentation.getText()).isEqualTo("Action-Cache aktualisieren");
+            assertThat(presentation.getDescription()).contains("entfernter GitHub Actions");
+        } finally {
+            settings.languageTag(previousLanguage);
+        }
+    }
+
+    public void testWorkflowRunConfigurationTypeIsRegistered() {
+        final WorkflowRunConfigurationType type = ConfigurationTypeUtil.findConfigurationType(WorkflowRunConfigurationType.class);
+
+        assertThat(type.getId()).isEqualTo(WorkflowRunConfigurationType.ID);
+        assertThat(type.getConfigurationFactories()).hasSize(1);
     }
 }

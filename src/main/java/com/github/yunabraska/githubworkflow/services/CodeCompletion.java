@@ -130,6 +130,13 @@ public class CodeCompletion extends CompletionContributor {
                                     NodeIcon.ICON_NODE,
                                     Character.MIN_VALUE
                             );
+                        } else if (isCompletingShellField(parameters, position)) {
+                            addLookupElements(
+                                    resultSet.withPrefixMatcher(getDefaultPrefix(parameters)),
+                                    SHELLS,
+                                    NodeIcon.ICON_NODE,
+                                    Character.MIN_VALUE
+                            );
                         } else if (isCompletingCallableSecrets(position)) {
                             currentCallableAction(parameters, position)
                                     .map(GitHubAction::freshSecrets)
@@ -173,6 +180,17 @@ public class CodeCompletion extends CompletionContributor {
         return beforeCaret.matches("\\s*-?\\s*" + FIELD_USES + "\\s*:\\s*.*");
     }
 
+    private static boolean isCompletingShellField(final CompletionParameters parameters, final PsiElement position) {
+        if (getParent(position, FIELD_SHELL).isPresent()) {
+            return true;
+        }
+        final String wholeText = parameters.getOriginalFile().getText();
+        final int offset = Math.min(parameters.getOffset(), wholeText.length());
+        final int lineStart = wholeText.lastIndexOf('\n', Math.max(0, offset - 1)) + 1;
+        final String beforeCaret = wholeText.substring(lineStart, offset).replace("IntellijIdeaRulezzz", "");
+        return beforeCaret.matches("\\s*" + FIELD_SHELL + "\\s*:\\s*.*");
+    }
+
     private static Optional<RemoteUsesRef> remoteUsesRef(final CompletionParameters parameters) {
         final String wholeText = parameters.getOriginalFile().getText();
         final int offset = Math.min(parameters.getOffset(), wholeText.length());
@@ -210,7 +228,9 @@ public class CodeCompletion extends CompletionContributor {
         final Map<String, String> result = new LinkedHashMap<>();
         ProjectFileIndex.getInstance(project).iterateContent(file -> {
             toLocalUsesValue(project, currentFile, file, reusableWorkflowUse)
-                    .ifPresent(value -> result.putIfAbsent(value, reusableWorkflowUse ? "Local reusable workflow" : "Local action"));
+                    .ifPresent(value -> result.putIfAbsent(value, GitHubWorkflowBundle.message(reusableWorkflowUse
+                            ? "completion.uses.local.workflow"
+                            : "completion.uses.local.action")));
             return true;
         });
         return result;
@@ -221,14 +241,14 @@ public class CodeCompletion extends CompletionContributor {
         knownRemoteActions(position).stream()
                 .filter(action -> splitRemoteUses(action.usesValue()).map(uses -> usesBase.equals(uses.base())).orElse(false))
                 .flatMap(action -> action.remoteRefs().stream())
-                .forEach(ref -> result.putIfAbsent(ref, "Known workflow reference"));
+                .forEach(ref -> result.putIfAbsent(ref, GitHubWorkflowBundle.message("completion.uses.ref.known")));
         knownRemoteUsesValues(position).stream()
                 .map(CodeCompletion::splitRemoteUses)
                 .flatMap(Optional::stream)
                 .filter(uses -> usesBase.equals(uses.base()))
-                .forEach(uses -> result.putIfAbsent(uses.ref(), "Known workflow reference"));
+                .forEach(uses -> result.putIfAbsent(uses.ref(), GitHubWorkflowBundle.message("completion.uses.ref.known")));
         GitHubActionCache.getActionCache().remoteRefsFor(usesBase, 10)
-                .forEach(ref -> result.putIfAbsent(ref, "Remote workflow reference"));
+                .forEach(ref -> result.putIfAbsent(ref, GitHubWorkflowBundle.message("completion.uses.ref.remote")));
         return result;
     }
 
@@ -237,7 +257,7 @@ public class CodeCompletion extends CompletionContributor {
         knownRemoteUsesValues(position).stream()
                 .map(CodeCompletion::splitRemoteUses)
                 .flatMap(Optional::stream)
-                .forEach(uses -> result.putIfAbsent(uses.base(), "Known remote action or reusable workflow"));
+                .forEach(uses -> result.putIfAbsent(uses.base(), GitHubWorkflowBundle.message("completion.uses.remote.known")));
         return result;
     }
 
@@ -445,13 +465,13 @@ public class CodeCompletion extends CompletionContributor {
     private static void handleSecondItem(final String[] cbi, final int i, final PsiElement position, final Map<Integer, List<SimpleElement>> completionItemMap) {
         switch (cbi[0]) {
             case FIELD_STEPS -> completionItemMap.put(i, List.of(
-                    completionItemOf(FIELD_OUTPUTS, "The set of outputs defined for the step.", ICON_OUTPUT),
-                    completionItemOf(FIELD_CONCLUSION, "The result of a completed step after continue-on-error is applied.", ICON_OUTPUT),
-                    completionItemOf(FIELD_OUTCOME, "The result of a completed step before continue-on-error is applied.", ICON_OUTPUT)
+                    completionItemOf(FIELD_OUTPUTS, GitHubWorkflowBundle.message("completion.steps.outputs"), ICON_OUTPUT),
+                    completionItemOf(FIELD_CONCLUSION, GitHubWorkflowBundle.message("completion.steps.conclusion"), ICON_OUTPUT),
+                    completionItemOf(FIELD_OUTCOME, GitHubWorkflowBundle.message("completion.steps.outcome"), ICON_OUTPUT)
             ));
             case FIELD_JOBS, FIELD_NEEDS -> completionItemMap.put(i, List.of(
-                    completionItemOf(FIELD_OUTPUTS, "The set of outputs defined for the job.", ICON_OUTPUT),
-                    completionItemOf(FIELD_RESULT, "The result of the job.", ICON_OUTPUT)
+                    completionItemOf(FIELD_OUTPUTS, GitHubWorkflowBundle.message("completion.jobs.outputs"), ICON_OUTPUT),
+                    completionItemOf(FIELD_RESULT, GitHubWorkflowBundle.message("completion.jobs.result"), ICON_OUTPUT)
             ));
             case FIELD_JOB -> completionItemMap.put(i, codeCompletionJob(cbi[1], position));
             default -> {

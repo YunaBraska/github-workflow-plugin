@@ -22,7 +22,7 @@ From version 3.0.0 onwards, significant improvements have been made in terms of 
 
 ### What Data is Stored?
 
-As of version 3.0.0, the plugin caches the following data for each workflow and action:
+The plugin caches the following data for each workflow and action:
 
 1) **Uses Value**: The value specified in the `use` field of your workflow file.
 2) **Action Status**: A boolean indicating whether the `usesValue` refers to a GitHub Action or a workflow, identified
@@ -40,6 +40,16 @@ As of version 3.0.0, the plugin caches the following data for each workflow and 
 
 Among these, only the `input` and `output` variables have the potential to be sensitive or private. The level of their
 sensitivity depends on your unique data privacy considerations.
+
+### Workflow Run Data
+
+When you run a workflow from the IDE, the plugin sends the selected repository, workflow file, ref, and
+`workflow_dispatch` inputs to the GitHub REST API. It then reads workflow run status and job logs from GitHub and shows
+them in the IDE Run tool window.
+
+The plugin does not store GitHub tokens. Workflow runs first use GitHub or GitHub Enterprise accounts already configured
+in JetBrains settings. If an optional token environment variable is configured on the run configuration, that token is
+used only after IDE accounts fail or are unavailable.
 
 ### Security Measures
 

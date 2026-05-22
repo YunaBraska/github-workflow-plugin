@@ -2,6 +2,7 @@ package com.github.yunabraska.githubworkflow.logic;
 
 import com.github.yunabraska.githubworkflow.model.SimpleElement;
 import com.github.yunabraska.githubworkflow.model.SyntaxAnnotation;
+import com.github.yunabraska.githubworkflow.services.GitHubWorkflowBundle;
 import com.intellij.codeInspection.ProblemHighlightType;
 import com.intellij.lang.annotation.AnnotationHolder;
 import com.intellij.lang.annotation.HighlightSeverity;
@@ -49,7 +50,7 @@ public class Secrets {
                 final TextRange range = psiElement.getTextRange();
                 final TextRange textRange = new TextRange(range.getStartOffset() + parts[0].startIndexOffset(), range.getStartOffset() + parts[parts.length - 1].endIndexOffset());
                 new SyntaxAnnotation(
-                        "Remove [" + simpleElement.text() + "] - Secrets are not valid in `if` statements",
+                        GitHubWorkflowBundle.message("inspection.secret.invalid.if", simpleElement.text()),
                         null,
                         deleteElementAction(textRange)
                 ).createAnnotation(psiElement, textRange, holder);
@@ -58,7 +59,7 @@ public class Secrets {
             if (!secrets.contains(secretId.text())) {
                 final TextRange textRange = simpleTextRange(element, secretId);
                 createAnnotation(element, textRange, holder, secrets.stream().map(secret -> new SyntaxAnnotation(
-                        "Replace [" + secretId.text() + "] with [" + secret + "] - if it is not provided at runtime",
+                        GitHubWorkflowBundle.message("inspection.secret.replace.runtime", secretId.text(), secret),
                         null,
                         HighlightSeverity.WEAK_WARNING,
                         ProblemHighlightType.WEAK_WARNING,
@@ -83,7 +84,7 @@ public class Secrets {
                         LinkedHashMap::new
                 )))
                 .orElseGet(LinkedHashMap::new);
-        result.putIfAbsent(GITHUB_TOKEN, "Automatically created token for each workflow run.");
+        result.putIfAbsent(GITHUB_TOKEN, GitHubWorkflowBundle.message("completion.secret.githubToken"));
         return completionItemsOf(result, ICON_SECRET_WORKFLOW);
     }
 

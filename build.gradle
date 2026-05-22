@@ -142,6 +142,39 @@ tasks.named('check') {
     dependsOn tasks.named('performanceTest')
 }
 
+tasks.register('repairRunIdeSandboxTheme') {
+    group = 'intellij platform'
+    description = 'Repairs stale custom color-scheme references in the local runIde sandbox.'
+    doLast {
+        def sandboxRoot = file('.intellijPlatform/sandbox')
+        if (!sandboxRoot.exists()) {
+            return
+        }
+        fileTree(sandboxRoot).matching {
+            include '**/config/options/colors.scheme.xml'
+            include '**/config/options/other.xml'
+        }.each { optionsFile ->
+            def original = optionsFile.getText('UTF-8')
+            def repaired = original
+                    .replace('_@user_Islands Dark', 'Darcula')
+                    .replace('_@user_Islands Darcula', 'Darcula')
+                    .replace('Islands Dark', 'Darcula')
+                    .replace('Islands Darcula', 'Darcula')
+            if (repaired != original) {
+                optionsFile.write(repaired, 'UTF-8')
+            }
+        }
+    }
+}
+
+tasks.matching { it.name == 'repairRunIdeSandboxTheme' }.configureEach {
+    mustRunAfter tasks.matching { it.name == 'prepareSandbox' }
+}
+
+tasks.matching { it.name == 'runIde' || it.name == 'buildSearchableOptions' }.configureEach {
+    dependsOn tasks.named('repairRunIdeSandboxTheme')
+}
+
 tasks.register('generateGitHubDocsData') {
     group = 'documentation'
     description = 'Refreshes checked-in GitHub Actions context and default environment variable snapshots from GitHub Docs.'

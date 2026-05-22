@@ -44,7 +44,6 @@ import static com.github.yunabraska.githubworkflow.helper.PsiElementHelper.getCh
 import static com.github.yunabraska.githubworkflow.helper.PsiElementHelper.hasText;
 import static java.lang.Boolean.parseBoolean;
 import static java.util.Collections.unmodifiableMap;
-import static java.util.Collections.unmodifiableSet;
 import static java.util.Optional.of;
 import static java.util.Optional.ofNullable;
 
@@ -287,11 +286,15 @@ public class GitHubAction implements Serializable {
     }
 
     public Set<String> ignoredInputs() {
-        return unmodifiableSet(ignoredInputs);
+        return ignoredInputs.stream()
+                .filter(PsiElementHelper::hasText)
+                .collect(Collectors.toUnmodifiableSet());
     }
 
     public Set<String> ignoredOutputs() {
-        return unmodifiableSet(ignoredOutputs);
+        return ignoredOutputs.stream()
+                .filter(PsiElementHelper::hasText)
+                .collect(Collectors.toUnmodifiableSet());
     }
 
     /**
@@ -300,7 +303,9 @@ public class GitHubAction implements Serializable {
      * @return {@code true} when the whole action, at least one input, or at least one output is suppressed
      */
     public boolean hasSuppressedWarnings() {
-        return isSuppressed() || !ignoredInputs.isEmpty() || !ignoredOutputs.isEmpty();
+        return isSuppressed()
+                || ignoredInputs.stream().anyMatch(PsiElementHelper::hasText)
+                || ignoredOutputs.stream().anyMatch(PsiElementHelper::hasText);
     }
 
     /**
@@ -351,8 +356,8 @@ public class GitHubAction implements Serializable {
     public GitHubAction setMetaData(final Map<String, String> metaData) {
         ofNullable(metaData).ifPresent(values -> {
             this.metaData.putAll(values);
-            this.ignoredInputs.addAll(Arrays.stream(values.getOrDefault("ignoredInputs", "").split(";")).toList());
-            this.ignoredOutputs.addAll(Arrays.stream(values.getOrDefault("ignoredOutputs", "").split(";")).toList());
+            this.ignoredInputs.addAll(Arrays.stream(values.getOrDefault("ignoredInputs", "").split(";")).filter(PsiElementHelper::hasText).toList());
+            this.ignoredOutputs.addAll(Arrays.stream(values.getOrDefault("ignoredOutputs", "").split(";")).filter(PsiElementHelper::hasText).toList());
         });
         return this;
     }

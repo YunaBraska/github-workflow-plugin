@@ -1,6 +1,7 @@
 package com.github.yunabraska.githubworkflow.services;
 
 import java.util.Map;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -22,6 +23,32 @@ public class WorkflowQuickFixTest extends EditorFeatureTestCase {
                 """)).contains("Delete invalid input [wrong-input]");
     }
 
+    public void testInspectionQuickFixTextsUseConfiguredPluginLanguage() {
+        final PluginSettings settings = PluginSettings.getInstance();
+        final String previousLanguage = settings.languageTag();
+        try {
+            settings.languageTag("de");
+            seedRemoteAction("owner/tool@v1", Map.of("known-input", "Known input"), Map.of());
+
+            assertThat(quickFixTexts("""
+                    name: Quick Fixes
+                    on: workflow_dispatch
+                    jobs:
+                      build:
+                        runs-on: ubuntu-latest
+                        steps:
+                          - uses: owner/tool@v1
+                            with:
+                              wrong-input: no
+                    """))
+                    .anyMatch(text -> text.contains("Neu laden [owner/tool]"))
+                    .anyMatch(text -> text.contains("Warnungen [aus] für [owner/tool]"))
+                    .anyMatch(text -> text.contains("Ungültige input löschen [wrong-input]"));
+        } finally {
+            settings.languageTag(previousLanguage);
+        }
+    }
+
     public void testUnknownWorkflowInputProvidesReplaceQuickFix() {
         assertThat(quickFixTexts("""
                 name: Quick Fixes
@@ -36,6 +63,23 @@ public class WorkflowQuickFixTest extends EditorFeatureTestCase {
                     steps:
                       - run: echo "${{ inputs.missing }}"
                 """)).contains("Replace with [known-input]");
+    }
+
+    public void testPlainGithubUrlInsideRunBlockDoesNotOfferContextReplacement() {
+        assertThat(quickFixTexts("""
+                name: Quick Fixes
+                on: workflow_dispatch
+                jobs:
+                  release:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: |
+                          notes_file="$(mktemp)"
+                          printf -- '- https://github.com/%s/compare/%s...%s\\n' "$REPOSITORY" "$previous_tag" "$TAG_NAME"
+                          echo "ref [${{ github.ref }}]" >> "$notes_file"
+                """))
+                .noneMatch(text -> text.contains("Replace with [action]"))
+                .noneMatch(text -> text.contains("github.com"));
     }
 
     public void testSecretInIfProvidesDeleteQuickFix() {
@@ -270,5 +314,36 @@ public class WorkflowQuickFixTest extends EditorFeatureTestCase {
 
         assertThat(fixedText).contains("job.services.postgres.ports[5432]");
         assertThat(fixedText).doesNotContain("ports[1234]");
+    }
+
+    public void testOutdatedMajorActionProvidesUpdateQuickFixForIssue47() {
+        seedRemoteAction("actions/checkout@v3", Map.of(), Map.of()).remoteRefs(List.of("v4", "v3", "main"));
+
+        assertThat(quickFixTexts("""
+                name: QuickFix
+                on: workflow_dispatch
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - uses: actions/checkout@v3
+                """)).contains("Update action [actions/checkout@v3] to [actions/checkout@v4]");
+    }
+
+    public void testUpdateActionQuickFixRewritesUsesRefForIssue47() {
+        seedRemoteAction("actions/checkout@v3", Map.of(), Map.of()).remoteRefs(List.of("v4", "v3"));
+
+        final String fixedText = applyQuickFix("""
+                name: QuickFix
+                on: workflow_dispatch
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - uses: actions/checkout@v3
+                """, "Update action [actions/checkout@v3] to [actions/checkout@v4]");
+
+        assertThat(fixedText).contains("uses: actions/checkout@v4");
+        assertThat(fixedText).doesNotContain("actions/checkout@v3");
     }
 }

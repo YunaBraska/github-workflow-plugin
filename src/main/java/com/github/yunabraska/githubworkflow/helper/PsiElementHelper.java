@@ -8,6 +8,7 @@ import com.intellij.openapi.util.TextRange;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.psi.PsiElement;
 import com.intellij.psi.impl.source.tree.LeafPsiElement;
+import com.github.yunabraska.githubworkflow.services.GitHubWorkflowBundle;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.yaml.psi.YAMLAlias;
 import org.jetbrains.yaml.psi.YAMLAnchor;
@@ -274,16 +275,16 @@ public class PsiElementHelper {
         }
         final List<String> details = new ArrayList<>();
         getText(psiElement, "description").or(() -> getText(psiElement, "desc"))
-                .ifPresent(description -> details.add("Description: " + description));
+                .ifPresent(description -> details.add(GitHubWorkflowBundle.message("documentation.description", description)));
         getText(psiElement, "type")
-                .ifPresent(type -> details.add("Type: " + type));
+                .ifPresent(type -> details.add(GitHubWorkflowBundle.message("documentation.type", type)));
         if (requiredField) {
-            details.add("Required: " + getText(psiElement, "required").map(Boolean::parseBoolean).orElse(false));
+            details.add(GitHubWorkflowBundle.message("documentation.required", getText(psiElement, "required").map(Boolean::parseBoolean).orElse(false)));
         }
         getText(psiElement, "default")
-                .ifPresent(defaultValue -> details.add("Default: " + defaultValue));
+                .ifPresent(defaultValue -> details.add(GitHubWorkflowBundle.message("documentation.default", defaultValue)));
         getText(psiElement, "deprecationMessage")
-                .ifPresent(message -> details.add("Deprecated: " + message));
+                .ifPresent(message -> details.add(GitHubWorkflowBundle.message("documentation.deprecated", message)));
         return String.join("\n", details);
     }
 
@@ -321,7 +322,7 @@ public class PsiElementHelper {
     }
 
     public static String goToDeclarationString() {
-        return String.format("Open declaration (%s)", Arrays.stream(KeymapUtil.getActiveKeymapShortcuts("GotoDeclaration").getShortcuts())
+        return GitHubWorkflowBundle.message("documentation.open.declaration", Arrays.stream(KeymapUtil.getActiveKeymapShortcuts("GotoDeclaration").getShortcuts())
                 .limit(2)
                 .map(KeymapUtil::getShortcutText)
                 .collect(Collectors.joining(", "))

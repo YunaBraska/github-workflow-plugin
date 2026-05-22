@@ -19,6 +19,7 @@ import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.net.URI;
 import java.util.Optional;
+import java.util.Comparator;
 import java.util.concurrent.Future;
 
 import static java.util.Optional.ofNullable;
@@ -33,10 +34,11 @@ public class FileDownloader {
 
     public static String downloadFileFromGitHub(final String downloadUrl) {
         return GHAccountsUtil.getAccounts().stream()
+                .sorted(Comparator.comparingInt(account -> account.getServer().isGithubDotCom() ? 0 : 1))
                 .map(account -> downloadFromGitHub(downloadUrl, account))
                 .filter(PsiElementHelper::hasText)
                 .findFirst()
-                .orElse("");
+                .orElseGet(() -> downloadContent(downloadUrl));
     }
 
 

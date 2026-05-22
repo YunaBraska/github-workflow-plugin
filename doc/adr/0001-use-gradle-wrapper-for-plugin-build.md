@@ -17,7 +17,7 @@ plugin packaging, signing, publishing, and Plugin Verifier tasks.
 
 Keep the Gradle wrapper as the build entrypoint and use a plain Groovy `build.gradle`.
 
-Use Java 25 to run Gradle and compile plugin bytecode with `--release 21`, matching the 2024.3 baseline while keeping the
+Use Java 25 to run Gradle and compile plugin bytecode with `--release 21`, matching the 2024.2 baseline while keeping the
 developer runtime current.
 
 Use `verifyPlugin` as a required compatibility gate and fail on deprecated, internal, scheduled-for-removal, invalid

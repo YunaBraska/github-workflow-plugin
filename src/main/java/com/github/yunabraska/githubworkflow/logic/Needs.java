@@ -5,6 +5,7 @@ import com.github.yunabraska.githubworkflow.model.GitHubAction;
 import com.github.yunabraska.githubworkflow.model.LocalReferenceResolver;
 import com.github.yunabraska.githubworkflow.model.SimpleElement;
 import com.github.yunabraska.githubworkflow.model.SyntaxAnnotation;
+import com.github.yunabraska.githubworkflow.services.GitHubWorkflowBundle;
 import com.intellij.lang.annotation.AnnotationHolder;
 import com.intellij.lang.annotation.HighlightSeverity;
 import com.intellij.openapi.editor.DefaultLanguageHighlighterColors;
@@ -76,7 +77,7 @@ public class Needs {
                     if (!jobsNames.contains(element.getText())) {
                         // INVALID JOB_ID
                         addAnnotation(holder, psiElement, new SyntaxAnnotation(
-                                "Remove invalid jobId [" + element.getText() + "] - this jobId doesn't match any previous job",
+                                GitHubWorkflowBundle.message("inspection.needs.invalid.job", element.getText()),
                                 null,
                                 deleteElementAction(psiElement.getTextRange())
                         ));
@@ -120,7 +121,7 @@ public class Needs {
 
     private static void highlightLocalActions(final AnnotationHolder holder, final YAMLKeyValue element, final GitHubAction action, final List<SyntaxAnnotation> result) {
         if (action.isResolved() && action.isLocal()) {
-            final String tooltip = String.format("Open declaration (%s)", Arrays.stream(KeymapUtil.getActiveKeymapShortcuts("GotoDeclaration").getShortcuts())
+            final String tooltip = GitHubWorkflowBundle.message("documentation.open.declaration", Arrays.stream(KeymapUtil.getActiveKeymapShortcuts("GotoDeclaration").getShortcuts())
                     .limit(2)
                     .map(KeymapUtil::getShortcutText)
                     .collect(Collectors.joining(", "))

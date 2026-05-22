@@ -1,7 +1,8 @@
 package com.github.yunabraska.githubworkflow.services;
 
 import com.intellij.openapi.application.ApplicationManager;
-import org.jetbrains.plugins.github.authentication.accounts.GHPersistentAccounts;
+import org.jetbrains.plugins.github.authentication.GHAccountsUtil;
+import org.jetbrains.plugins.github.authentication.accounts.GithubAccount;
 
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -45,9 +46,11 @@ public final class RemoteServerSettings {
 
     private static List<Server> jetBrainsGithubServers() {
         try {
-            final GHPersistentAccounts accounts = ApplicationManager.getApplication().getService(GHPersistentAccounts.class);
-            return Optional.ofNullable(accounts).stream()
-                    .flatMap(service -> service.getAccounts().stream())
+            return GHAccountsUtil.getAccounts().stream()
+                    .sorted((left, right) -> {
+                        final int order = Integer.compare(accountOrder(left), accountOrder(right));
+                        return order == 0 ? left.getName().compareTo(right.getName()) : order;
+                    })
                     .map(account -> new Server(
                             account.getName(),
                             account.getServer().toUrl(),
@@ -61,6 +64,10 @@ public final class RemoteServerSettings {
         } catch (final RuntimeException ignored) {
             return List.of();
         }
+    }
+
+    private static int accountOrder(final GithubAccount account) {
+        return account.getServer().isGithubDotCom() ? 0 : 1;
     }
 
     public static final class Server {

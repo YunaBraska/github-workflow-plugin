@@ -4,6 +4,7 @@ import com.intellij.notification.NotificationGroupManager;
 import com.intellij.notification.NotificationType;
 import com.intellij.openapi.actionSystem.AnActionEvent;
 import com.intellij.openapi.actionSystem.ActionUpdateThread;
+import com.intellij.openapi.actionSystem.Presentation;
 import com.intellij.openapi.project.DumbAwareAction;
 import org.jetbrains.annotations.NotNull;
 
@@ -17,6 +18,7 @@ public final class RestoreActionWarningsAction extends DumbAwareAction {
 
     @Override
     public void update(@NotNull final AnActionEvent event) {
+        localize(event.getPresentation());
         final GitHubActionCache.CacheSummary summary = GitHubActionCache.getActionCache().summary();
         event.getPresentation().setEnabled(summary.suppressed() > 0);
     }
@@ -31,5 +33,10 @@ public final class RestoreActionWarningsAction extends DumbAwareAction {
                 .getNotificationGroup("GitHub Workflow")
                 .createNotification(content, NotificationType.INFORMATION)
                 .notify(event.getProject());
+    }
+
+    private static void localize(final Presentation presentation) {
+        presentation.setText(GitHubWorkflowBundle.message("action.GitHubWorkflow.RestoreActionWarnings.text"));
+        presentation.setDescription(GitHubWorkflowBundle.message("action.GitHubWorkflow.RestoreActionWarnings.description"));
     }
 }

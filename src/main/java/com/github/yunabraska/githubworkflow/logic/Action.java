@@ -5,6 +5,7 @@ import com.github.yunabraska.githubworkflow.model.LocalActionReferenceResolver;
 import com.github.yunabraska.githubworkflow.model.SimpleElement;
 import com.github.yunabraska.githubworkflow.model.SyntaxAnnotation;
 import com.github.yunabraska.githubworkflow.services.GitHubActionCache;
+import com.github.yunabraska.githubworkflow.services.GitHubWorkflowBundle;
 import com.intellij.codeInspection.ProblemHighlightType;
 import com.intellij.lang.annotation.AnnotationHolder;
 import com.intellij.lang.annotation.HighlightSeverity;
@@ -33,6 +34,7 @@ import static com.github.yunabraska.githubworkflow.helper.HighlightAnnotatorHelp
 import static com.github.yunabraska.githubworkflow.helper.HighlightAnnotatorHelper.newJumpToFile;
 import static com.github.yunabraska.githubworkflow.helper.HighlightAnnotatorHelper.newReloadAction;
 import static com.github.yunabraska.githubworkflow.helper.HighlightAnnotatorHelper.newUnresolvedAction;
+import static com.github.yunabraska.githubworkflow.helper.HighlightAnnotatorHelper.replaceAction;
 import static com.github.yunabraska.githubworkflow.helper.PsiElementHelper.getChild;
 import static com.github.yunabraska.githubworkflow.helper.PsiElementHelper.getParent;
 import static com.github.yunabraska.githubworkflow.helper.PsiElementHelper.getParentStepOrJob;
@@ -58,6 +60,7 @@ public class Action {
                 .ifPresentOrElse(action -> {
                     if (action.isResolved() && !action.isLocal()) {
                         result.add(newReloadAction(action));
+                        newerMajorActionRef(element, action).ifPresent(result::add);
                     }
                     result.add(newSuppressAction(action));
                     highlightResolvedActionReference(holder, element, action, result);
@@ -87,9 +90,11 @@ public class Action {
                         newSuppressInput(action, id).createAnnotation(item, ofNullable(item.getKey()).map(PsiElement::getTextRange).orElseGet(item::getTextRange), holder);
                     }
                     if (!validIds.contains(id)) {
-                        final String label = FIELD_SECRETS.equals(parameterType) ? "secret" : "input";
+                        final String label = FIELD_SECRETS.equals(parameterType)
+                                ? GitHubWorkflowBundle.message("inspection.parameter.secret")
+                                : GitHubWorkflowBundle.message("inspection.parameter.input");
                         addAnnotation(holder, item, new SyntaxAnnotation(
-                                "Delete invalid " + label + " [" + id + "]",
+                                GitHubWorkflowBundle.message("inspection.action.delete.invalid", label, id),
                                 null,
                                 deleteElementAction(item.getTextRange())
                         ));
@@ -138,6 +143,44 @@ public class Action {
                 }
             });
         }
+    }
+
+    private static Optional<SyntaxAnnotation> newerMajorActionRef(final YAMLKeyValue element, final GitHubAction action) {
+        final String usesValue = action.usesValue();
+        final int separator = usesValue.lastIndexOf('@');
+        if (separator < 1 || separator == usesValue.length() - 1 || action.remoteRefs().isEmpty()) {
+            return Optional.empty();
+        }
+        final String currentRef = usesValue.substring(separator + 1);
+        final Optional<Integer> currentMajor = majorRef(currentRef);
+        if (currentMajor.isEmpty()) {
+            return Optional.empty();
+        }
+        final Optional<String> latestRef = action.remoteRefs().stream()
+                .filter(ref -> majorRef(ref).map(major -> major > currentMajor.get()).orElse(false))
+                .max((left, right) -> Integer.compare(majorRef(left).orElse(0), majorRef(right).orElse(0)));
+        if (latestRef.isEmpty()) {
+            return Optional.empty();
+        }
+        final String newUsesValue = usesValue.substring(0, separator + 1) + latestRef.get();
+        final TextRange range = getTextElement(element).map(PsiElement::getTextRange).orElseGet(element::getTextRange);
+        return Optional.of(new SyntaxAnnotation(
+                GitHubWorkflowBundle.message("inspection.action.update.major", usesValue, newUsesValue),
+                null,
+                HighlightSeverity.WEAK_WARNING,
+                ProblemHighlightType.WEAK_WARNING,
+                replaceAction(range, newUsesValue)
+        ));
+    }
+
+    private static Optional<Integer> majorRef(final String ref) {
+        final String normalized = ofNullable(ref).orElse("").trim();
+        final String digits = normalized.startsWith("v") || normalized.startsWith("V")
+                ? normalized.substring(1)
+                : normalized;
+        return digits.matches("\\d+")
+                ? Optional.of(Integer.parseInt(digits))
+                : Optional.empty();
     }
 
     // ########## CODE COMPLETION ##########
@@ -203,7 +246,7 @@ public class Action {
 
     @NotNull
     private static String toggleText(final String id, final boolean suppressed) {
-        return "Toggle warnings [" + (suppressed ? "on" : "off") + "] for [" + id + "]";
+        return GitHubWorkflowBundle.message("inspection.warning.toggle", GitHubWorkflowBundle.message(suppressed ? "inspection.warning.on" : "inspection.warning.off"), id);
     }
 
     private Action() {

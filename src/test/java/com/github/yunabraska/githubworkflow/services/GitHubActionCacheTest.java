@@ -6,6 +6,9 @@ import com.intellij.testFramework.fixtures.BasePlatformTestCase;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Map;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -95,6 +98,38 @@ public class GitHubActionCacheTest extends BasePlatformTestCase {
         assertThat(cache.getState().actions).isEmpty();
     }
 
+    public void testEntriesRemoveAllAndPortableExportImportRoundTrip() throws IOException {
+        final GitHubActionCache cache = new GitHubActionCache();
+        final GitHubAction action = GitHubAction.createGithubAction(false, "actions/checkout@v4", "actions/checkout@v4")
+                .displayName("Checkout")
+                .description("Checkout action")
+                .isResolved(true)
+                .setInputs(java.util.Map.of("fetch-depth", "Fetch depth"))
+                .setOutputs(java.util.Map.of("ref", "Checked out ref"));
+        cache.getState().actions.put("actions/checkout@v4", action);
+
+        assertThat(cache.entries())
+                .singleElement()
+                .satisfies(entry -> {
+                    assertThat(entry.key()).isEqualTo("actions/checkout@v4");
+                    assertThat(entry.name()).isEqualTo("Checkout");
+                    assertThat(entry.local()).isFalse();
+                    assertThat(entry.resolved()).isTrue();
+                });
+        assertThat(cache.estimatedSizeBytes()).isPositive();
+
+        final Path export = Files.createTempFile("github-workflow-cache", ".txt");
+        cache.exportCache(export);
+
+        final GitHubActionCache imported = new GitHubActionCache();
+        imported.importCache(export);
+
+        assertThat(imported.getState().actions).containsKey("actions/checkout@v4");
+        assertThat(imported.getState().actions.get("actions/checkout@v4").displayName()).isEqualTo("Checkout");
+        assertThat(imported.getState().actions.get("actions/checkout@v4").getInputs()).containsEntry("fetch-depth", "Fetch depth");
+        assertThat(imported.removeAll(java.util.List.of("actions/checkout@v4")).total()).isZero();
+    }
+
     public void testRestoreWarningsClearsActionInputAndOutputSuppressions() throws IOException {
         final GitHubActionCache cache = new GitHubActionCache();
         final GitHubAction action = GitHubAction.createGithubAction(true, localActionPath(), localActionPath())
@@ -111,6 +146,42 @@ public class GitHubActionCacheTest extends BasePlatformTestCase {
         assertThat(action.ignoredInputs()).isEmpty();
         assertThat(action.ignoredOutputs()).isEmpty();
         assertThat(cache.summary().suppressed()).isZero();
+    }
+
+    public void testLoadedEmptySuppressionMetadataDoesNotMarkActionSuppressed() {
+        final GitHubAction action = new GitHubAction().setMetaData(Map.of(
+                "usesValue", "actions/checkout@v4",
+                "isSuppressed", "false",
+                "ignoredInputs", "",
+                "ignoredOutputs", ""
+        ));
+
+        assertThat(action.hasSuppressedWarnings()).isFalse();
+        assertThat(action.ignoredInputs()).isEmpty();
+        assertThat(action.ignoredOutputs()).isEmpty();
+    }
+
+    public void testRemoteActionWithoutRefUsesMainAndQueuesResolution() throws Exception {
+        final GitHubActionCache cache = new GitHubActionCache();
+        final CountDownLatch resolved = new CountDownLatch(1);
+        final GitHubActionCache.ActionResolver previous = cache.useActionResolverForTests(action -> {
+            action.displayName("Checkout").isResolved(true);
+            resolved.countDown();
+            return action;
+        });
+        try {
+            final GitHubAction action = cache.get(getProject(), "actions/checkout");
+
+            assertThat(action.isLocal()).isFalse();
+            assertThat(action.usesValue()).isEqualTo("actions/checkout@main");
+            assertThat(action.isSuppressed()).isFalse();
+            assertThat(cache.getState().actions).containsKey("actions/checkout@main");
+            assertThat(cache.getState().actions).doesNotContainKey("actions/checkout");
+            assertThat(resolved.await(5, TimeUnit.SECONDS)).isTrue();
+            assertThat(action.isResolved()).isTrue();
+        } finally {
+            cache.useActionResolverForTests(previous);
+        }
     }
 
     private static String localActionPath() throws IOException {

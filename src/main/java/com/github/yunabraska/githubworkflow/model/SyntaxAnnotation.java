@@ -17,6 +17,7 @@ import javax.swing.*;
 import java.util.List;
 import java.util.Objects;
 import java.util.StringJoiner;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
@@ -93,13 +94,24 @@ public class SyntaxAnnotation implements IntentionAction {
             final List<SyntaxAnnotation> fixes
     ) {
         if (fixes != null && !fixes.isEmpty() && holder != null && psiElement != null && psiElement.isValid()) {
+            final List<SyntaxAnnotation> gutterFixes = fixes.stream()
+                    .filter(fix -> fix.icon != null)
+                    .toList();
+            final SyntaxAnnotation gutterFix = gutterFixes.stream()
+                    .filter(fix -> fix.icon != NodeIcon.EMPTY)
+                    .findFirst()
+                    .or(() -> gutterFixes.stream().findFirst())
+                    .orElse(null);
+            final AtomicBoolean gutterIconUsed = new AtomicBoolean(false);
             fixes.stream().collect(Collectors.groupingBy(f -> f.level)).forEach((level, group) -> {
                 final SyntaxAnnotation firstItem = group.get(0);
                 final AnnotationBuilder annotation = holder.newAnnotation(level, firstItem.showToolTip ? firstItem.text : "");
                 ofNullable(range != null ? range : psiElement.getTextRange()).ifPresent(annotation::range);
                 ofNullable(firstItem.type).ifPresent(annotation::highlightType);
                 ofNullable(firstItem.text).filter(text -> firstItem.showToolTip).ifPresent(annotation::tooltip);
-                ofNullable(firstItem.icon).map(i -> new IconRenderer(firstItem, psiElement, firstItem.icon)).ifPresent(annotation::gutterIconRenderer);
+                if (gutterFix != null && group.contains(gutterFix) && gutterIconUsed.compareAndSet(false, true)) {
+                    annotation.gutterIconRenderer(new IconRenderer(gutterFix, psiElement, gutterFix.icon, fixes));
+                }
                 group.forEach(fix -> ofNullable(fix.execute).ifPresent(exec -> annotation.withFix(fix)));
                 annotation.create();
             });
@@ -131,6 +143,10 @@ public class SyntaxAnnotation implements IntentionAction {
     @Override
     public boolean startInWriteAction() {
         return false;
+    }
+
+    boolean hasExecution() {
+        return execute != null;
     }
 
     @Override
