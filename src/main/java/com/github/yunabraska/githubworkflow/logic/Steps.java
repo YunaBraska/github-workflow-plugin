@@ -109,9 +109,8 @@ public class Steps {
         );
     }
 
-    //TODO: split uses and run outputs
     public static List<SimpleElement> listStepOutputs(final YAMLSequenceItem step) {
-        //STEP RUN & ACTION OUTPUTS
+        // Run file-command outputs and action metadata outputs are both valid step outputs.
         return Stream.concat(listRunOutputs(step).stream(), listActionsOutputs(step).stream()).toList();
     }
 

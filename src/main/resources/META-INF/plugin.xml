@@ -20,6 +20,12 @@
                                 implementationClass="com.github.yunabraska.githubworkflow.services.CodeCompletion"/>
         <completion.contributor language="Shell Script"
                                 implementationClass="com.github.yunabraska.githubworkflow.services.CodeCompletion"/>
+        <typedHandler implementation="com.github.yunabraska.githubworkflow.services.WorkflowAutoPopupTypedHandler"
+                      order="first, before completionAutoPopup"/>
+        <enterHandlerDelegate implementation="com.github.yunabraska.githubworkflow.services.WorkflowAutoPopupEnterHandler"
+                              order="last"/>
+        <completion.confidence implementationClass="com.github.yunabraska.githubworkflow.services.WorkflowCompletionConfidence"
+                               order="first"/>
         <!-- Syntax Highlighting -->
         <annotator language="yaml"
                    implementationClass="com.github.yunabraska.githubworkflow.services.HighlightAnnotator"/>

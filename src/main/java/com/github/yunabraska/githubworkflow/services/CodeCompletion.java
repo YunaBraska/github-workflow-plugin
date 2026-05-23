@@ -25,6 +25,8 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.yaml.psi.YAMLKeyValue;
 import org.jetbrains.yaml.psi.YAMLSequenceItem;
 
+import java.io.IOException;
+import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -84,6 +86,13 @@ public class CodeCompletion extends CompletionContributor {
         extend(CompletionType.BASIC, PlatformPatterns.psiElement(), completionProvider());
     }
 
+    static boolean workflowCompletionTrigger(final char typeChar) {
+        return switch (typeChar) {
+            case '\n', ':', '.', '@' -> true;
+            default -> false;
+        };
+    }
+
     @NotNull
     private static CompletionProvider<CompletionParameters> completionProvider() {
         return new CompletionProvider<>() {
@@ -99,14 +108,27 @@ public class CodeCompletion extends CompletionContributor {
                     final int offset = completionPsi.offset();
                     final String[] prefix = new String[]{""};
                     final Optional<String[]> caretBracketItem = offset < 1 ? Optional.of(prefix) : getCaretBracketItem(position, offset, prefix);
+                    final Optional<StructureCompletion> yamlValueCompletion = workflowValueCompletion(completionPsi);
+                    if (yamlValueCompletion.isPresent()) {
+                        final StructureCompletion completion = yamlValueCompletion.get();
+                        addLookupElements(
+                                resultSet.withPrefixMatcher(getDefaultPrefix(completionPsi)),
+                                completion.items(),
+                                ICON_NODE,
+                                completion.suffix()
+                        );
+                        return;
+                    }
                     caretBracketItem.ifPresent(cbi -> addCodeCompletionItems(resultSet, cbi, position, prefix));
 
                     //ACTIONS && WORKFLOWS
                     if (caretBracketItem.isEmpty()) {
-                        if (getParent(position, FIELD_RUN).isPresent() && position.getText().contains("$IntellijIdeaRulezzz")) {
+                        if (isCompletingRunEnvironmentVariable(completionPsi)) {
                             // AUTO COMPLETE DEFAULT RUNNER ENVIRONMENT VARIABLES
                             final Map<String, String> defaults = ofNullable(DEFAULT_VALUE_MAP.get(FIELD_ENVS)).map(Supplier::get).orElseGet(Collections::emptyMap);
                             addLookupElements(resultSet.withPrefixMatcher(prefix[0]), defaults, NodeIcon.ICON_ENV, Character.MIN_VALUE);
+                        } else if (isInsideExecutableRunField(position)) {
+                            return;
                         } else if (isCompletingNeedsField(parameters, position)) {
                             //[jobs.job_name.needs] list previous jobs
                             Optional.of(codeCompletionPreviousJobs(position)).filter(cil -> !cil.isEmpty())
@@ -138,11 +160,11 @@ public class CodeCompletion extends CompletionContributor {
                                     Character.MIN_VALUE
                             );
                         } else {
-                            final Optional<StructureCompletion> structureCompletion = workflowTriggerStructureCompletion(parameters);
+                            final Optional<StructureCompletion> structureCompletion = workflowStructureCompletion(completionPsi);
                             if (structureCompletion.isPresent()) {
                                 final StructureCompletion completion = structureCompletion.get();
                                 addLookupElements(
-                                        resultSet.withPrefixMatcher(getDefaultPrefix(parameters)),
+                                        resultSet.withPrefixMatcher(getDefaultPrefix(completionPsi)),
                                         completion.items(),
                                         ICON_NODE,
                                         completion.suffix()
@@ -187,9 +209,7 @@ public class CodeCompletion extends CompletionContributor {
             return true;
         }
         final String wholeText = parameters.getOriginalFile().getText();
-        final int offset = Math.min(parameters.getOffset(), wholeText.length());
-        final int lineStart = wholeText.lastIndexOf('\n', Math.max(0, offset - 1)) + 1;
-        final String beforeCaret = wholeText.substring(lineStart, offset).replace("IntellijIdeaRulezzz", "");
+        final String beforeCaret = lineBeforeCaret(wholeText, parameters.getOffset());
         return beforeCaret.matches("\\s*-?\\s*" + FIELD_USES + "\\s*:\\s*.*");
     }
 
@@ -198,18 +218,37 @@ public class CodeCompletion extends CompletionContributor {
             return true;
         }
         final String wholeText = parameters.getOriginalFile().getText();
-        final int offset = Math.min(parameters.getOffset(), wholeText.length());
-        final int lineStart = wholeText.lastIndexOf('\n', Math.max(0, offset - 1)) + 1;
-        final String beforeCaret = wholeText.substring(lineStart, offset).replace("IntellijIdeaRulezzz", "");
+        final String beforeCaret = lineBeforeCaret(wholeText, parameters.getOffset());
         return beforeCaret.matches("\\s*" + FIELD_SHELL + "\\s*:\\s*.*");
     }
 
-    private static Optional<StructureCompletion> workflowTriggerStructureCompletion(final CompletionParameters parameters) {
-        final Optional<YamlKeyContext> context = yamlKeyContext(parameters);
+    private static boolean isCompletingRunEnvironmentVariable(final CompletionPsi completionPsi) {
+        if (!isInsideExecutableRunField(completionPsi.position())) {
+            return false;
+        }
+        final String wholeText = completionPsi.position().getContainingFile().getText();
+        final String beforeCaret = lineBeforeCaret(wholeText, completionPsi.offset());
+        return beforeCaret.matches(".*\\$[A-Za-z0-9_]*$");
+    }
+
+    private static boolean isInsideExecutableRunField(final PsiElement position) {
+        return getParent(position, FIELD_RUN)
+                .filter(run -> getParent(run, "defaults").isEmpty())
+                .isPresent();
+    }
+
+    private static Optional<StructureCompletion> workflowStructureCompletion(final CompletionPsi completionPsi) {
+        final Optional<YamlKeyContext> context = yamlKeyContext(completionPsi);
         if (context.isEmpty() || isYamlValueCompletion(context.get().currentLine())) {
             return Optional.empty();
         }
         final List<String> path = context.get().path();
+        if (path.isEmpty()) {
+            return Optional.of(new StructureCompletion(WorkflowSyntaxSchema.topLevelKeys(), ':'));
+        }
+        if (pathEndsWith(path, FIELD_ON)) {
+            return Optional.of(new StructureCompletion(WorkflowSyntaxSchema.eventKeys(), ':'));
+        }
         if (pathEndsWith(path, FIELD_ON, "workflow_dispatch")) {
             return Optional.of(new StructureCompletion(workflowDispatchTriggerKeys(), ':'));
         }
@@ -222,25 +261,155 @@ public class CodeCompletion extends CompletionContributor {
         }
         if (isChildOf(path, FIELD_ON, "workflow_dispatch", FIELD_INPUTS)
                 || isChildOf(path, FIELD_ON, "workflow_call", FIELD_INPUTS)) {
-            return Optional.of(new StructureCompletion(workflowInputPropertyKeys(), ':'));
+            return Optional.of(new StructureCompletion(WorkflowSyntaxSchema.workflowInputPropertyKeys(), ':'));
         }
         if (pathEndsWith(path, FIELD_ON, "workflow_call", FIELD_OUTPUTS)) {
             return Optional.empty();
         }
         if (isChildOf(path, FIELD_ON, "workflow_call", FIELD_OUTPUTS)) {
-            return Optional.of(new StructureCompletion(workflowOutputPropertyKeys(), ':'));
+            return Optional.of(new StructureCompletion(WorkflowSyntaxSchema.workflowOutputPropertyKeys(), ':'));
+        }
+        if (isChildOf(path, FIELD_ON, "workflow_call", FIELD_SECRETS)) {
+            return Optional.of(new StructureCompletion(WorkflowSyntaxSchema.workflowSecretPropertyKeys(), ':'));
+        }
+        if (pathMatches(path, FIELD_ON, "*")) {
+            return Optional.of(new StructureCompletion(WorkflowSyntaxSchema.eventFilterKeysFor(path.get(path.size() - 1)), ':'));
+        }
+        if (pathMatches(path, FIELD_ON, "*", "types")) {
+            return Optional.of(new StructureCompletion(WorkflowSyntaxSchema.eventActivityTypesFor(path.get(1)), Character.MIN_VALUE));
+        }
+        if (pathMatches(path, FIELD_ON, "*", "*")) {
+            return workflowEventFilterValueCompletion(completionPsi, context.get());
+        }
+        if (pathEndsWith(path, "permissions")) {
+            return Optional.of(new StructureCompletion(WorkflowSyntaxSchema.permissionScopes(), ':'));
+        }
+        if (pathMatches(path, "defaults", FIELD_RUN) || pathMatches(path, FIELD_JOBS, "*", "defaults", FIELD_RUN)) {
+            return Optional.of(new StructureCompletion(WorkflowSyntaxSchema.defaultsRunKeys(), ':'));
+        }
+        if (pathMatches(path, "concurrency") || pathMatches(path, FIELD_JOBS, "*", "concurrency")) {
+            return Optional.of(new StructureCompletion(WorkflowSyntaxSchema.concurrencyKeys(), ':'));
+        }
+        if (pathMatches(path, FIELD_JOBS, "*", "environment")) {
+            return Optional.of(new StructureCompletion(WorkflowSyntaxSchema.environmentKeys(), ':'));
+        }
+        if (pathMatches(path, FIELD_JOBS, "*")) {
+            return Optional.of(new StructureCompletion(WorkflowSyntaxSchema.jobKeys(), ':'));
+        }
+        if (pathMatches(path, FIELD_JOBS, "*", FIELD_STRATEGY)) {
+            return Optional.of(new StructureCompletion(WorkflowSyntaxSchema.strategyKeys(), ':'));
+        }
+        if (pathMatches(path, FIELD_JOBS, "*", FIELD_STRATEGY, FIELD_MATRIX)) {
+            return Optional.of(new StructureCompletion(WorkflowSyntaxSchema.matrixKeys(), ':'));
+        }
+        if (pathMatches(path, FIELD_JOBS, "*", "container")) {
+            return Optional.of(new StructureCompletion(WorkflowSyntaxSchema.containerKeys(), ':'));
+        }
+        if (pathMatches(path, FIELD_JOBS, "*", "container", "credentials")) {
+            return Optional.of(new StructureCompletion(WorkflowSyntaxSchema.credentialsKeys(), ':'));
+        }
+        if (pathMatches(path, FIELD_JOBS, "*", FIELD_SERVICES, "*")) {
+            return Optional.of(new StructureCompletion(WorkflowSyntaxSchema.serviceKeys(), ':'));
+        }
+        if (pathMatches(path, FIELD_JOBS, "*", FIELD_SERVICES, "*", "credentials")) {
+            return Optional.of(new StructureCompletion(WorkflowSyntaxSchema.credentialsKeys(), ':'));
+        }
+        if (pathMatches(path, FIELD_JOBS, "*", FIELD_STEPS)) {
+            return Optional.of(new StructureCompletion(WorkflowSyntaxSchema.stepKeys(), ':'));
         }
         return Optional.empty();
     }
 
-    private static Optional<YamlKeyContext> yamlKeyContext(final CompletionParameters parameters) {
-        final String wholeText = parameters.getOriginalFile().getText();
-        final int offset = Math.min(parameters.getOffset(), wholeText.length());
-        final int lineStart = wholeText.lastIndexOf('\n', Math.max(0, offset - 1)) + 1;
-        final String currentLine = wholeText.substring(lineStart, offset).replace("IntellijIdeaRulezzz", "");
+    private static Optional<StructureCompletion> workflowValueCompletion(final CompletionPsi completionPsi) {
+        final Optional<YamlKeyContext> context = yamlKeyContext(completionPsi);
+        if (context.isEmpty()) {
+            return Optional.empty();
+        }
+        final Optional<String> key = currentLineKey(context.get().currentLine());
+        if (key.isEmpty()) {
+            return Optional.empty();
+        }
+        if (context.get().currentLine().contains("${{")) {
+            return Optional.empty();
+        }
+        final List<String> path = context.get().path();
+        final String currentKey = key.get();
+        final Optional<StructureCompletion> eventFilterValueCompletion = workflowEventFilterValueCompletion(completionPsi, context.get());
+        if (eventFilterValueCompletion.isPresent()) {
+            return eventFilterValueCompletion;
+        }
+        if ("runs-on".equals(currentKey)) {
+            return Optional.of(new StructureCompletion(WorkflowSyntaxSchema.runnerLabels(), Character.MIN_VALUE));
+        }
+        if ("permissions".equals(currentKey)) {
+            return Optional.of(new StructureCompletion(WorkflowSyntaxSchema.permissionShorthandValues(), Character.MIN_VALUE));
+        }
+        if ("types".equals(currentKey) && pathMatches(path, FIELD_ON, "*")) {
+            return Optional.of(new StructureCompletion(WorkflowSyntaxSchema.eventActivityTypesFor(path.get(1)), Character.MIN_VALUE));
+        }
+        if ("type".equals(currentKey) && isChildOf(path, FIELD_ON, "workflow_dispatch", FIELD_INPUTS)) {
+            return Optional.of(new StructureCompletion(WorkflowSyntaxSchema.workflowInputTypes(), Character.MIN_VALUE));
+        }
+        if ("type".equals(currentKey) && isChildOf(path, FIELD_ON, "workflow_call", FIELD_INPUTS)) {
+            return Optional.of(new StructureCompletion(WorkflowSyntaxSchema.reusableWorkflowInputTypes(), Character.MIN_VALUE));
+        }
+        if (pathEndsWith(path, "permissions")) {
+            return Optional.of(new StructureCompletion(WorkflowSyntaxSchema.permissionValuesFor(currentKey), Character.MIN_VALUE));
+        }
+        if ("required".equals(currentKey)
+                || "continue-on-error".equals(currentKey)
+                || "fail-fast".equals(currentKey)
+                || "cancel-in-progress".equals(currentKey)) {
+            return Optional.of(new StructureCompletion(WorkflowSyntaxSchema.booleanValues(), Character.MIN_VALUE));
+        }
+        return Optional.empty();
+    }
+
+    private static Optional<StructureCompletion> workflowEventFilterValueCompletion(final CompletionPsi completionPsi, final YamlKeyContext context) {
+        return eventFilterContext(context)
+                .map(eventFilter -> eventFilterValueCompletions(completionPsi.position(), eventFilter.event(), eventFilter.filter()))
+                .filter(values -> !values.isEmpty())
+                .map(values -> new StructureCompletion(values, Character.MIN_VALUE));
+    }
+
+    private static Optional<EventFilterContext> eventFilterContext(final YamlKeyContext context) {
+        final List<String> path = context.path();
+        final Optional<String> currentKey = currentLineKey(context.currentLine());
+        if (currentKey.isPresent() && pathMatches(path, FIELD_ON, "*")) {
+            final String event = path.get(1);
+            final String filter = currentKey.get();
+            return WorkflowSyntaxSchema.eventFilterKeysFor(event).containsKey(filter)
+                    ? Optional.of(new EventFilterContext(event, filter))
+                    : Optional.empty();
+        }
+        if (pathMatches(path, FIELD_ON, "*", "*")) {
+            final String event = path.get(1);
+            final String filter = path.get(2);
+            return WorkflowSyntaxSchema.eventFilterKeysFor(event).containsKey(filter)
+                    ? Optional.of(new EventFilterContext(event, filter))
+                    : Optional.empty();
+        }
+        return Optional.empty();
+    }
+
+    private static Map<String, String> eventFilterValueCompletions(final PsiElement position, final String event, final String filter) {
+        return switch (filter) {
+            case "types" -> WorkflowSyntaxSchema.eventActivityTypesFor(event);
+            case "branches", "branches-ignore" -> localGitRefs(position, "heads", "completion.workflow.eventFilter.branches");
+            case "tags", "tags-ignore" -> localGitRefs(position, "tags", "completion.workflow.eventFilter.tags");
+            case "paths", "paths-ignore" -> localProjectPaths(position);
+            default -> Collections.emptyMap();
+        };
+    }
+
+    private static Optional<YamlKeyContext> yamlKeyContext(final CompletionPsi completionPsi) {
+        final String wholeText = completionPsi.position().getContainingFile().getText();
+        final int offset = boundedOffset(wholeText, completionPsi.offset());
+        final int lineStart = currentLineStart(wholeText, offset);
+        final String currentLine = lineBeforeCaret(wholeText, offset);
         final int currentIndent = leadingSpaces(currentLine);
         final List<YamlAncestor> stack = new ArrayList<>();
-        wholeText.substring(0, lineStart).lines().forEach(raw -> {
+        wholeText.substring(0, Math.min(lineStart, wholeText.length())).lines().forEach(raw -> {
             final String content = raw.trim();
             if (!content.isBlank() && !content.startsWith("#")) {
                 final Optional<String> key = yamlKey(content);
@@ -256,9 +425,11 @@ public class CodeCompletion extends CompletionContributor {
         while (!stack.isEmpty() && stack.get(stack.size() - 1).indent() >= currentIndent) {
             stack.remove(stack.size() - 1);
         }
-        return stack.isEmpty()
-                ? Optional.empty()
-                : Optional.of(new YamlKeyContext(stack.stream().map(YamlAncestor::key).toList(), currentLine));
+        return Optional.of(new YamlKeyContext(stack.stream().map(YamlAncestor::key).toList(), currentLine));
+    }
+
+    private static Optional<String> currentLineKey(final String currentLine) {
+        return yamlKey(currentLine.trim());
     }
 
     private static Optional<String> yamlKey(final String content) {
@@ -307,6 +478,18 @@ public class CodeCompletion extends CompletionContributor {
         return path.size() == expectedParent.length + 1 && pathEndsWith(path.subList(0, path.size() - 1), expectedParent);
     }
 
+    private static boolean pathMatches(final List<String> path, final String... pattern) {
+        if (path.size() != pattern.length) {
+            return false;
+        }
+        for (int index = 0; index < pattern.length; index++) {
+            if (!"*".equals(pattern[index]) && !pattern[index].equals(path.get(index))) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     private static Map<String, String> workflowDispatchTriggerKeys() {
         final Map<String, String> result = new LinkedHashMap<>();
         result.put(FIELD_INPUTS, GitHubWorkflowBundle.message("completion.context.inputs"));
@@ -321,28 +504,9 @@ public class CodeCompletion extends CompletionContributor {
         return result;
     }
 
-    private static Map<String, String> workflowInputPropertyKeys() {
-        final Map<String, String> result = new LinkedHashMap<>();
-        result.put("description", GitHubWorkflowBundle.message("documentation.description.label"));
-        result.put("type", GitHubWorkflowBundle.message("documentation.type", "string | boolean | choice | number | environment"));
-        result.put("required", GitHubWorkflowBundle.message("documentation.required", true));
-        result.put("default", GitHubWorkflowBundle.message("documentation.default", ""));
-        result.put("options", GitHubWorkflowBundle.message("documentation.value.label"));
-        return result;
-    }
-
-    private static Map<String, String> workflowOutputPropertyKeys() {
-        final Map<String, String> result = new LinkedHashMap<>();
-        result.put("description", GitHubWorkflowBundle.message("documentation.description.label"));
-        result.put("value", GitHubWorkflowBundle.message("documentation.value.label"));
-        return result;
-    }
-
     private static Optional<RemoteUsesRef> remoteUsesRef(final CompletionParameters parameters) {
         final String wholeText = parameters.getOriginalFile().getText();
-        final int offset = Math.min(parameters.getOffset(), wholeText.length());
-        final int lineStart = wholeText.lastIndexOf('\n', Math.max(0, offset - 1)) + 1;
-        final String beforeCaret = wholeText.substring(lineStart, offset).replace("IntellijIdeaRulezzz", "");
+        final String beforeCaret = lineBeforeCaret(wholeText, parameters.getOffset());
         final Matcher matcher = REMOTE_USES_REF_PATTERN.matcher(beforeCaret);
         return matcher.matches()
                 ? Optional.of(new RemoteUsesRef(matcher.group(1), matcher.group(2)))
@@ -351,9 +515,7 @@ public class CodeCompletion extends CompletionContributor {
 
     private static Optional<String> remoteUsesTargetPrefix(final CompletionParameters parameters) {
         final String wholeText = parameters.getOriginalFile().getText();
-        final int offset = Math.min(parameters.getOffset(), wholeText.length());
-        final int lineStart = wholeText.lastIndexOf('\n', Math.max(0, offset - 1)) + 1;
-        final String beforeCaret = wholeText.substring(lineStart, offset).replace("IntellijIdeaRulezzz", "");
+        final String beforeCaret = lineBeforeCaret(wholeText, parameters.getOffset());
         final Matcher matcher = REMOTE_USES_TARGET_PATTERN.matcher(beforeCaret);
         return matcher.matches() ? Optional.of(matcher.group(1)) : Optional.empty();
     }
@@ -381,6 +543,112 @@ public class CodeCompletion extends CompletionContributor {
             return true;
         });
         return result;
+    }
+
+    private static Map<String, String> localProjectPaths(final PsiElement position) {
+        final Project project = getProject(position);
+        if (project == null) {
+            return Collections.emptyMap();
+        }
+        final Map<String, String> result = new LinkedHashMap<>();
+        ProjectFileIndex.getInstance(project).iterateContent(file -> {
+            if (!file.isDirectory() && !file.getPath().contains("/.git/")) {
+                final VirtualFile contentRoot = ProjectFileIndex.getInstance(project).getContentRootForFile(file);
+                if (contentRoot != null) {
+                    final String path = Path.of(contentRoot.getPath()).relativize(Path.of(file.getPath())).toString().replace('\\', '/');
+                    if (!path.isBlank()) {
+                        result.putIfAbsent(path, GitHubWorkflowBundle.message("completion.workflow.eventFilter.paths"));
+                    }
+                }
+            }
+            return result.size() < 200;
+        });
+        return result;
+    }
+
+    private static Map<String, String> localGitRefs(final PsiElement position, final String namespace, final String descriptionKey) {
+        final Map<String, String> result = new LinkedHashMap<>();
+        repositoryRoot(position)
+                .flatMap(CodeCompletion::gitDir)
+                .ifPresent(gitDir -> {
+                    readLooseRefs(gitDir.resolve("refs").resolve(namespace), result, descriptionKey);
+                    readPackedRefs(gitDir.resolve("packed-refs"), "refs/" + namespace + "/", result, descriptionKey);
+                });
+        return result;
+    }
+
+    private static void readLooseRefs(final Path refRoot, final Map<String, String> result, final String descriptionKey) {
+        if (!Files.isDirectory(refRoot)) {
+            return;
+        }
+        try (Stream<Path> paths = Files.walk(refRoot)) {
+            paths.filter(Files::isRegularFile)
+                    .map(refRoot::relativize)
+                    .map(Path::toString)
+                    .map(value -> value.replace('\\', '/'))
+                    .filter(value -> !value.isBlank())
+                    .sorted()
+                    .forEach(ref -> result.putIfAbsent(ref, GitHubWorkflowBundle.message(descriptionKey)));
+        } catch (final IOException ignored) {
+            // Local ref completion is opportunistic.
+        }
+    }
+
+    private static void readPackedRefs(final Path packedRefs, final String prefix, final Map<String, String> result, final String descriptionKey) {
+        if (!Files.isRegularFile(packedRefs)) {
+            return;
+        }
+        try (Stream<String> lines = Files.lines(packedRefs)) {
+            lines.map(String::trim)
+                    .filter(line -> !line.isBlank() && !line.startsWith("#") && !line.startsWith("^"))
+                    .map(line -> line.split("\\s+", 2))
+                    .filter(parts -> parts.length == 2 && parts[1].startsWith(prefix))
+                    .map(parts -> parts[1].substring(prefix.length()))
+                    .filter(value -> !value.isBlank())
+                    .forEach(ref -> result.putIfAbsent(ref, GitHubWorkflowBundle.message(descriptionKey)));
+        } catch (final IOException ignored) {
+            // Local ref completion is opportunistic.
+        }
+    }
+
+    private static Optional<Path> repositoryRoot(final PsiElement position) {
+        Path current = ofNullable(position)
+                .map(PsiElement::getContainingFile)
+                .map(file -> file.getVirtualFile())
+                .map(VirtualFile::getPath)
+                .map(Path::of)
+                .map(Path::getParent)
+                .orElse(null);
+        while (current != null) {
+            if (Files.isDirectory(current.resolve(".git")) || Files.isRegularFile(current.resolve(".git"))) {
+                return Optional.of(current);
+            }
+            current = current.getParent();
+        }
+        return ofNullable(getProject(position))
+                .map(Project::getBasePath)
+                .map(Path::of)
+                .filter(path -> Files.isDirectory(path.resolve(".git")) || Files.isRegularFile(path.resolve(".git")));
+    }
+
+    private static Optional<Path> gitDir(final Path projectDir) {
+        final Path dotGit = projectDir.resolve(".git");
+        if (Files.isDirectory(dotGit)) {
+            return Optional.of(dotGit);
+        }
+        if (!Files.isRegularFile(dotGit)) {
+            return Optional.empty();
+        }
+        try {
+            final String value = Files.readString(dotGit).trim();
+            if (!value.startsWith("gitdir:")) {
+                return Optional.empty();
+            }
+            final Path path = Path.of(value.substring("gitdir:".length()).trim());
+            return Optional.of(path.isAbsolute() ? path : projectDir.resolve(path).normalize());
+        } catch (final IOException ignored) {
+            return Optional.empty();
+        }
     }
 
     private static Map<String, String> knownRemoteRefs(final PsiElement position, final String usesBase) {
@@ -490,9 +758,9 @@ public class CodeCompletion extends CompletionContributor {
 
     private static Optional<String> nearestPreviousUsesValue(final CompletionParameters parameters) {
         final String wholeText = parameters.getOriginalFile().getText();
-        final int offset = Math.min(parameters.getOffset(), wholeText.length());
-        final int lineStart = wholeText.lastIndexOf('\n', Math.max(0, offset - 1)) + 1;
-        final String beforeCaret = wholeText.substring(0, lineStart);
+        final int offset = boundedOffset(wholeText, parameters.getOffset());
+        final int lineStart = currentLineStart(wholeText, offset);
+        final String beforeCaret = wholeText.substring(0, Math.min(lineStart, wholeText.length()));
         final String[] lines = beforeCaret.split("\\R");
         for (int index = lines.length - 1; index >= 0; index--) {
             final String line = lines[index];
@@ -545,9 +813,7 @@ public class CodeCompletion extends CompletionContributor {
             return true;
         }
         final String wholeText = parameters.getOriginalFile().getText();
-        final int offset = Math.min(parameters.getOffset(), wholeText.length());
-        final int lineStart = wholeText.lastIndexOf('\n', Math.max(0, offset - 1)) + 1;
-        final String beforeCaret = wholeText.substring(lineStart, offset).replace("IntellijIdeaRulezzz", "");
+        final String beforeCaret = lineBeforeCaret(wholeText, parameters.getOffset());
         return beforeCaret.matches("\\s*" + FIELD_NEEDS + "\\s*:\\s*.*");
     }
 
@@ -675,8 +941,47 @@ public class CodeCompletion extends CompletionContributor {
     private static String getDefaultPrefix(final CompletionParameters parameters) {
         final String wholeText = parameters.getOriginalFile().getText();
         final int caretOffset = parameters.getOffset();
-        final int indexStart = getStartIndex(wholeText, caretOffset - 1);
-        return wholeText.substring(indexStart, caretOffset).replace("IntellijIdeaRulezzz", "").trim();
+        return getDefaultPrefix(wholeText, caretOffset);
+    }
+
+    private static String getDefaultPrefix(final CompletionPsi completionPsi) {
+        final String wholeText = completionPsi.position().getContainingFile().getText();
+        return getDefaultPrefix(wholeText, completionPsi.offset());
+    }
+
+    private static String getDefaultPrefix(final String wholeText, final int caretOffset) {
+        final int offset = boundedOffset(wholeText, caretOffset);
+        if (offset < 1) {
+            return "";
+        }
+        final int indexStart = getStartIndex(wholeText, offset - 1);
+        if (indexStart < 0 || indexStart > offset) {
+            return "";
+        }
+        return wholeText.substring(indexStart, offset)
+                .replace("IntellijIdeaRulezzz", "")
+                .replaceFirst("^[\\s\\[,'\"]+", "")
+                .trim();
+    }
+
+    static String lineBeforeCaret(final String wholeText, final int rawOffset) {
+        final int offset = boundedOffset(wholeText, rawOffset);
+        final int lineStart = currentLineStart(wholeText, offset);
+        if (lineStart > offset) {
+            return "";
+        }
+        return wholeText.substring(lineStart, offset).replace("IntellijIdeaRulezzz", "");
+    }
+
+    private static int currentLineStart(final String wholeText, final int offset) {
+        if (offset < 1) {
+            return 0;
+        }
+        return wholeText.lastIndexOf('\n', offset - 1) + 1;
+    }
+
+    private static int boundedOffset(final String wholeText, final int rawOffset) {
+        return Math.max(0, Math.min(rawOffset, wholeText.length()));
     }
 
     private static void addLookupElements(final CompletionResultSet resultSet, final Map<String, String> map, final NodeIcon icon, final char suffix) {
@@ -707,6 +1012,9 @@ public class CodeCompletion extends CompletionContributor {
     }
 
     private record YamlKeyContext(List<String> path, String currentLine) {
+    }
+
+    private record EventFilterContext(String event, String filter) {
     }
 
     private record CompletionPsi(PsiElement position, int offset) {

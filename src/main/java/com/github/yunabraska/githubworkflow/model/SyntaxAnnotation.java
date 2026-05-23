@@ -11,19 +11,19 @@ import com.intellij.openapi.util.TextRange;
 import com.intellij.psi.PsiElement;
 import com.intellij.psi.PsiFile;
 import com.intellij.util.IncorrectOperationException;
+import com.intellij.openapi.util.Iconable;
 import org.jetbrains.annotations.NotNull;
 
 import javax.swing.*;
 import java.util.List;
 import java.util.Objects;
 import java.util.StringJoiner;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
 import static java.util.Optional.ofNullable;
 
-public class SyntaxAnnotation implements IntentionAction {
+public class SyntaxAnnotation implements IntentionAction, Iconable {
 
     private final String text;
     private final NodeIcon icon;
@@ -94,24 +94,12 @@ public class SyntaxAnnotation implements IntentionAction {
             final List<SyntaxAnnotation> fixes
     ) {
         if (fixes != null && !fixes.isEmpty() && holder != null && psiElement != null && psiElement.isValid()) {
-            final List<SyntaxAnnotation> gutterFixes = fixes.stream()
-                    .filter(fix -> fix.icon != null)
-                    .toList();
-            final SyntaxAnnotation gutterFix = gutterFixes.stream()
-                    .filter(fix -> fix.icon != NodeIcon.EMPTY)
-                    .findFirst()
-                    .or(() -> gutterFixes.stream().findFirst())
-                    .orElse(null);
-            final AtomicBoolean gutterIconUsed = new AtomicBoolean(false);
             fixes.stream().collect(Collectors.groupingBy(f -> f.level)).forEach((level, group) -> {
                 final SyntaxAnnotation firstItem = group.get(0);
                 final AnnotationBuilder annotation = holder.newAnnotation(level, firstItem.showToolTip ? firstItem.text : "");
                 ofNullable(range != null ? range : psiElement.getTextRange()).ifPresent(annotation::range);
                 ofNullable(firstItem.type).ifPresent(annotation::highlightType);
                 ofNullable(firstItem.text).filter(text -> firstItem.showToolTip).ifPresent(annotation::tooltip);
-                if (gutterFix != null && group.contains(gutterFix) && gutterIconUsed.compareAndSet(false, true)) {
-                    annotation.gutterIconRenderer(new IconRenderer(gutterFix, psiElement, gutterFix.icon, fixes));
-                }
                 group.forEach(fix -> ofNullable(fix.execute).ifPresent(exec -> annotation.withFix(fix)));
                 annotation.create();
             });
@@ -121,6 +109,11 @@ public class SyntaxAnnotation implements IntentionAction {
     @SuppressWarnings("unused")
     public Icon icon() {
         return icon.icon();
+    }
+
+    @Override
+    public Icon getIcon(final int flags) {
+        return icon == null ? null : icon.icon();
     }
 
     @NotNull

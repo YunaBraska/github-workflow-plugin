@@ -9,6 +9,7 @@ import java.io.IOException;
 import java.net.URI;
 import java.net.URLEncoder;
 import java.net.http.HttpClient;
+import java.net.http.HttpHeaders;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
@@ -99,6 +100,31 @@ public final class WorkflowRunClient {
     }
 
     /**
+     * Requests GitHub to re-run a completed workflow run.
+     *
+     * @param request workflow repository and authorization context
+     * @param runId GitHub Actions run id
+     * @param failedOnly whether only failed jobs should be re-run
+     * @return HTTP status and whether GitHub accepted the re-run
+     * @throws IOException when GitHub rejects the request or the network call fails
+     * @throws InterruptedException when the IDE cancels the remote call
+     */
+    public RerunResult rerun(
+            final WorkflowRunRequest request,
+            final long runId,
+            final boolean failedOnly
+    ) throws IOException, InterruptedException {
+        final HttpResponse<String> response = send(
+                request,
+                "POST",
+                runUrl(request, runId) + (failedOnly ? "/rerun-failed-jobs" : "/rerun"),
+                "",
+                failedOnly ? "GitHub workflow failed jobs rerun" : "GitHub workflow rerun"
+        );
+        return new RerunResult(response.statusCode(), response.statusCode() / 100 == 2);
+    }
+
+    /**
      * Deletes one completed workflow run from the remote repository.
      *
      * @param request workflow repository and authorization context
@@ -153,6 +179,63 @@ public final class WorkflowRunClient {
             }
         }
         return result.toString();
+    }
+
+    /**
+     * Lists the artifacts produced by one workflow run.
+     *
+     * @param request workflow repository and authorization context
+     * @param runId GitHub Actions run id
+     * @return immutable list of artifacts known to GitHub for the run
+     * @throws IOException when GitHub rejects the request or the network call fails
+     * @throws InterruptedException when the IDE cancels the remote call
+     */
+    public List<ArtifactStatus> artifacts(final WorkflowRunRequest request, final long runId) throws IOException, InterruptedException {
+        final HttpResponse<String> response = send(
+                request,
+                "GET",
+                runUrl(request, runId) + "/artifacts?per_page=100",
+                "",
+                "GitHub workflow artifacts"
+        );
+        final JsonObject json = parseObject(response.body());
+        final List<ArtifactStatus> result = new ArrayList<>();
+        Optional.ofNullable(json.get("artifacts"))
+                .filter(JsonElement::isJsonArray)
+                .map(JsonElement::getAsJsonArray)
+                .ifPresent(artifacts -> artifacts.forEach(artifact -> {
+                    if (artifact.isJsonObject()) {
+                        final JsonObject object = artifact.getAsJsonObject();
+                        result.add(new ArtifactStatus(
+                                longValue(object, "id").orElse(-1L),
+                                stringValue(object, "name").orElse("artifact"),
+                                longValue(object, "size_in_bytes").orElse(0L),
+                                booleanValue(object, "expired").orElse(false),
+                                stringValue(object, "archive_download_url").orElse("")
+                        ));
+                    }
+                }));
+        return result.stream().filter(artifact -> artifact.id() >= 0).toList();
+    }
+
+    /**
+     * Downloads one workflow artifact archive as bytes.
+     *
+     * @param request workflow repository and authorization context
+     * @param artifactId GitHub Actions artifact id
+     * @return zip archive bytes
+     * @throws IOException when GitHub rejects the request or the network call fails
+     * @throws InterruptedException when the IDE cancels the remote call
+     */
+    public byte[] artifactZip(final WorkflowRunRequest request, final long artifactId) throws IOException, InterruptedException {
+        final HttpResponse<byte[]> response = sendBytes(
+                request,
+                "GET",
+                request.apiUrl() + "/repos/" + encode(request.owner()) + "/" + encode(request.repo()) + "/actions/artifacts/" + artifactId + "/zip",
+                "",
+                "GitHub workflow artifact download"
+        );
+        return response.body();
     }
 
     public List<JobStatus> jobs(final WorkflowRunRequest request, final long runId) throws IOException, InterruptedException {
@@ -228,6 +311,44 @@ public final class WorkflowRunClient {
                 : lastFailure;
     }
 
+    private HttpResponse<byte[]> sendBytes(
+            final WorkflowRunRequest workflow,
+            final String method,
+            final String url,
+            final String body,
+            final String operation
+    ) throws IOException, InterruptedException {
+        WorkflowRunHttpException lastFailure = null;
+        boolean authenticatedRateLimitFailure = false;
+        final String authorizationCacheKey = authorizationCacheKey(workflow);
+        for (final GitHubRequestAuthorizations.Authorization authorization : authorizations(workflow, authorizationCacheKey)) {
+            if (!authorization.authenticated() && authenticatedRateLimitFailure) {
+                break;
+            }
+            final HttpResponse<byte[]> response = transport.sendBytes(request(workflow, method, url, body, authorization));
+            if (response.statusCode() / 100 == 2) {
+                if (authorization.authenticated()) {
+                    successfulAuthorizations.put(authorizationCacheKey, authorization);
+                }
+                return response;
+            }
+            lastFailure = failureBytes(operation, response);
+            if (authorization.authenticated() && rateLimitExceeded(
+                    response.statusCode(),
+                    response.headers(),
+                    new String(Optional.ofNullable(response.body()).orElseGet(() -> new byte[0]), StandardCharsets.UTF_8)
+            )) {
+                authenticatedRateLimitFailure = true;
+            }
+            if (!shouldTryNextAuthorization(response.statusCode())) {
+                throw lastFailure;
+            }
+        }
+        throw lastFailure == null
+                ? new IOException(operation + " failed: no authorization candidates were available.")
+                : lastFailure;
+    }
+
     private List<GitHubRequestAuthorizations.Authorization> authorizations(
             final WorkflowRunRequest workflow,
             final String authorizationCacheKey
@@ -289,12 +410,31 @@ public final class WorkflowRunClient {
         );
     }
 
+    private static WorkflowRunHttpException failureBytes(final String operation, final HttpResponse<byte[]> response) {
+        final String body = new String(Optional.ofNullable(response.body()).orElseGet(() -> new byte[0]), StandardCharsets.UTF_8);
+        final boolean accountActionRecommended = needsAccountAction(response.statusCode(), response.headers(), body);
+        final String hint = accountActionRecommended
+                ? "\nAdd or refresh GitHub accounts in " + GitHubRequestAuthorizations.settingsHint() + "."
+                : "";
+        final String summary = responseSummary(response.statusCode(), response.headers(), body);
+        return new WorkflowRunHttpException(
+                operation + " failed with HTTP " + response.statusCode() + (summary.isEmpty() ? "" : ": " + summary) + hint,
+                response.statusCode(),
+                body,
+                accountActionRecommended
+        );
+    }
+
     private static String responseSummary(final HttpResponse<String> response) {
-        final String body = Optional.ofNullable(response.body()).orElse("").strip();
+        return responseSummary(response.statusCode(), response.headers(), response.body());
+    }
+
+    private static String responseSummary(final int statusCode, final HttpHeaders headers, final String responseBody) {
+        final String body = Optional.ofNullable(responseBody).orElse("").strip();
         if (body.isEmpty()) {
             return "";
         }
-        final String contentType = response.headers()
+        final String contentType = headers
                 .firstValue("Content-Type")
                 .orElse("")
                 .toLowerCase();
@@ -310,30 +450,38 @@ public final class WorkflowRunClient {
     }
 
     private static boolean rateLimitExceeded(final HttpResponse<String> response) {
-        if (response.statusCode() != 403 && response.statusCode() != 429) {
+        return rateLimitExceeded(response.statusCode(), response.headers(), response.body());
+    }
+
+    private static boolean rateLimitExceeded(final int statusCode, final HttpHeaders headers, final String body) {
+        if (statusCode != 403 && statusCode != 429) {
             return false;
         }
-        if (response.headers()
+        if (headers
                 .firstValue("x-ratelimit-remaining")
                 .map(String::trim)
                 .filter("0"::equals)
                 .isPresent()) {
             return true;
         }
-        return Optional.ofNullable(response.body())
-                .map(body -> body.toLowerCase(Locale.ROOT))
-                .filter(body -> body.contains("rate limit"))
+        return Optional.ofNullable(body)
+                .map(value -> value.toLowerCase(Locale.ROOT))
+                .filter(value -> value.contains("rate limit"))
                 .isPresent();
     }
 
     private static boolean needsAccountAction(final HttpResponse<String> response) {
-        if (response.statusCode() == 401 || response.statusCode() == 429) {
+        return needsAccountAction(response.statusCode(), response.headers(), response.body());
+    }
+
+    private static boolean needsAccountAction(final int statusCode, final HttpHeaders headers, final String body) {
+        if (statusCode == 401 || statusCode == 429) {
             return true;
         }
-        if (response.statusCode() != 403) {
+        if (statusCode != 403) {
             return false;
         }
-        return !mustHaveAdminRights(response) || rateLimitExceeded(response);
+        return !mustHaveAdminRights(body) || rateLimitExceeded(statusCode, headers, body);
     }
 
     private static boolean mustHaveAdminRights(final HttpResponse<String> response) {
@@ -407,6 +555,12 @@ public final class WorkflowRunClient {
                 .filter(value -> value >= 0);
     }
 
+    private static Optional<Boolean> booleanValue(final JsonObject object, final String name) {
+        return Optional.ofNullable(object.get(name))
+                .filter(JsonElement::isJsonPrimitive)
+                .map(JsonElement::getAsBoolean);
+    }
+
     private static String encode(final String value) {
         return URLEncoder.encode(Optional.ofNullable(value).orElse(""), StandardCharsets.UTF_8).replace("+", "%20");
     }
@@ -425,6 +579,10 @@ public final class WorkflowRunClient {
 
     interface HttpTransport {
         HttpResponse<String> send(HttpRequest request) throws IOException, InterruptedException;
+
+        default HttpResponse<byte[]> sendBytes(final HttpRequest request) throws IOException, InterruptedException {
+            throw new IOException("Binary transport is not available.");
+        }
     }
 
     interface AuthorizationProvider {
@@ -435,6 +593,11 @@ public final class WorkflowRunClient {
         @Override
         public HttpResponse<String> send(final HttpRequest request) throws IOException, InterruptedException {
             return client.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+        }
+
+        @Override
+        public HttpResponse<byte[]> sendBytes(final HttpRequest request) throws IOException, InterruptedException {
+            return client.send(request, HttpResponse.BodyHandlers.ofByteArray());
         }
     }
 
@@ -450,10 +613,16 @@ public final class WorkflowRunClient {
     public record CancelResult(int statusCode, boolean accepted) {
     }
 
+    public record RerunResult(int statusCode, boolean accepted) {
+    }
+
     public record DeleteResult(int statusCode, boolean accepted) {
     }
 
     public record JobStatus(long id, String name, String status, String conclusion, String htmlUrl) {
+    }
+
+    public record ArtifactStatus(long id, String name, long sizeInBytes, boolean expired, String archiveDownloadUrl) {
     }
 
     public static final class WorkflowRunHttpException extends IOException {

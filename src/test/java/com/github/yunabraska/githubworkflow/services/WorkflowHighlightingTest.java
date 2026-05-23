@@ -4,6 +4,311 @@ import java.util.Map;
 
 public class WorkflowHighlightingTest extends EditorFeatureTestCase {
 
+    public void testUnknownTopLevelWorkflowKeyIsHighlighted() {
+        assertWorkflowHighlights("""
+                name: Syntax
+                <weak_warning descr="Unknown workflow key [jobz]">jobz</weak_warning>:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo ok
+                """);
+    }
+
+    public void testUnknownWorkflowEventKeyIsHighlighted() {
+        assertWorkflowHighlights("""
+                name: Syntax
+                on:
+                  <weak_warning descr="Unknown workflow event [pull_requestz]">pull_requestz</weak_warning>:
+                    branches: [main]
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo ok
+                """);
+    }
+
+    public void testUnknownTriggerFilterKeyIsHighlighted() {
+        assertWorkflowHighlights("""
+                name: Syntax
+                on:
+                  push:
+                    <weak_warning descr="Unknown trigger filter [branchz]">branchz</weak_warning>: [main]
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo ok
+                """);
+    }
+
+    public void testUnknownTriggerActivityTypeIsHighlighted() {
+        assertWorkflowHighlights("""
+                name: Syntax
+                on:
+                  workflow_run:
+                    types: <weak_warning descr="Unknown trigger value [teleported]">teleported</weak_warning>
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo ok
+                """);
+    }
+
+    public void testScheduleRejectsBranchFilters() {
+        assertWorkflowHighlights("""
+                name: Syntax
+                on:
+                  schedule:
+                    - cron: '0 0 * * *'
+                    - <weak_warning descr="Unknown trigger filter [branches]">branches</weak_warning>: [main]
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo ok
+                """);
+    }
+
+    public void testUnknownJobKeyIsHighlighted() {
+        assertWorkflowHighlights("""
+                name: Syntax
+                on: workflow_dispatch
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    <weak_warning descr="Unknown job key [stepz]">stepz</weak_warning>:
+                      - run: echo ok
+                """);
+    }
+
+    public void testUnknownStepKeyIsHighlighted() {
+        assertWorkflowHighlights("""
+                name: Syntax
+                on: workflow_dispatch
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - <weak_warning descr="Unknown step key [shellz]">shellz</weak_warning>: sh
+                        run: echo ok
+                """);
+    }
+
+    public void testUnknownConcurrencyKeyIsHighlighted() {
+        assertWorkflowHighlights("""
+                name: Syntax
+                on: workflow_dispatch
+                concurrency:
+                  group: release
+                  <weak_warning descr="Unknown workflow key [cancelled-by-committee]">cancelled-by-committee</weak_warning>: true
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo ok
+                """);
+    }
+
+    public void testUnknownEnvironmentKeyIsHighlighted() {
+        assertWorkflowHighlights("""
+                name: Syntax
+                on: workflow_dispatch
+                jobs:
+                  deploy:
+                    runs-on: ubuntu-latest
+                    environment:
+                      name: production
+                      <weak_warning descr="Unknown workflow key [portal]">portal</weak_warning>: https://example.com
+                    steps:
+                      - run: echo ok
+                """);
+    }
+
+    public void testUnknownContainerCredentialKeyIsHighlighted() {
+        assertWorkflowHighlights("""
+                name: Syntax
+                on: workflow_dispatch
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    container:
+                      image: ghcr.io/example/app:latest
+                      credentials:
+                        username: octo
+                        <weak_warning descr="Unknown workflow key [token]">token</weak_warning>: hush
+                    steps:
+                      - run: echo ok
+                """);
+    }
+
+    public void testUnknownServiceCredentialKeyIsHighlighted() {
+        assertWorkflowHighlights("""
+                name: Syntax
+                on: workflow_dispatch
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    services:
+                      database:
+                        image: postgres:16
+                        credentials:
+                          username: octo
+                          <weak_warning descr="Unknown workflow key [token]">token</weak_warning>: hush
+                    steps:
+                      - run: echo ok
+                """);
+    }
+
+    public void testUnknownPermissionScopeIsHighlighted() {
+        assertWorkflowHighlights("""
+                name: Syntax
+                on: workflow_dispatch
+                permissions:
+                  <weak_warning descr="Unknown permission [contentz]">contentz</weak_warning>: read
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo ok
+                """);
+    }
+
+    public void testUnknownWorkflowDispatchInputPropertyIsHighlighted() {
+        assertWorkflowHighlights("""
+                name: Syntax
+                on:
+                  workflow_dispatch:
+                    inputs:
+                      target:
+                        type: choice
+                        <weak_warning descr="Unknown trigger key [wizardry]">wizardry</weak_warning>: quiet
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo ok
+                """);
+    }
+
+    public void testUnknownWorkflowDispatchInputTypeIsHighlighted() {
+        assertWorkflowHighlights("""
+                name: Syntax
+                on:
+                  workflow_dispatch:
+                    inputs:
+                      target:
+                        type: <weak_warning descr="Unknown trigger value [potato]">potato</weak_warning>
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo ok
+                """);
+    }
+
+    public void testWorkflowCallInputRejectsDispatchOnlyTypes() {
+        assertWorkflowHighlights("""
+                name: Syntax
+                on:
+                  workflow_call:
+                    inputs:
+                      target:
+                        type: <weak_warning descr="Unknown trigger value [choice]">choice</weak_warning>
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo ok
+                """);
+    }
+
+    public void testWorkflowInputRequiredRejectsNonBooleanValue() {
+        assertWorkflowHighlights("""
+                name: Syntax
+                on:
+                  workflow_dispatch:
+                    inputs:
+                      target:
+                        required: <weak_warning descr="Unknown trigger value [maybe]">maybe</weak_warning>
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo ok
+                """);
+    }
+
+    public void testUnknownWorkflowCallOutputPropertyIsHighlighted() {
+        assertWorkflowHighlights("""
+                name: Syntax
+                on:
+                  workflow_call:
+                    outputs:
+                      image:
+                        value: ${{ jobs.build.outputs.image }}
+                        <weak_warning descr="Unknown trigger key [artifact]">artifact</weak_warning>: docker
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    outputs:
+                      image: ${{ steps.meta.outputs.image }}
+                    steps:
+                      - id: meta
+                        run: echo "image=demo" >> "$GITHUB_OUTPUT"
+                """);
+    }
+
+    public void testUnknownWorkflowCallSecretPropertyIsHighlighted() {
+        assertWorkflowHighlights("""
+                name: Syntax
+                on:
+                  workflow_call:
+                    secrets:
+                      token:
+                        required: true
+                        <weak_warning descr="Unknown trigger key [vault]">vault</weak_warning>: no
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo ok
+                """);
+    }
+
+    public void testUnknownPermissionValueIsHighlighted() {
+        assertWorkflowHighlights("""
+                name: Syntax
+                on: workflow_dispatch
+                permissions:
+                  contents: <weak_warning descr="Unknown permission value [writer]">writer</weak_warning>
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo ok
+                """);
+    }
+
+    public void testRestrictedPermissionValueIsHighlighted() {
+        assertWorkflowHighlights("""
+                name: Syntax
+                on: workflow_dispatch
+                permissions:
+                  id-token: <weak_warning descr="Unknown permission value [read]">read</weak_warning>
+                  models: <weak_warning descr="Unknown permission value [write]">write</weak_warning>
+                  vulnerability-alerts: <weak_warning descr="Unknown permission value [write]">write</weak_warning>
+                  artifact-metadata: write
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo ok
+                """);
+    }
+
     public void testResolvedActionInputIsAccepted() {
         seedRemoteAction("owner/tool@v1", Map.of("known-input", "Known input"), Map.of());
 

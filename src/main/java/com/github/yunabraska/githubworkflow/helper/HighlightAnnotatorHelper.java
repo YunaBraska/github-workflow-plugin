@@ -40,6 +40,7 @@ import static com.github.yunabraska.githubworkflow.helper.PsiElementHelper.remov
 import static com.github.yunabraska.githubworkflow.model.NodeIcon.JUMP_TO_IMPLEMENTATION;
 import static com.github.yunabraska.githubworkflow.model.NodeIcon.RELOAD;
 import static com.github.yunabraska.githubworkflow.model.NodeIcon.SETTINGS;
+import static com.github.yunabraska.githubworkflow.model.NodeIcon.SUPPRESS_ON;
 import static com.github.yunabraska.githubworkflow.model.SyntaxAnnotation.createAnnotation;
 import static java.util.Optional.ofNullable;
 
@@ -82,7 +83,7 @@ public class HighlightAnnotatorHelper {
             final TextRange textRange = textRangeIncludingPreviousDot(psiElement, tooLongPart[0], tooLongPart[tooLongPart.length - 1]);
             new SyntaxAnnotation(
                     GitHubWorkflowBundle.message("inspection.invalid.suffix.remove", Arrays.stream(tooLongPart).map(SimpleElement::text).collect(Collectors.joining("."))),
-                    null,
+                    SUPPRESS_ON,
                     deleteElementAction(textRange)
             ).createAnnotation(psiElement, textRange, holder);
         } else {
@@ -97,7 +98,7 @@ public class HighlightAnnotatorHelper {
             final TextRange textRange = simpleTextRange(psiElement, itemId);
             createAnnotation(psiElement, textRange, holder, items.stream().map(item -> new SyntaxAnnotation(
                     GitHubWorkflowBundle.message("inspection.replace.with", item),
-                    null,
+                    RELOAD,
                     replaceAction(textRange, item)
             )).toList());
             return false;
@@ -114,7 +115,7 @@ public class HighlightAnnotatorHelper {
             final TextRange textRange = textRangeIncludingPreviousDot(psiElement, itemId, itemId);
             new SyntaxAnnotation(
                     GitHubWorkflowBundle.message("inspection.invalid.remove", itemId.text()),
-                    null,
+                    SUPPRESS_ON,
                     deleteElementAction(textRange)
             ).createAnnotation(psiElement, textRange, holder);
             return false;
@@ -127,7 +128,7 @@ public class HighlightAnnotatorHelper {
             final TextRange textRange = simpleTextRange(psiElement, itemId);
             createAnnotation(psiElement, textRange, holder, outputs.stream().filter(PsiElementHelper::hasText).map(item -> new SyntaxAnnotation(
                     GitHubWorkflowBundle.message("inspection.replace.with", item),
-                    null,
+                    RELOAD,
                     replaceAction(textRange, item)
             )).toList());
         }
@@ -162,7 +163,7 @@ public class HighlightAnnotatorHelper {
         final TextRange textRange = ofNullable(element.getValue()).map(PsiElement::getTextRange).orElseGet(element::getTextRange);
         return new SyntaxAnnotation(
                 GitHubWorkflowBundle.message("inspection.invalid.remove", element.getValueText()),
-                null,
+                SUPPRESS_ON,
                 HighlightSeverity.WEAK_WARNING,
                 ProblemHighlightType.WEAK_WARNING,
                 deleteElementAction(textRange)
@@ -171,7 +172,6 @@ public class HighlightAnnotatorHelper {
 
     @NotNull
     public static SyntaxAnnotation newJumpToFile(final GitHubAction action) {
-        //TODO: List Workflows connected to the action file
         return new SyntaxAnnotation(
                 GitHubWorkflowBundle.message("inspection.action.jump", action.name()),
                 JUMP_TO_IMPLEMENTATION,
@@ -246,7 +246,7 @@ public class HighlightAnnotatorHelper {
             final TextRange textRange = simpleTextRange(psiElement, itemId);
             createAnnotation(psiElement, textRange, holder, List.of(new SyntaxAnnotation(
                     GitHubWorkflowBundle.message("inspection.invalid.remove", itemId.text()),
-                    null,
+                    SUPPRESS_ON,
                     deleteElementAction(textRange)
             )));
             return true;

@@ -53,17 +53,23 @@ public class WorkflowRunClientTest extends TestCase {
 
             final WorkflowRunClient.RunStatus status = client.status(request, 42);
             final WorkflowRunClient.CancelResult cancel = client.cancel(request, 42);
+            final WorkflowRunClient.RerunResult rerunAll = client.rerun(request, 42, false);
+            final WorkflowRunClient.RerunResult rerunFailed = client.rerun(request, 42, true);
             final WorkflowRunClient.DeleteResult delete = client.delete(request, 42);
             final String logs = client.logs(request, 42);
 
             assertThat(status.completed()).isTrue();
             assertThat(status.conclusion()).isEqualTo("success");
             assertThat(cancel.accepted()).isTrue();
+            assertThat(rerunAll.accepted()).isTrue();
+            assertThat(rerunFailed.accepted()).isTrue();
             assertThat(delete.accepted()).isTrue();
             assertThat(logs).contains("== build [completed/success]", "hello from job log");
             assertThat(server.requests()).contains(
                     "/repos/acme/tool/actions/runs/42",
                     "/repos/acme/tool/actions/runs/42/cancel",
+                    "/repos/acme/tool/actions/runs/42/rerun",
+                    "/repos/acme/tool/actions/runs/42/rerun-failed-jobs",
                     "/repos/acme/tool/actions/runs/42/jobs",
                     "/repos/acme/tool/actions/jobs/100/logs"
             );
@@ -95,6 +101,23 @@ public class WorkflowRunClientTest extends TestCase {
             assertThat(result.get().status()).isEqualTo("queued");
             assertThat(result.get().htmlUrl()).isEqualTo("html-latest");
             assertThat(server.requests()).contains("/repos/acme/tool/actions/workflows/build.yml/runs?branch=feature%2Fone&event=workflow_dispatch&per_page=1");
+        }
+    }
+
+    public void testArtifactsAndZipUseRunArtifactEndpoints() throws Exception {
+        try (FakeWorkflowRunServer server = new FakeWorkflowRunServer()) {
+            final WorkflowRunClient client = new WorkflowRunClient();
+            final WorkflowRunRequest request = new WorkflowRunRequest(server.apiUrl(), "acme", "tool", "build.yml", "main", Map.of(), "");
+
+            final List<WorkflowRunClient.ArtifactStatus> artifacts = client.artifacts(request, 42);
+            final byte[] zip = client.artifactZip(request, artifacts.get(0).id());
+
+            assertThat(artifacts).containsExactly(new WorkflowRunClient.ArtifactStatus(300, "reports", 9, false, "artifact-url"));
+            assertThat(new String(zip, StandardCharsets.UTF_8)).isEqualTo("zip-bytes");
+            assertThat(server.requests()).contains(
+                    "/repos/acme/tool/actions/runs/42/artifacts?per_page=100",
+                    "/repos/acme/tool/actions/artifacts/300/zip"
+            );
         }
     }
 
@@ -338,11 +361,20 @@ public class WorkflowRunClientTest extends TestCase {
             if (path.endsWith("/cancel")) {
                 return new Response(202, "application/json", "{}");
             }
+            if (path.endsWith("/rerun") || path.endsWith("/rerun-failed-jobs")) {
+                return new Response(201, "application/json", "{}");
+            }
             if (path.endsWith("/workflows/build.yml/runs")) {
                 return new Response(200, "application/json", "{\"workflow_runs\":[{\"id\":77,\"status\":\"queued\",\"conclusion\":null,\"html_url\":\"html-latest\"}]}");
             }
             if (path.endsWith("/runs/42/jobs")) {
                 return new Response(200, "application/json", "{\"jobs\":[{\"id\":100,\"name\":\"build\",\"status\":\"completed\",\"conclusion\":\"success\"}]}");
+            }
+            if (path.endsWith("/runs/42/artifacts")) {
+                return new Response(200, "application/json", "{\"artifacts\":[{\"id\":300,\"name\":\"reports\",\"size_in_bytes\":9,\"expired\":false,\"archive_download_url\":\"artifact-url\"}]}");
+            }
+            if (path.endsWith("/artifacts/300/zip")) {
+                return new Response(200, "application/zip", "zip-bytes");
             }
             if (path.endsWith("/jobs/100/logs")) {
                 return new Response(200, "text/plain", "hello from job log\n");

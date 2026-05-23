@@ -1,5 +1,8 @@
 package com.github.yunabraska.githubworkflow.services;
 
+import com.intellij.codeInsight.intention.IntentionAction;
+import com.intellij.openapi.util.Iconable;
+
 import java.util.Map;
 import java.util.List;
 
@@ -42,11 +45,57 @@ public class WorkflowQuickFixTest extends EditorFeatureTestCase {
                               wrong-input: no
                     """))
                     .anyMatch(text -> text.contains("Neu laden [owner/tool]"))
-                    .anyMatch(text -> text.contains("Warnungen [aus] für [owner/tool]"))
-                    .anyMatch(text -> text.contains("Ungültige input löschen [wrong-input]"));
+                    .anyMatch(text -> text.contains("Warnungen umschalten [aus] für [owner/tool]"))
+                    .anyMatch(text -> text.contains("Ungültig: Eingabe [wrong-input] löschen"));
         } finally {
             settings.languageTag(previousLanguage);
         }
+    }
+
+    public void testPluginQuickFixesExposeIcons() {
+        seedRemoteAction("owner/tool@v1", Map.of("known-input", "Known input"), Map.of());
+        configureWorkflow("""
+                name: Quick Fixes
+                on: workflow_dispatch
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - uses: owner/tool@v1
+                        with:
+                          wrong-input: no
+                """);
+        myFixture.doHighlighting();
+
+        assertQuickFixHasIcon("Reload [owner/tool]");
+        assertQuickFixHasIcon("Toggle warnings [off] for [owner/tool]");
+        assertQuickFixHasIcon("Toggle warnings [off] for [wrong-input]");
+        assertQuickFixHasIcon("Delete invalid input [wrong-input]");
+    }
+
+    public void testReferenceQuickFixesExposeIcons() {
+        configureWorkflow("""
+                name: Quick Fixes
+                on:
+                  workflow_call:
+                    inputs:
+                      known-input:
+                        type: string
+                    secrets:
+                      SECRET_TOKEN:
+                        required: false
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - if: secrets.SECRET_TOKEN != ''
+                        run: echo "${{ inputs.missing }} ${{ runner.os.extra }}"
+                """);
+        myFixture.doHighlighting();
+
+        assertQuickFixHasIcon("Replace with [known-input]");
+        assertQuickFixHasIcon("Remove [secrets.SECRET_TOKEN] - Secrets are not valid in `if` statements");
+        assertQuickFixHasIcon("Remove invalid suffix [extra]");
     }
 
     public void testUnknownWorkflowInputProvidesReplaceQuickFix() {
@@ -200,6 +249,19 @@ public class WorkflowQuickFixTest extends EditorFeatureTestCase {
 
         assertThat(fixedText).contains("${{ needs.build }}");
         assertThat(fixedText).doesNotContain("needs.build.");
+    }
+
+    private void assertQuickFixHasIcon(final String text) {
+        final IntentionAction action = allIntentions().stream()
+                .filter(quickFix -> text.equals(quickFix.getText()))
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("Missing quick fix [" + text + "]"));
+        assertThat(action)
+                .as("Quick fix [%s] exposes an IDE icon", text)
+                .isInstanceOf(Iconable.class);
+        assertThat(((Iconable) action).getIcon(0))
+                .as("Quick fix [%s] icon", text)
+                .isNotNull();
     }
 
     public void testReplaceQuickFixUpdatesWorkflowCallInputDefaultReference() {

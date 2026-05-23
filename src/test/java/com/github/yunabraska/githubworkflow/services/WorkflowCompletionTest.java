@@ -1,16 +1,154 @@
 package com.github.yunabraska.githubworkflow.services;
 
 import com.github.yunabraska.githubworkflow.model.GitHubAction;
-
+import com.intellij.codeInsight.editorActions.TypedHandlerDelegate;
+import com.intellij.codeInsight.lookup.LookupElement;
+import com.intellij.codeInsight.lookup.LookupElementPresentation;
+import com.intellij.util.ThreeState;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 import static com.github.yunabraska.githubworkflow.services.GitHubActionCache.getActionCache;
 import static org.assertj.core.api.Assertions.assertThat;
 
 public class WorkflowCompletionTest extends EditorFeatureTestCase {
+
+    public void testAutoPopupTriggersAfterYamlNewLine() {
+        configureWorkflow("""
+                name: Completion
+                on:
+                  <caret>
+                """);
+
+        assertThat(invokeAutoPopup('\n')).isTrue();
+    }
+
+    public void testLineBeforeCaretHandlesInjectedZeroOffset() {
+        assertThat(CodeCompletion.lineBeforeCaret("""
+
+                name: Completion
+                on: workflow_dispatch
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: <caret>
+                """, 0)).isEmpty();
+    }
+
+    public void testRunFieldCompletionDoesNotCrash() {
+        assertThat(completeWorkflow("""
+
+                name: Completion
+                on: workflow_dispatch
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: <caret>
+                """)).isNotNull();
+    }
+
+    public void testAutoPopupTypedHandlerSchedulesYamlNewLine() {
+        configureWorkflow("""
+                name: Completion
+                on:
+                  <caret>
+                """);
+        final WorkflowAutoPopupTypedHandler handler = new WorkflowAutoPopupTypedHandler();
+
+        assertThat(handler.checkAutoPopup('\n', getProject(), myFixture.getEditor(), myFixture.getFile()))
+                .isEqualTo(TypedHandlerDelegate.Result.CONTINUE);
+        assertThat(handler.charTyped('\n', getProject(), myFixture.getEditor(), myFixture.getFile()))
+                .isEqualTo(TypedHandlerDelegate.Result.CONTINUE);
+    }
+
+    public void testEnterHandlerTriggersAfterYamlMappingKey() {
+        configureWorkflow("""
+                name: Completion
+                on:
+                  <caret>
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo ok
+                """);
+
+        assertThat(WorkflowAutoPopupEnterHandler.shouldAutoPopupAfterEnter(myFixture.getEditor(), myFixture.getFile()))
+                .isTrue();
+    }
+
+    public void testEnterHandlerIgnoresPlainYamlValueLine() {
+        configureWorkflow("""
+                name: Completion
+                on: workflow_dispatch
+                  <caret>
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo ok
+                """);
+
+        assertThat(WorkflowAutoPopupEnterHandler.shouldAutoPopupAfterEnter(myFixture.getEditor(), myFixture.getFile()))
+                .isFalse();
+    }
+
+    public void testWorkflowCompletionConfidenceKeepsAutoPopupAvailable() {
+        configureWorkflow("""
+                name: Completion
+                on:
+                  <caret>
+                """);
+
+        assertThat(new WorkflowCompletionConfidence().shouldSkipAutopopup(
+                myFixture.getEditor(),
+                myFixture.getFile().findElementAt(myFixture.getCaretOffset()),
+                myFixture.getFile(),
+                myFixture.getCaretOffset()
+        )).isEqualTo(ThreeState.NO);
+    }
+
+    public void testAutoPopupTriggersAfterYamlKeySeparator() {
+        configureWorkflow("""
+                name: Completion
+                on:<caret>
+                """);
+
+        assertThat(invokeAutoPopup(':')).isTrue();
+    }
+
+    public void testAutoPopupTriggersAfterExpressionDot() {
+        configureWorkflow("""
+                name: Completion
+                on: workflow_dispatch
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo "${{ github.<caret> }}"
+                """);
+
+        assertThat(invokeAutoPopup('.')).isTrue();
+    }
+
+    public void testAutoPopupIgnoresPlainLetters() {
+        configureWorkflow("""
+                name: Completion
+                on: workflow_dispatch
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo ok<caret>
+                """);
+
+        assertThat(invokeAutoPopup('x')).isFalse();
+    }
 
     public void testRootCompletionSuggestsAvailableContexts() {
         assertThat(completeWorkflow("""
@@ -36,6 +174,10 @@ public class WorkflowCompletionTest extends EditorFeatureTestCase {
                         run: echo ok
                       - run: echo "${{ <caret> }}"
                 """)).contains("github", "job", "runner", "strategy", "matrix", "env", "inputs", "secrets", "steps");
+    }
+
+    private boolean invokeAutoPopup(final char typeChar) {
+        return WorkflowAutoPopupTypedHandler.shouldAutoPopup(typeChar, myFixture.getEditor(), myFixture.getFile());
     }
 
     public void testGithubCompletionSuggestsRefName() {
@@ -362,6 +504,156 @@ public class WorkflowCompletionTest extends EditorFeatureTestCase {
                 """)).contains("inputs");
     }
 
+    public void testTopLevelSyntaxCompletionSuggestsCurrentWorkflowKeys() {
+        assertThat(completeWorkflow("""
+                name: Completion
+                <caret>
+                """)).contains("run-name", "permissions", "defaults", "concurrency", "jobs");
+    }
+
+    public void testOnSyntaxCompletionSuggestsCurrentEvents() {
+        assertThat(completeWorkflow("""
+                name: Completion
+                on:
+                  <caret>
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo ok
+                """)).contains("push", "pull_request", "workflow_call", "workflow_dispatch", "workflow_run", "merge_group", "image_version");
+    }
+
+    public void testOnSyntaxCompletionShowsTriggerDescriptions() {
+        assertThat(completeWorkflowTypeTexts("""
+                name: Completion
+                on:
+                  <caret>
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo ok
+                """)).containsEntry("push", "Commit or tag pushed")
+                .containsEntry("workflow_dispatch", "Manual run button")
+                .containsEntry("workflow_call", "Reusable workflow call");
+    }
+
+    public void testTriggerTypesValueCompletionSuggestsActivityTypesInline() {
+        assertThat(completeWorkflow("""
+                name: Completion
+                on:
+                  pull_request:
+                    types: [<caret>]
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo ok
+                """)).contains("opened", "synchronize", "ready_for_review", "auto_merge_enabled");
+    }
+
+    public void testTriggerTypesValueCompletionSuggestsActivityTypesInList() {
+        assertThat(completeWorkflow("""
+                name: Completion
+                on:
+                  workflow_run:
+                    types:
+                      - <caret>
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo ok
+                """)).contains("completed", "requested", "in_progress");
+    }
+
+    public void testBranchFilterCompletionSuggestsLocalGitBranches() throws Exception {
+        writeProjectFile(".git/refs/heads/main", "abc123");
+        writeProjectFile(".git/refs/heads/feature/one", "abc123");
+
+        configureWorkflowProjectFile("""
+                name: Completion
+                on:
+                  push:
+                    branches: [<caret>]
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo ok
+                """);
+
+        assertThat(completeBasicLookupStrings()).contains("main", "feature/one");
+    }
+
+    public void testTagFilterCompletionSuggestsLocalGitTags() throws Exception {
+        writeProjectFile(".git/refs/tags/v1.2.3", "abc123");
+
+        configureWorkflowProjectFile("""
+                name: Completion
+                on:
+                  push:
+                    tags:
+                      - <caret>
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo ok
+                """);
+
+        assertThat(completeBasicLookupStrings()).contains("v1.2.3");
+    }
+
+    public void testPathFilterCompletionSuggestsProjectFiles() {
+        myFixture.addFileToProject("src/main/App.java", "class App {}");
+
+        configureWorkflowProjectFile("""
+                name: Completion
+                on:
+                  pull_request:
+                    paths: [<caret>]
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo ok
+                """);
+
+        assertThat(completeBasicLookupStrings()).contains("src/main/App.java");
+    }
+
+    public void testPushFilterCompletionSuggestsBranchTagAndPathKeys() {
+        assertThat(completeWorkflow("""
+                name: Completion
+                on:
+                  push:
+                    <caret>
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo ok
+                """)).contains("branches", "branches-ignore", "tags", "paths", "paths-ignore")
+                .doesNotContain("types");
+    }
+
+    public void testScheduleFilterCompletionSuggestsOnlyCron() {
+        assertThat(completeWorkflow("""
+                name: Completion
+                on:
+                  schedule:
+                    <caret>
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo ok
+                """)).contains("cron")
+                .doesNotContain("branches", "paths", "types");
+    }
+
     public void testWorkflowCallTriggerCompletionSuggestsInputsOutputsAndSecrets() {
         assertThat(completeWorkflow("""
                 name: Completion
@@ -422,6 +714,320 @@ public class WorkflowCompletionTest extends EditorFeatureTestCase {
                     steps:
                       - run: echo ok
                 """)).contains("description", "type", "required", "default");
+    }
+
+    public void testWorkflowCallSecretDefinitionCompletionSuggestsSecretProperties() {
+        assertThat(completeWorkflow("""
+                name: Completion
+                on:
+                  workflow_call:
+                    secrets:
+                      token:
+                        <caret>
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo ok
+                """)).contains("description", "required");
+    }
+
+    public void testWorkflowDispatchInputTypeCompletionSuggestsDispatchTypes() {
+        assertThat(completeWorkflow("""
+                name: Completion
+                on:
+                  workflow_dispatch:
+                    inputs:
+                      target:
+                        type: <caret>
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo ok
+                """)).contains("string", "boolean", "choice", "number", "environment");
+    }
+
+    public void testWorkflowCallInputTypeCompletionSuggestsReusableWorkflowTypes() {
+        assertThat(completeWorkflow("""
+                name: Completion
+                on:
+                  workflow_call:
+                    inputs:
+                      target:
+                        type: <caret>
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo ok
+                """)).contains("string", "boolean", "number").doesNotContain("choice", "environment");
+    }
+
+    public void testPermissionScopeCompletionSuggestsCurrentScopes() {
+        assertThat(completeWorkflow("""
+                name: Completion
+                on: workflow_dispatch
+                permissions:
+                  <caret>
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo ok
+                """)).contains("contents", "pull-requests", "id-token", "attestations", "models", "artifact-metadata", "code-quality", "vulnerability-alerts");
+    }
+
+    public void testPermissionScopeCompletionShowsDescriptions() {
+        assertThat(completeWorkflowTypeTexts("""
+                name: Completion
+                on: workflow_dispatch
+                permissions:
+                  <caret>
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo ok
+                """)).containsEntry("contents", "Repository contents")
+                .containsEntry("id-token", "OpenID Connect tokens")
+                .containsEntry("models", "GitHub Models");
+    }
+
+    public void testPermissionValueCompletionSuggestsReadWriteNone() {
+        assertThat(completeWorkflow("""
+                name: Completion
+                on: workflow_dispatch
+                permissions:
+                  contents: <caret>
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo ok
+                """)).contains("read", "write", "none");
+    }
+
+    public void testPermissionShorthandCompletionSuggestsReadAllWriteAllAndEmpty() {
+        assertThat(completeWorkflow("""
+                name: Completion
+                on: workflow_dispatch
+                permissions: <caret>
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo ok
+                """)).contains("read-all", "write-all", "{}");
+    }
+
+    public void testIdTokenPermissionCompletionSuggestsOnlyWriteOrNone() {
+        assertThat(completeWorkflow("""
+                name: Completion
+                on: workflow_dispatch
+                permissions:
+                  id-token: <caret>
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo ok
+                """)).contains("write", "none").doesNotContain("read");
+    }
+
+    public void testModelsPermissionCompletionSuggestsOnlyReadOrNone() {
+        assertThat(completeWorkflow("""
+                name: Completion
+                on: workflow_dispatch
+                permissions:
+                  models: <caret>
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo ok
+                """)).contains("read", "none").doesNotContain("write");
+    }
+
+    public void testJobSyntaxCompletionSuggestsDocumentedJobKeys() {
+        assertThat(completeWorkflow("""
+                name: Completion
+                on: workflow_dispatch
+                jobs:
+                  build:
+                    <caret>
+                """)).contains("runs-on", "permissions", "environment", "strategy", "container", "services", "uses");
+    }
+
+    public void testDefaultsRunCompletionSuggestsShellAndWorkingDirectory() {
+        assertThat(completeWorkflow("""
+                name: Completion
+                on: workflow_dispatch
+                defaults:
+                  run:
+                    <caret>
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo ok
+                """)).contains("shell", "working-directory");
+    }
+
+    public void testStrategyCompletionSuggestsMatrixFailFastAndMaxParallelKeys() {
+        assertThat(completeWorkflow("""
+                name: Completion
+                on: workflow_dispatch
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    strategy:
+                      <caret>
+                    steps:
+                      - run: echo ok
+                """)).contains("matrix", "fail-fast", "max-parallel");
+    }
+
+    public void testMatrixCompletionSuggestsIncludeAndExcludeKeys() {
+        assertThat(completeWorkflow("""
+                name: Completion
+                on: workflow_dispatch
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    strategy:
+                      matrix:
+                        <caret>
+                    steps:
+                      - run: echo ok
+                """)).contains("include", "exclude");
+    }
+
+    public void testContainerCompletionSuggestsContainerShapeKeys() {
+        assertThat(completeWorkflow("""
+                name: Completion
+                on: workflow_dispatch
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    container:
+                      <caret>
+                    steps:
+                      - run: echo ok
+                """)).contains("image", "credentials", "env", "ports", "volumes", "options");
+    }
+
+    public void testContainerCredentialsCompletionSuggestsUsernameAndPassword() {
+        assertThat(completeWorkflow("""
+                name: Completion
+                on: workflow_dispatch
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    container:
+                      image: ghcr.io/example/app:latest
+                      credentials:
+                        <caret>
+                    steps:
+                      - run: echo ok
+                """)).contains("username", "password");
+    }
+
+    public void testServiceCompletionSuggestsServiceShapeKeys() {
+        assertThat(completeWorkflow("""
+                name: Completion
+                on: workflow_dispatch
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    services:
+                      postgres:
+                        <caret>
+                    steps:
+                      - run: echo ok
+                """)).contains("image", "credentials", "env", "ports", "volumes", "options");
+    }
+
+    public void testServiceCredentialsCompletionSuggestsUsernameAndPassword() {
+        assertThat(completeWorkflow("""
+                name: Completion
+                on: workflow_dispatch
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    services:
+                      postgres:
+                        image: postgres:16
+                        credentials:
+                          <caret>
+                    steps:
+                      - run: echo ok
+                """)).contains("username", "password");
+    }
+
+    public void testConcurrencyCompletionSuggestsGroupAndCancelInProgress() {
+        assertThat(completeWorkflow("""
+                name: Completion
+                on: workflow_dispatch
+                concurrency:
+                  <caret>
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo ok
+                """)).contains("group", "cancel-in-progress");
+    }
+
+    public void testEnvironmentCompletionSuggestsNameAndUrl() {
+        assertThat(completeWorkflow("""
+                name: Completion
+                on: workflow_dispatch
+                jobs:
+                  deploy:
+                    runs-on: ubuntu-latest
+                    environment:
+                      <caret>
+                    steps:
+                      - run: echo ok
+                """)).contains("name", "url");
+    }
+
+    public void testStepSyntaxCompletionSuggestsDocumentedStepKeys() {
+        assertThat(completeWorkflow("""
+                name: Completion
+                on: workflow_dispatch
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - <caret>
+                """)).contains("id", "name", "uses", "run", "shell", "with", "continue-on-error", "timeout-minutes");
+    }
+
+    public void testRunsOnCompletionSuggestsCommonHostedRunnerLabels() {
+        assertThat(completeWorkflow("""
+                name: Completion
+                on: workflow_dispatch
+                jobs:
+                  build:
+                    runs-on: <caret>
+                    steps:
+                      - run: echo ok
+                """)).contains("ubuntu-latest", "windows-latest", "macos-latest", "self-hosted");
+    }
+
+    public void testBooleanFieldCompletionSuggestsTrueFalse() {
+        assertThat(completeWorkflow("""
+                name: Completion
+                on: workflow_dispatch
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    continue-on-error: <caret>
+                    steps:
+                      - run: echo ok
+                """)).contains("true", "false");
     }
 
     public void testBracketInputCompletionUsesWorkflowCallInputs() {
@@ -1331,6 +1937,18 @@ public class WorkflowCompletionTest extends EditorFeatureTestCase {
                 """)).contains("GITHUB_TRIGGERING_ACTOR", "GITHUB_REPOSITORY_OWNER_ID", "RUNNER_ENVIRONMENT");
     }
 
+    public void testPlainRunFieldDoesNotSuggestStepKeys() {
+        assertThat(completeWorkflow("""
+                name: Completion
+                on: workflow_dispatch
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: <caret>
+                """)).doesNotContain("uses", "with", "shell", "id");
+    }
+
     public void testShellCompletionSuggestsSupportedGithubShells() {
         assertThat(completeWorkflow("""
                 name: Completion
@@ -1342,5 +1960,29 @@ public class WorkflowCompletionTest extends EditorFeatureTestCase {
                       - shell: <caret>
                         run: echo ok
                 """)).contains("bash", "sh", "pwsh", "powershell", "cmd", "python");
+    }
+
+    private Map<String, String> completeWorkflowTypeTexts(final String text) {
+        configureWorkflow(text);
+        final LookupElement[] elements = myFixture.completeBasic();
+        assertThat(elements).isNotNull();
+        return java.util.Arrays.stream(elements)
+                .collect(Collectors.toMap(
+                        LookupElement::getLookupString,
+                        WorkflowCompletionTest::typeText,
+                        (left, right) -> left
+                ));
+    }
+
+    private void writeProjectFile(final String relativePath, final String content) throws Exception {
+        final Path path = Path.of(getProject().getBasePath(), relativePath);
+        Files.createDirectories(path.getParent());
+        Files.writeString(path, content);
+    }
+
+    private static String typeText(final LookupElement element) {
+        final LookupElementPresentation presentation = new LookupElementPresentation();
+        element.renderElement(presentation);
+        return presentation.getTypeText();
     }
 }

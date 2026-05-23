@@ -27,6 +27,8 @@ Official syntax references:
   cache summary, clear, inspect, selected-delete, import, and export behavior tests.
 - The default resource bundle and 20 locale resource bundles keep matching key sets with nonblank values. Settings,
   inspection, workflow-run, and issue-report keys resolve for every configured locale.
+- Locale bundles are checked for placeholder parity, encoding sanity, leaked generation tokens, and accidental English
+  fallback except for short technical labels such as `API URL`, `Ref`, `OS`, and `PowerShell`.
 - Local reusable workflow `uses` reference resolution to project workflow files.
 - Remote action and reusable workflow `uses` reference creation through IntelliJ `WebReference`, including exact GitHub URL target metadata.
 - Configured GitHub Enterprise action references and styling keep the configured server URL instead of hard-coding github.com.
@@ -48,6 +50,8 @@ Official syntax references:
 - `env.*` validation and completion for workflow, job, step, Bash `$GITHUB_ENV`, PowerShell `$env:GITHUB_ENV`, and multiline file-command values.
 - Default environment variable completion inside `run` shell text, with tests guarding current documented GitHub and
   runner variables.
+- Completion stays workflow-aware outside `run:` blocks and deliberately avoids step/YAML key suggestions inside plain
+  shell `run:` text; shell/global environment variable completion still works there.
 - `github.*`, including current ID/protection keys from the official context reference, nested `github.event.*`,
   `runner.*`, including `runner.debug`, `job.*`, nested `job.container.*`, strict local `job.services.*`, `strategy.*`,
   `matrix.*`, and unknown external `vars.*` contexts.
@@ -76,10 +80,16 @@ Official syntax references:
 - Root expression completion for locally available contexts.
 - `$GITHUB_ENV` and `$GITHUB_OUTPUT` completion in `run` blocks.
 - `shell:` completion for GitHub-supported shells.
+- Typing newline, `:`, `.`, or `@` in workflow files can trigger relevant auto-popup completion through workflow-aware
+  typed/enter handlers.
 - Quick-fix text for invalid action inputs, unknown workflow inputs, secrets in `if`, and unused job outputs.
 - Quick-fix execution for input replacement, invalid action input deletion, invalid reusable workflow secret deletion, invalid suffix deletion, and invalid member deletion.
+- Quick-fix menu entries use icons while the editor gutter is kept reserved for durable reference/run markers instead of
+  stacking every available intention in the line ruler.
 - Gutter/info action execution for action suppression, input suppression, and local action jump action dispatch.
 - Gutter/info action execution for remote reload is tested with a controllable resolver boundary and no sleeps.
+- Left-ruler reference markers are intentionally limited to local action file targets and file-command declarations such
+  as `$GITHUB_ENV` and `$GITHUB_OUTPUT`.
 - Cache tools can refresh metadata, clear metadata, and restore suppressed action/input/output warnings.
 - GitHub Workflow run configuration registration, workflow_dispatch input parsing, repository remote resolution,
   current-branch ref selection, dispatch/cancel/status/log client behavior, and gutter play registration for dispatchable
@@ -91,11 +101,13 @@ Official syntax references:
   environment tokens (`GITHUB_TOKEN`, `GH_TOKEN`, `GITHUB_PAT`), then anonymous access.
 - Workflow run HTTP behavior reuses the first successful account authorization across polling calls and does not fall
   back to anonymous requests after an authenticated rate-limit response.
+- Workflow run tools expose run/rerun-failed/rerun-all/cancel/delete/download-log/download-artifacts actions from the Run
+  tool-window toolbar, only enabling downloads when GitHub exposes the relevant data.
 - Workflow run process behavior streams job log deltas without auth-strategy noise, routes each GitHub job to the
-  Run-window job tree/detail console, prints job URLs before status lines, prints compact ASCII job progress with
-  elapsed times and `[WAIT]` / `[RUN]` / `[OK]` / `[FAIL]` markers, summarizes temporary HTML/504 log failures as short
-  "logs will appear" notices, quietly retries in-progress HTTP log failures, fetches completed job logs before the whole
-  run completes, and the `workflow_dispatch` gutter marker switches to Stop while a run is tracked.
+  Run-window job tree/detail console, keeps a single workflow run tab, shows JUnit-style status icons and elapsed times,
+  updates root/progress state for success/failure/cancel, summarizes temporary HTML/504 log failures as short "logs will
+  appear" notices, quietly retries in-progress HTTP log failures, fetches completed job logs before the whole run
+  completes, and the `workflow_dispatch` gutter marker switches to Stop while a run is tracked.
 - Workflow run log rendering strips GitHub timestamps, strips ANSI controls while preserving warning/error/system
   meaning, formats GitHub `##[group]` / `##[endgroup]` / `##[/group]` markers as named blocks with four-digit line
   numbers, formats `##[command]` markers as `run:` lines, and classifies warning/error output for IDE console coloring.
@@ -104,10 +116,10 @@ Official syntax references:
   remote downloads, and invalid virtual-file paths.
 - A showcase workflow test covers a large mixed workflow with anchors, matrix strategy, services, local actions, local
   reusable workflows, remote actions, remote reusable workflows, Gitea context, job outputs, needs, functions, and file-command outputs.
+- GitHub context/default-env data is generated into checked-in resource snapshots by `./gradlew generateGitHubDocsData`;
+  tests ensure completion/highlighting metadata uses exactly those snapshots.
 - A bounded large-workflow highlighting performance test runs through the dedicated `performanceTest` Gradle task.
 
 ## Missing
 
 - Full `vars.*` completion. Repository/organization/environment variables are external and need settings or GitHub API support.
-- GitHub context/default-env data is generated into checked-in resource snapshots by `./gradlew generateGitHubDocsData`.
-  Tests ensure completion/highlighting metadata uses exactly those snapshots.

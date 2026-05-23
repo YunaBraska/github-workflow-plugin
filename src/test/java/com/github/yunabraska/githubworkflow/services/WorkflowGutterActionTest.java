@@ -17,11 +17,13 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static com.github.yunabraska.githubworkflow.model.NodeIcon.ICON_ENV;
+import static com.github.yunabraska.githubworkflow.model.NodeIcon.ICON_TEXT_VARIABLE;
 import static com.github.yunabraska.githubworkflow.services.GitHubActionCache.getActionCache;
 
 public class WorkflowGutterActionTest extends EditorFeatureTestCase {
 
-    public void testSuppressActionGutterActionTogglesResolvedAction() {
+    public void testSuppressActionQuickFixTogglesResolvedAction() {
         final GitHubAction action = seedRemoteAction("owner/tool@v1", Map.of(), Map.of());
         configureWorkflowProjectFile("""
                 name: Gutter
@@ -33,12 +35,12 @@ public class WorkflowGutterActionTest extends EditorFeatureTestCase {
                       - uses: owner/tool@v1
                 """);
 
-        clickGutterActionContaining("Toggle warnings [off]");
+        invokeHighlightFixContaining("Toggle warnings [off]");
 
         assertThat(action.isSuppressed()).isTrue();
     }
 
-    public void testSuppressInputGutterActionTogglesResolvedInput() {
+    public void testSuppressInputQuickFixTogglesResolvedInput() {
         final GitHubAction action = seedRemoteAction("owner/tool@v1", Map.of("known-input", "Known input"), Map.of());
         configureWorkflowProjectFile("""
                 name: Gutter
@@ -52,12 +54,12 @@ public class WorkflowGutterActionTest extends EditorFeatureTestCase {
                           known-input: ok
                 """);
 
-        clickGutterActionContaining("known-input");
+        invokeHighlightFixContaining("known-input");
 
         assertThat(action.ignoredInputs()).contains("known-input");
     }
 
-    public void testJumpToFileGutterActionOpensLocalActionFile() {
+    public void testJumpToFileQuickFixOpensLocalActionFile() {
         final PsiFile actionFile = myFixture.addFileToProject(".github/actions/local/action.yml", """
                 name: Local Action
                 runs:
@@ -77,10 +79,27 @@ public class WorkflowGutterActionTest extends EditorFeatureTestCase {
                       - uses: ./.github/actions/local
                 """);
 
-        clickGutterActionContaining("Jump to file");
+        assertThat(gutterIcons()).anySatisfy(gutter -> assertThat(gutter.getTooltipText()).contains("Jump to file"));
+        invokeHighlightFixContaining("Jump to file");
     }
 
-    public void testReloadRemoteActionGutterActionUsesResolverBoundaryWithoutSleeping() throws Exception {
+    public void testRunOutputAndEnvDeclarationsKeepReferenceGutterIndicators() {
+        configureWorkflowProjectFile("""
+                name: Gutter
+                on: workflow_dispatch
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo "ACTION_STATE=yellow" >> "$GITHUB_ENV"
+                      - run: echo "artifact=dist" >> "$GITHUB_OUTPUT"
+                """);
+
+        assertThat(gutterIcons().stream().map(gutter -> gutter.getIcon()).toList())
+                .contains(ICON_ENV.icon(), ICON_TEXT_VARIABLE.icon());
+    }
+
+    public void testReloadRemoteActionQuickFixUsesResolverBoundaryWithoutSleeping() throws Exception {
         seedRemoteAction("owner/tool@v1", Map.of(), Map.of());
         final CountDownLatch resolved = new CountDownLatch(1);
         final AtomicInteger calls = new AtomicInteger(0);
@@ -101,7 +120,7 @@ public class WorkflowGutterActionTest extends EditorFeatureTestCase {
                           - uses: owner/tool@v1
                     """);
 
-            clickGutterActionContaining("Reload [owner/tool]");
+            invokeHighlightFixContaining("Reload [owner/tool]");
 
             assertThat(resolved.await(5, TimeUnit.SECONDS)).isTrue();
             assertThat(calls).hasValue(1);
@@ -111,7 +130,7 @@ public class WorkflowGutterActionTest extends EditorFeatureTestCase {
         }
     }
 
-    public void testResolvedActionShowsOneCombinedGutterIconForAllActionFixes() {
+    public void testResolvedActionFixesStayOutOfTheEditorGutter() {
         seedRemoteAction("owner/tool@v1", Map.of(), Map.of()).remoteRefs(List.of("v1", "v2"));
         configureWorkflowProjectFile("""
                 name: Gutter
@@ -128,11 +147,7 @@ public class WorkflowGutterActionTest extends EditorFeatureTestCase {
                 .filter(tooltip -> tooltip.contains("owner/tool"))
                 .toList();
 
-        assertThat(tooltips).singleElement()
-                .satisfies(tooltip -> assertThat(tooltip)
-                        .contains("Reload [owner/tool]")
-                        .contains("Toggle warnings [off] for [owner/tool]")
-                        .contains("Update action [owner/tool@v1] to [owner/tool@v2]"));
+        assertThat(tooltips).isEmpty();
     }
 
     public void testWorkflowDispatchShowsRunLineMarker() throws Exception {
@@ -214,7 +229,7 @@ public class WorkflowGutterActionTest extends EditorFeatureTestCase {
             assertThat(info).isNotNull();
             assertThat(info.icon).isEqualTo(AllIcons.Actions.Suspend);
             assertThat(info.actions).singleElement()
-                    .satisfies(action -> assertThat(action.getTemplatePresentation().getText()).isEqualTo("Stop GitHub Workflow Run"));
+                    .satisfies(action -> assertThat(action.getTemplatePresentation().getText()).isEqualTo("Stop workflow run"));
         } finally {
             WorkflowRunTracker.getInstance(getProject()).unregister(workflowPath, processHandler);
         }

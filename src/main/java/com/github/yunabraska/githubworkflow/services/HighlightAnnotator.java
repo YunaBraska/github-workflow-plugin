@@ -1,13 +1,16 @@
 package com.github.yunabraska.githubworkflow.services;
 
 import com.github.yunabraska.githubworkflow.helper.PsiElementHelper;
+import com.github.yunabraska.githubworkflow.helper.GitHubWorkflowHelper;
 import com.github.yunabraska.githubworkflow.model.IconRenderer;
+import com.github.yunabraska.githubworkflow.model.NodeIcon;
 import com.github.yunabraska.githubworkflow.model.SimpleElement;
 import com.github.yunabraska.githubworkflow.model.SyntaxAnnotation;
 import com.intellij.codeInspection.ProblemHighlightType;
 import com.intellij.lang.annotation.AnnotationHolder;
 import com.intellij.lang.annotation.Annotator;
 import com.intellij.lang.annotation.HighlightSeverity;
+import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.editor.DefaultLanguageHighlighterColors;
 import com.intellij.openapi.util.TextRange;
 import com.intellij.psi.PsiElement;
@@ -18,7 +21,9 @@ import org.jetbrains.yaml.psi.YAMLKeyValue;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Predicate;
@@ -28,6 +33,7 @@ import java.util.stream.Stream;
 import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.*;
 import static com.github.yunabraska.githubworkflow.helper.HighlightAnnotatorHelper.deleteElementAction;
 import static com.github.yunabraska.githubworkflow.helper.HighlightAnnotatorHelper.getFirstChild;
+import static com.github.yunabraska.githubworkflow.helper.HighlightAnnotatorHelper.replaceAction;
 import static com.github.yunabraska.githubworkflow.helper.HighlightAnnotatorHelper.simpleTextRange;
 import static com.github.yunabraska.githubworkflow.helper.PsiElementHelper.getAllElements;
 import static com.github.yunabraska.githubworkflow.helper.PsiElementHelper.goToDeclarationString;
@@ -53,7 +59,10 @@ import static com.github.yunabraska.githubworkflow.logic.Runner.highlightRunner;
 import static com.github.yunabraska.githubworkflow.logic.Secrets.highLightSecrets;
 import static com.github.yunabraska.githubworkflow.logic.Steps.highlightSteps;
 import static com.github.yunabraska.githubworkflow.logic.Strategy.highlightStrategy;
+import static com.github.yunabraska.githubworkflow.model.NodeIcon.ICON_ENV;
 import static com.github.yunabraska.githubworkflow.model.NodeIcon.ICON_TEXT_VARIABLE;
+import static com.github.yunabraska.githubworkflow.model.NodeIcon.RELOAD;
+import static com.github.yunabraska.githubworkflow.model.NodeIcon.SUPPRESS_ON;
 import static com.intellij.lang.annotation.HighlightSeverity.INFORMATION;
 import static java.util.Optional.ofNullable;
 
@@ -70,13 +79,13 @@ public class HighlightAnnotator implements Annotator {
             highlightRunOutputs(holder, psiElement);
             highlightRunnerVariables(holder, psiElement);
             highlightScalarLiterals(holder, psiElement);
+            validateWorkflowSyntax(holder, psiElement);
             // HIGHLIGHT ACTION INPUTS
             highlightActionInput(holder, psiElement);
             highlightNeeds(holder, psiElement);
         }
     }
 
-    //TODO: handle single elements instead of bulk updates for more reliability
     public static void processPsiElement(final AnnotationHolder holder, final PsiElement psiElement) {
         toYAMLKeyValue(psiElement).ifPresent(element -> {
             switch (element.getKeyText()) {
@@ -96,15 +105,19 @@ public class HighlightAnnotator implements Annotator {
                 .map(LeafPsiElement.class::cast)
                 .filter(element -> PsiElementHelper.getParent(element, FIELD_RUN).isPresent())
                 .ifPresent(element -> Stream.of(
-                        parseEnvVariables(element),
-                        parseOutputVariables(element)
+                        parseEnvVariables(element).stream().map(variable -> withIcon(variable, ICON_ENV)).toList(),
+                        parseOutputVariables(element).stream().map(variable -> withIcon(variable, ICON_TEXT_VARIABLE)).toList()
                 ).flatMap(Collection::stream).collect(Collectors.groupingBy(SimpleElement::startIndexOffset)).forEach((integer, elements) -> ofNullable(getFirstChild(elements)).ifPresent(lineElement -> holder
                         .newSilentAnnotation(INFORMATION)
                         .range(lineElement.range())
                         .textAttributes(WorkflowTextAttributes.DECLARATION)
-                        .gutterIconRenderer(new IconRenderer(null, element, ICON_TEXT_VARIABLE))
+                        .gutterIconRenderer(new IconRenderer(null, element, lineElement.icon()))
                         .create()
                 )));
+    }
+
+    private static SimpleElement withIcon(final SimpleElement element, final NodeIcon icon) {
+        return new SimpleElement(element.key(), element.text(), element.range(), icon);
     }
 
     private static void highlightRunnerVariables(final AnnotationHolder holder, final PsiElement psiElement) {
@@ -147,6 +160,255 @@ public class HighlightAnnotator implements Annotator {
                         .create());
     }
 
+    private static void validateWorkflowSyntax(final AnnotationHolder holder, final PsiElement psiElement) {
+        toYAMLKeyValue(psiElement)
+                .filter(HighlightAnnotator::shouldValidateWorkflowSyntax)
+                .ifPresent(element -> validateWorkflowKeyValue(holder, element));
+    }
+
+    private static boolean shouldValidateWorkflowSyntax(final YAMLKeyValue element) {
+        return GitHubWorkflowHelper.getWorkflowFile(element)
+                .filter(path -> GitHubWorkflowHelper.isWorkflowFile(path) || isUnitTestWorkflowFile(element))
+                .isPresent();
+    }
+
+    private static boolean isUnitTestWorkflowFile(final YAMLKeyValue element) {
+        return ApplicationManager.getApplication().isUnitTestMode()
+                && PsiElementHelper.getChild(element.getContainingFile(), "runs").isEmpty();
+    }
+
+    private static void validateWorkflowKeyValue(final AnnotationHolder holder, final YAMLKeyValue element) {
+        final String key = element.getKeyText();
+        final List<String> path = yamlPath(element);
+        if (path.isEmpty()) {
+            validateKnownKey(holder, element, WorkflowSyntaxSchema.topLevelKeys(), "inspection.workflow.syntax.unknownTopLevelKey");
+            return;
+        }
+        if (pathMatches(path, FIELD_ON)) {
+            validateKnownKey(holder, element, WorkflowSyntaxSchema.eventKeys(), "inspection.workflow.syntax.unknownEventKey");
+            return;
+        }
+        if (pathMatches(path, FIELD_ON, "workflow_dispatch")) {
+            validateKnownKey(holder, element, mapOf(FIELD_INPUTS), "inspection.workflow.syntax.unknownTriggerKey");
+            return;
+        }
+        if (pathMatches(path, FIELD_ON, "workflow_call")) {
+            validateKnownKey(holder, element, mapOf(FIELD_INPUTS, FIELD_OUTPUTS, FIELD_SECRETS), "inspection.workflow.syntax.unknownTriggerKey");
+            return;
+        }
+        if (isChildOf(path, FIELD_ON, "workflow_dispatch", FIELD_INPUTS)
+                || isChildOf(path, FIELD_ON, "workflow_call", FIELD_INPUTS)) {
+            validateKnownKey(holder, element, WorkflowSyntaxSchema.workflowInputPropertyKeys(), "inspection.workflow.syntax.unknownTriggerKey");
+            validateWorkflowInputPropertyValue(holder, element, path);
+            return;
+        }
+        if (isChildOf(path, FIELD_ON, "workflow_call", FIELD_OUTPUTS)) {
+            validateKnownKey(holder, element, WorkflowSyntaxSchema.workflowOutputPropertyKeys(), "inspection.workflow.syntax.unknownTriggerKey");
+            return;
+        }
+        if (isChildOf(path, FIELD_ON, "workflow_call", FIELD_SECRETS)) {
+            validateKnownKey(holder, element, WorkflowSyntaxSchema.workflowSecretPropertyKeys(), "inspection.workflow.syntax.unknownTriggerKey");
+            if ("required".equals(key)) {
+                validateKnownValue(holder, element, WorkflowSyntaxSchema.booleanValues(), "inspection.workflow.syntax.unknownTriggerValue");
+            }
+            return;
+        }
+        if (pathMatches(path, FIELD_ON, "*")) {
+            validateKnownKey(holder, element, WorkflowSyntaxSchema.eventFilterKeysFor(path.get(path.size() - 1)), "inspection.workflow.syntax.unknownTriggerFilter");
+            if ("types".equals(key)) {
+                validateKnownValue(holder, element, WorkflowSyntaxSchema.eventActivityTypesFor(path.get(1)), "inspection.workflow.syntax.unknownTriggerValue");
+            }
+            return;
+        }
+        if (pathEndsWith(path, "permissions")) {
+            validateKnownKey(holder, element, WorkflowSyntaxSchema.permissionScopes(), "inspection.workflow.syntax.unknownPermission");
+            validateKnownValue(holder, element, WorkflowSyntaxSchema.permissionValuesFor(element.getKeyText()), "inspection.workflow.syntax.unknownPermissionValue");
+            return;
+        }
+        if (pathMatches(path, "defaults", FIELD_RUN) || pathMatches(path, FIELD_JOBS, "*", "defaults", FIELD_RUN)) {
+            validateKnownKey(holder, element, WorkflowSyntaxSchema.defaultsRunKeys(), "inspection.workflow.syntax.unknownTopLevelKey");
+            return;
+        }
+        if (pathMatches(path, "concurrency") || pathMatches(path, FIELD_JOBS, "*", "concurrency")) {
+            validateKnownKey(holder, element, WorkflowSyntaxSchema.concurrencyKeys(), "inspection.workflow.syntax.unknownTopLevelKey");
+            return;
+        }
+        if (pathMatches(path, FIELD_JOBS, "*", FIELD_STRATEGY)) {
+            validateKnownKey(holder, element, WorkflowSyntaxSchema.strategyKeys(), "inspection.workflow.syntax.unknownTopLevelKey");
+            return;
+        }
+        if (pathMatches(path, FIELD_JOBS, "*", "environment")) {
+            validateKnownKey(holder, element, WorkflowSyntaxSchema.environmentKeys(), "inspection.workflow.syntax.unknownTopLevelKey");
+            return;
+        }
+        if (pathMatches(path, FIELD_JOBS, "*", "container")) {
+            validateKnownKey(holder, element, WorkflowSyntaxSchema.containerKeys(), "inspection.workflow.syntax.unknownTopLevelKey");
+            return;
+        }
+        if (pathMatches(path, FIELD_JOBS, "*", "container", "credentials")) {
+            validateKnownKey(holder, element, WorkflowSyntaxSchema.credentialsKeys(), "inspection.workflow.syntax.unknownTopLevelKey");
+            return;
+        }
+        if (pathMatches(path, FIELD_JOBS, "*", FIELD_SERVICES, "*")) {
+            validateKnownKey(holder, element, WorkflowSyntaxSchema.serviceKeys(), "inspection.workflow.syntax.unknownTopLevelKey");
+            return;
+        }
+        if (pathMatches(path, FIELD_JOBS, "*", FIELD_SERVICES, "*", "credentials")) {
+            validateKnownKey(holder, element, WorkflowSyntaxSchema.credentialsKeys(), "inspection.workflow.syntax.unknownTopLevelKey");
+            return;
+        }
+        if (pathMatches(path, FIELD_JOBS, "*")) {
+            validateKnownKey(holder, element, WorkflowSyntaxSchema.jobKeys(), "inspection.workflow.syntax.unknownJobKey");
+            return;
+        }
+        if (pathMatches(path, FIELD_JOBS, "*", FIELD_STEPS)) {
+            validateKnownKey(holder, element, WorkflowSyntaxSchema.stepKeys(), "inspection.workflow.syntax.unknownStepKey");
+        }
+    }
+
+    private static Map<String, String> mapOf(final String... keys) {
+        final Map<String, String> result = new LinkedHashMap<>();
+        for (final String key : keys) {
+            result.put(key, key);
+        }
+        return result;
+    }
+
+    private static void validateWorkflowInputPropertyValue(
+            final AnnotationHolder holder,
+            final YAMLKeyValue element,
+            final List<String> path
+    ) {
+        if ("type".equals(element.getKeyText())) {
+            final Map<String, String> allowedTypes = "workflow_call".equals(path.get(1))
+                    ? WorkflowSyntaxSchema.reusableWorkflowInputTypes()
+                    : WorkflowSyntaxSchema.workflowInputTypes();
+            validateKnownValue(holder, element, allowedTypes, "inspection.workflow.syntax.unknownTriggerValue");
+        }
+        if ("required".equals(element.getKeyText())) {
+            validateKnownValue(holder, element, WorkflowSyntaxSchema.booleanValues(), "inspection.workflow.syntax.unknownTriggerValue");
+        }
+    }
+
+    private static void validateKnownKey(
+            final AnnotationHolder holder,
+            final YAMLKeyValue element,
+            final Map<String, String> allowed,
+            final String messageKey
+    ) {
+        if (allowed.containsKey(element.getKeyText()) || element.getKeyText().isBlank()) {
+            return;
+        }
+        final TextRange range = Optional.ofNullable(element.getKey())
+                .map(PsiElement::getTextRange)
+                .orElseGet(element::getTextRange);
+        final List<SyntaxAnnotation> fixes = new ArrayList<>();
+        fixes.add(new SyntaxAnnotation(
+                GitHubWorkflowBundle.message(messageKey, element.getKeyText()),
+                null,
+                HighlightSeverity.WEAK_WARNING,
+                ProblemHighlightType.WEAK_WARNING,
+                null
+        ));
+        allowed.keySet().stream()
+                .map(candidate -> new SyntaxAnnotation(
+                        GitHubWorkflowBundle.message("inspection.replace.with", candidate),
+                        RELOAD,
+                        HighlightSeverity.WEAK_WARNING,
+                        ProblemHighlightType.WEAK_WARNING,
+                        replaceAction(range, candidate)
+                ))
+                .forEach(fixes::add);
+        SyntaxAnnotation.createAnnotation(
+                element,
+                range,
+                holder,
+                fixes
+        );
+    }
+
+    private static void validateKnownValue(
+            final AnnotationHolder holder,
+            final YAMLKeyValue element,
+            final Map<String, String> allowed,
+            final String messageKey
+    ) {
+        final String value = PsiElementHelper.getText(element).orElse("");
+        if (allowed.isEmpty()
+                || value.isBlank()
+                || value.startsWith("${{")
+                || !value.matches("[A-Za-z0-9_-]+")
+                || allowed.containsKey(value)) {
+            return;
+        }
+        PsiElementHelper.getTextElement(element).ifPresent(valueElement -> {
+            final TextRange range = valueElement.getTextRange();
+            final List<SyntaxAnnotation> fixes = new ArrayList<>();
+            fixes.add(new SyntaxAnnotation(
+                    GitHubWorkflowBundle.message(messageKey, value),
+                    null,
+                    HighlightSeverity.WEAK_WARNING,
+                    ProblemHighlightType.WEAK_WARNING,
+                    null
+            ));
+            allowed.keySet().stream()
+                    .map(candidate -> new SyntaxAnnotation(
+                            GitHubWorkflowBundle.message("inspection.replace.with", candidate),
+                            RELOAD,
+                            HighlightSeverity.WEAK_WARNING,
+                            ProblemHighlightType.WEAK_WARNING,
+                            replaceAction(range, candidate)
+                    ))
+                    .forEach(fixes::add);
+            SyntaxAnnotation.createAnnotation(
+                    element,
+                    range,
+                    holder,
+                    fixes
+            );
+        });
+    }
+
+    private static List<String> yamlPath(final YAMLKeyValue element) {
+        final List<String> result = new ArrayList<>();
+        PsiElement current = element.getParent();
+        while (current != null && current != element.getContainingFile()) {
+            if (current instanceof YAMLKeyValue keyValue) {
+                result.add(0, keyValue.getKeyText());
+            }
+            current = current.getParent();
+        }
+        return result;
+    }
+
+    private static boolean isChildOf(final List<String> path, final String... expectedParent) {
+        if (path.size() != expectedParent.length + 1) {
+            return false;
+        }
+        for (int index = 0; index < expectedParent.length; index++) {
+            if (!expectedParent[index].equals(path.get(index))) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static boolean pathMatches(final List<String> path, final String... pattern) {
+        if (path.size() != pattern.length) {
+            return false;
+        }
+        for (int index = 0; index < pattern.length; index++) {
+            if (!"*".equals(pattern[index]) && !pattern[index].equals(path.get(index))) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static boolean pathEndsWith(final List<String> path, final String expected) {
+        return !path.isEmpty() && expected.equals(path.get(path.size() - 1));
+    }
+
     private static void outputsHandler(final AnnotationHolder holder, final PsiElement psiElement) {
         getParentJob(psiElement).ifPresent(job -> {
             final List<YAMLKeyValue> outputs = PsiElementHelper.getChildren(psiElement).stream().toList();
@@ -163,7 +425,7 @@ public class HighlightAnnotator implements Annotator {
                         && !containsOutputReference(workflowText, needsOutputReference);
             }).forEach(output -> new SyntaxAnnotation(
                     GitHubWorkflowBundle.message("inspection.output.unused", output.getKeyText()),
-                    null,
+                    SUPPRESS_ON,
                     HighlightSeverity.WEAK_WARNING,
                     ProblemHighlightType.LIKE_UNUSED_SYMBOL,
                     deleteElementAction(output.getTextRange()),

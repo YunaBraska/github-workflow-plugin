@@ -30,6 +30,8 @@ import static com.github.yunabraska.githubworkflow.helper.PsiElementHelper.getCh
 import static com.github.yunabraska.githubworkflow.helper.PsiElementHelper.getParent;
 import static com.github.yunabraska.githubworkflow.helper.PsiElementHelper.getText;
 import static com.github.yunabraska.githubworkflow.model.NodeIcon.ICON_SECRET_WORKFLOW;
+import static com.github.yunabraska.githubworkflow.model.NodeIcon.RELOAD;
+import static com.github.yunabraska.githubworkflow.model.NodeIcon.SUPPRESS_ON;
 import static com.github.yunabraska.githubworkflow.model.SimpleElement.completionItemsOf;
 import static com.github.yunabraska.githubworkflow.model.SyntaxAnnotation.createAnnotation;
 
@@ -51,7 +53,7 @@ public class Secrets {
                 final TextRange textRange = new TextRange(range.getStartOffset() + parts[0].startIndexOffset(), range.getStartOffset() + parts[parts.length - 1].endIndexOffset());
                 new SyntaxAnnotation(
                         GitHubWorkflowBundle.message("inspection.secret.invalid.if", simpleElement.text()),
-                        null,
+                        SUPPRESS_ON,
                         deleteElementAction(textRange)
                 ).createAnnotation(psiElement, textRange, holder);
             }
@@ -60,7 +62,7 @@ public class Secrets {
                 final TextRange textRange = simpleTextRange(element, secretId);
                 createAnnotation(element, textRange, holder, secrets.stream().map(secret -> new SyntaxAnnotation(
                         GitHubWorkflowBundle.message("inspection.secret.replace.runtime", secretId.text(), secret),
-                        null,
+                        RELOAD,
                         HighlightSeverity.WEAK_WARNING,
                         ProblemHighlightType.WEAK_WARNING,
                         replaceAction(textRange, secret),

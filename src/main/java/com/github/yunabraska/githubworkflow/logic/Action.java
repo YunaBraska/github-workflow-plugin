@@ -1,12 +1,14 @@
 package com.github.yunabraska.githubworkflow.logic;
 
 import com.github.yunabraska.githubworkflow.model.GitHubAction;
+import com.github.yunabraska.githubworkflow.model.IconRenderer;
 import com.github.yunabraska.githubworkflow.model.LocalActionReferenceResolver;
 import com.github.yunabraska.githubworkflow.model.SimpleElement;
 import com.github.yunabraska.githubworkflow.model.SyntaxAnnotation;
 import com.github.yunabraska.githubworkflow.services.GitHubActionCache;
 import com.github.yunabraska.githubworkflow.services.GitHubWorkflowBundle;
 import com.intellij.codeInspection.ProblemHighlightType;
+import com.intellij.lang.annotation.AnnotationBuilder;
 import com.intellij.lang.annotation.AnnotationHolder;
 import com.intellij.lang.annotation.HighlightSeverity;
 import com.intellij.openapi.editor.DefaultLanguageHighlighterColors;
@@ -44,6 +46,9 @@ import static com.github.yunabraska.githubworkflow.helper.PsiElementHelper.toYAM
 import static com.github.yunabraska.githubworkflow.model.NodeIcon.EMPTY;
 import static com.github.yunabraska.githubworkflow.model.NodeIcon.ICON_OUTPUT;
 import static com.github.yunabraska.githubworkflow.model.NodeIcon.IGNORED;
+import static com.github.yunabraska.githubworkflow.model.NodeIcon.JUMP_TO_IMPLEMENTATION;
+import static com.github.yunabraska.githubworkflow.model.NodeIcon.RELOAD;
+import static com.github.yunabraska.githubworkflow.model.NodeIcon.SUPPRESS_ON;
 import static com.github.yunabraska.githubworkflow.model.NodeIcon.SUPPRESS_OFF;
 import static com.github.yunabraska.githubworkflow.model.SimpleElement.completionItemsOf;
 import static com.github.yunabraska.githubworkflow.services.GitHubActionCache.triggerSyntaxHighlightingForActiveFiles;
@@ -67,7 +72,7 @@ public class Action {
                     if (element != null && !action.isResolved() && (!action.isSuppressed())) {
                         result.add(action.isLocal() ? deleteInvalidAction(element) : newUnresolvedAction(element));
                     }
-                }, () -> result.add(newUnresolvedAction(element))); //FIXME: is this a valid state?
+                }, () -> ofNullable(element).ifPresent(value -> result.add(newUnresolvedAction(value))));
         addAnnotation(holder, element, result);
     }
 
@@ -95,7 +100,7 @@ public class Action {
                                 : GitHubWorkflowBundle.message("inspection.parameter.input");
                         addAnnotation(holder, item, new SyntaxAnnotation(
                                 GitHubWorkflowBundle.message("inspection.action.delete.invalid", label, id),
-                                null,
+                                SUPPRESS_ON,
                                 deleteElementAction(item.getTextRange())
                         ));
                     }
@@ -133,14 +138,16 @@ public class Action {
         if (action.isResolved() && !action.isSuppressed()) {
             final String tooltip = goToDeclarationString();
             getTextElement(element).ifPresent(textElement -> {
-                holder.newAnnotation(HighlightSeverity.INFORMATION, tooltip)
+                final AnnotationBuilder annotation = holder.newAnnotation(HighlightSeverity.INFORMATION, tooltip)
                         .range(textElement)
                         .textAttributes(DefaultLanguageHighlighterColors.HIGHLIGHTED_REFERENCE)
-                        .tooltip(tooltip)
-                        .create();
+                        .tooltip(tooltip);
                 if (action.isLocal()) {
-                    result.add(newJumpToFile(action));
+                    final SyntaxAnnotation jumpToFile = newJumpToFile(action);
+                    result.add(jumpToFile);
+                    annotation.gutterIconRenderer(new IconRenderer(jumpToFile, element, JUMP_TO_IMPLEMENTATION));
                 }
+                annotation.create();
             });
         }
     }
@@ -166,7 +173,7 @@ public class Action {
         final TextRange range = getTextElement(element).map(PsiElement::getTextRange).orElseGet(element::getTextRange);
         return Optional.of(new SyntaxAnnotation(
                 GitHubWorkflowBundle.message("inspection.action.update.major", usesValue, newUsesValue),
-                null,
+                RELOAD,
                 HighlightSeverity.WEAK_WARNING,
                 ProblemHighlightType.WEAK_WARNING,
                 replaceAction(range, newUsesValue)
@@ -203,7 +210,7 @@ public class Action {
         final boolean suppressed = action.isSuppressed();
         return new SyntaxAnnotation(
                 toggleText(action.name(), suppressed),
-                suppressed ? SUPPRESS_OFF : EMPTY,
+                suppressed ? SUPPRESS_OFF : SUPPRESS_ON,
                 HighlightSeverity.INFORMATION,
                 suppressed ? ProblemHighlightType.WEAK_WARNING : ProblemHighlightType.INFORMATION,
                 f -> {
@@ -218,7 +225,7 @@ public class Action {
         final boolean suppressed = action.ignoredInputs().contains(id);
         return new SyntaxAnnotation(
                 toggleText(id, suppressed),
-                suppressed ? IGNORED : EMPTY,
+                suppressed ? IGNORED : SUPPRESS_ON,
                 HighlightSeverity.INFORMATION,
                 suppressed ? ProblemHighlightType.WEAK_WARNING : ProblemHighlightType.INFORMATION,
                 f -> {
@@ -234,7 +241,7 @@ public class Action {
         final HighlightSeverity level = action.freshOutputs().containsKey(id) ? HighlightSeverity.INFORMATION : HighlightSeverity.ERROR;
         return new SyntaxAnnotation(
                 toggleText(id, suppressed),
-                null,
+                suppressed ? IGNORED : SUPPRESS_ON,
                 level,
                 suppressed ? ProblemHighlightType.WEAK_WARNING : ProblemHighlightType.INFORMATION,
                 f -> {

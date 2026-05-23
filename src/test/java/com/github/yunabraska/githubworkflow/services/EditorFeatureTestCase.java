@@ -229,7 +229,7 @@ abstract class EditorFeatureTestCase extends BasePlatformTestCase {
         return myFixture.getEditor().getDocument().getText();
     }
 
-    private List<IntentionAction> allIntentions() {
+    protected final List<IntentionAction> allIntentions() {
         return Stream.concat(myFixture.getAllQuickFixes().stream(), myFixture.getAvailableIntentions().stream())
                 .toList();
     }

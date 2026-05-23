@@ -11,6 +11,10 @@ import com.intellij.execution.ui.RunContentDescriptor;
 import com.intellij.execution.ui.RunContentManager;
 import com.intellij.execution.ui.RunnerLayoutUi;
 import com.intellij.icons.AllIcons;
+import com.intellij.openapi.actionSystem.AnActionEvent;
+import com.intellij.openapi.actionSystem.DefaultActionGroup;
+import com.intellij.openapi.actionSystem.Presentation;
+import com.intellij.openapi.project.DumbAwareAction;
 import com.intellij.openapi.Disposable;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.project.Project;
@@ -28,7 +32,6 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import javax.swing.Icon;
-import javax.swing.JButton;
 import javax.swing.JComponent;
 import javax.swing.JPanel;
 import javax.swing.JProgressBar;
@@ -38,6 +41,7 @@ import javax.swing.tree.DefaultMutableTreeNode;
 import javax.swing.tree.DefaultTreeModel;
 import javax.swing.tree.TreePath;
 import java.awt.BorderLayout;
+import java.awt.Color;
 import java.awt.Component;
 import java.awt.Dimension;
 import java.util.ArrayList;
@@ -50,6 +54,8 @@ import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.BooleanSupplier;
+import javax.swing.UIManager;
 
 /**
  * Adds a JUnit-style workflow tree to the Run tool window and routes selected-node output to one detail console.
@@ -84,8 +90,9 @@ final class WorkflowRunConsoleTabs implements WorkflowRunJobConsole {
     private @Nullable DefaultMutableTreeNode rootNode;
     private @Nullable Tree tree;
     private @Nullable JProgressBar progressBar;
-    private @Nullable JButton deleteRunButton;
+    private @Nullable RunnerLayoutUi runnerLayoutUi;
     private @Nullable Timer animationTimer;
+    private final AtomicBoolean deleteInProgress = new AtomicBoolean(false);
     private volatile long terminalRunId = -1;
     private volatile String terminalConclusion = "";
 
@@ -134,6 +141,8 @@ final class WorkflowRunConsoleTabs implements WorkflowRunJobConsole {
         terminalRunId = runId;
         terminalConclusion = normalizeConclusion(conclusion);
         jobs.values().forEach(job -> job.finish(terminalConclusion));
+        processHandler.refreshArtifactAvailability(ignored ->
+                ApplicationManager.getApplication().invokeLater(this::updateContent));
         refreshTree();
         ApplicationManager.getApplication().invokeLater(this::stopAnimationTimer);
     }
@@ -145,12 +154,10 @@ final class WorkflowRunConsoleTabs implements WorkflowRunJobConsole {
 
     @Override
     public void runDeleteFailed(final long runId) {
-        ApplicationManager.getApplication().invokeLater(() -> {
-            final JButton button = deleteRunButton;
-            if (button != null && terminalRunId == runId && !project.isDisposed()) {
-                button.setEnabled(true);
-            }
-        });
+        if (terminalRunId == runId) {
+            deleteInProgress.set(false);
+            ApplicationManager.getApplication().invokeLater(this::updateContent);
+        }
     }
 
     @Override
@@ -227,17 +234,10 @@ final class WorkflowRunConsoleTabs implements WorkflowRunJobConsole {
         createdProgress.setStringPainted(false);
         createdProgress.setPreferredSize(new Dimension(0, JBUI.scale(3)));
 
-        final JButton createdDeleteRunButton = new JButton(GitHubWorkflowBundle.message("workflow.run.delete.button"));
-        createdDeleteRunButton.setToolTipText(GitHubWorkflowBundle.message("workflow.run.delete.tooltip"));
-        createdDeleteRunButton.setVisible(false);
-        createdDeleteRunButton.addActionListener(ignored -> {
-            createdDeleteRunButton.setEnabled(false);
-            processHandler.deleteRemoteRun();
-        });
+        layout.getOptions().setTopRightToolbar(runToolbarActions(), "GitHubWorkflowRunToolbar");
 
         final JPanel progressPanel = new JPanel(new BorderLayout());
         progressPanel.add(createdProgress, BorderLayout.CENTER);
-        progressPanel.add(createdDeleteRunButton, BorderLayout.EAST);
 
         final JPanel detailPanel = new JPanel(new BorderLayout());
         detailPanel.add(progressPanel, BorderLayout.NORTH);
@@ -268,7 +268,7 @@ final class WorkflowRunConsoleTabs implements WorkflowRunJobConsole {
             treeModel = createdModel;
             tree = createdTree;
             progressBar = createdProgress;
-            deleteRunButton = createdDeleteRunButton;
+            runnerLayoutUi = layout;
         }
         refreshTree();
         createdTree.setSelectionPath(new TreePath(createdRoot.getPath()));
@@ -356,10 +356,12 @@ final class WorkflowRunConsoleTabs implements WorkflowRunJobConsole {
         if (!(last instanceof DefaultMutableTreeNode treeNode) || !(treeNode.getUserObject() instanceof TreeEntry entry)) {
             selectedEntry = workflow;
             replay(workflow);
+            updateContent();
             return;
         }
         selectedEntry = entry;
         replay(entry);
+        updateContent();
     }
 
     private void replay(final TreeEntry entry) {
@@ -399,14 +401,96 @@ final class WorkflowRunConsoleTabs implements WorkflowRunJobConsole {
                 progress.setMaximum(Math.max(1, total));
                 progress.setValue(terminal() ? Math.max(1, total) : Math.min(completed, Math.max(1, total)));
                 progress.setVisible(total > 0 || !terminal());
+                progress.setForeground(progressColor());
             }
-            final JButton deleteButton = deleteRunButton;
-            if (deleteButton != null && !project.isDisposed()) {
-                deleteButton.setVisible(terminal() && terminalRunId > 0);
-                deleteButton.setEnabled(terminal() && terminalRunId > 0);
+            final RunnerLayoutUi layout = runnerLayoutUi;
+            if (layout != null && !project.isDisposed()) {
+                layout.updateActionsNow();
             }
             updateAnimationTimer();
         });
+    }
+
+    private DefaultActionGroup runToolbarActions() {
+        final DefaultActionGroup group = new DefaultActionGroup();
+        group.add(new ToolbarAction(
+                GitHubWorkflowBundle.message("workflow.run.rerun.all.tooltip"),
+                AllIcons.Actions.Rerun,
+                this::canRerunAll,
+                () -> processHandler.rerunRemoteRun(false)
+        ));
+        group.add(new ToolbarAction(
+                GitHubWorkflowBundle.message("workflow.run.rerun.failed.tooltip"),
+                AllIcons.Actions.Restart,
+                this::canRerunFailed,
+                () -> processHandler.rerunRemoteRun(true)
+        ));
+        group.addSeparator();
+        group.add(new ToolbarAction(
+                GitHubWorkflowBundle.message("workflow.run.download.log.tooltip"),
+                AllIcons.Nodes.Console,
+                this::canDownloadSelectedLog,
+                () -> {
+                    final TreeEntry entry = selectedEntry;
+                    if (entry instanceof JobNode job) {
+                        processHandler.downloadJobLog(job.jobId(), job.title());
+                    }
+                }
+        ));
+        group.add(new ToolbarAction(
+                GitHubWorkflowBundle.message("workflow.run.download.artifacts.tooltip"),
+                AllIcons.Actions.Download,
+                this::canDownloadArtifacts,
+                processHandler::downloadArtifacts
+        ));
+        group.addSeparator();
+        group.add(new ToolbarAction(
+                GitHubWorkflowBundle.message("workflow.run.delete.tooltip"),
+                AllIcons.General.Delete,
+                this::canDeleteRun,
+                () -> {
+                    if (deleteInProgress.compareAndSet(false, true)) {
+                        processHandler.deleteRemoteRun();
+                    }
+                }
+        ));
+        return group;
+    }
+
+    private boolean canRerunAll() {
+        return terminalRunId > 0 && terminal();
+    }
+
+    private boolean canRerunFailed() {
+        return terminalRunId > 0 && terminal() && jobs.values().stream().anyMatch(JobNode::failed);
+    }
+
+    private boolean canDownloadSelectedLog() {
+        return terminalRunId > 0
+                && selectedEntry instanceof JobNode job
+                && job.downloadableLog();
+    }
+
+    private boolean canDownloadArtifacts() {
+        return terminalRunId > 0 && processHandler.artifactAvailability() == 1;
+    }
+
+    private boolean canDeleteRun() {
+        return terminalRunId > 0 && terminal() && !deleteInProgress.get();
+    }
+
+    private Color progressColor() {
+        if (!terminal()) {
+            return uiColor("ProgressBar.foreground", new Color(0x4A88C7));
+        }
+        return successful(terminalConclusion)
+                ? uiColor("Actions.Green", new Color(0x59A869))
+                : uiColor("Actions.Red", new Color(0xDB5860));
+    }
+
+    private static Color uiColor(final String key, final Color fallback) {
+        final Color color = UIManager.getColor(key);
+        return color == null ? fallback : color;
     }
 
     private void updateAnimationTimer() {
@@ -500,6 +584,38 @@ final class WorkflowRunConsoleTabs implements WorkflowRunJobConsole {
         return new JobDisplayName(normalized.substring(0, separator), normalized.substring(separator + 3));
     }
 
+    private static final class ToolbarAction extends DumbAwareAction {
+        private final String text;
+        private final BooleanSupplier visible;
+        private final Runnable command;
+
+        private ToolbarAction(
+                final String tooltip,
+                final Icon icon,
+                final BooleanSupplier visible,
+                final Runnable command
+        ) {
+            super(tooltip, tooltip, icon);
+            this.text = tooltip;
+            this.visible = visible;
+            this.command = command;
+        }
+
+        @Override
+        public void actionPerformed(@NotNull final AnActionEvent event) {
+            command.run();
+        }
+
+        @Override
+        public void update(@NotNull final AnActionEvent event) {
+            final Presentation presentation = event.getPresentation();
+            final boolean available = visible.getAsBoolean();
+            presentation.setText(text, false);
+            presentation.setDescription(text);
+            presentation.setEnabledAndVisible(available);
+        }
+    }
+
     private interface TreeEntry {
         String title();
 
@@ -560,17 +676,17 @@ final class WorkflowRunConsoleTabs implements WorkflowRunJobConsole {
                 return AllIcons.RunConfigurations.TestTerminated;
             }
             if (jobs.values().stream().anyMatch(JobNode::failed)) {
-                return AllIcons.RunConfigurations.TestState.Red2;
+                return AllIcons.General.Error;
             }
             if (jobs.values().stream().anyMatch(JobNode::skipped)) {
                 return AllIcons.RunConfigurations.TestState.Yellow2;
             }
             if (jobs.isEmpty() && terminal()) {
                 return successful(terminalConclusion)
-                        ? AllIcons.RunConfigurations.TestState.Green2
-                        : AllIcons.RunConfigurations.TestState.Red2;
+                        ? AllIcons.General.GreenCheckmark
+                        : AllIcons.General.Error;
             }
-            return AllIcons.RunConfigurations.TestState.Green2;
+            return AllIcons.General.GreenCheckmark;
         }
 
         @Override
@@ -629,12 +745,12 @@ final class WorkflowRunConsoleTabs implements WorkflowRunJobConsole {
                 return AllIcons.RunConfigurations.TestTerminated;
             }
             if (children.stream().anyMatch(JobNode::failed)) {
-                return AllIcons.RunConfigurations.TestState.Red2;
+                return AllIcons.General.Error;
             }
             if (children.stream().anyMatch(JobNode::skipped)) {
                 return AllIcons.RunConfigurations.TestState.Yellow2;
             }
-            return children.isEmpty() ? AllIcons.RunConfigurations.TestNotRan : AllIcons.RunConfigurations.TestState.Green2;
+            return children.isEmpty() ? AllIcons.RunConfigurations.TestNotRan : AllIcons.General.GreenCheckmark;
         }
 
         @Override
@@ -767,7 +883,7 @@ final class WorkflowRunConsoleTabs implements WorkflowRunJobConsole {
                 if (cancelled()) {
                     return AllIcons.RunConfigurations.TestTerminated;
                 }
-                return successful(conclusion) ? AllIcons.RunConfigurations.TestState.Green2 : AllIcons.RunConfigurations.TestState.Red2;
+                return successful(conclusion) ? AllIcons.General.GreenCheckmark : AllIcons.General.Error;
             }
             return running() ? AnimatedIcon.Default.INSTANCE : AllIcons.RunConfigurations.TestNotRan;
         }
@@ -801,6 +917,12 @@ final class WorkflowRunConsoleTabs implements WorkflowRunJobConsole {
 
         private boolean skipped() {
             return completed() && ("skipped".equals(conclusion) || "neutral".equals(conclusion));
+        }
+
+        private boolean downloadableLog() {
+            synchronized (lock) {
+                return completed() || !output.isEmpty();
+            }
         }
 
         private boolean cancelled() {
