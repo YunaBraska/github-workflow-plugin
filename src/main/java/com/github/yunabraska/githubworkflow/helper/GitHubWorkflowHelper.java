@@ -8,34 +8,67 @@ import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.psi.FileViewProvider;
 import com.intellij.psi.PsiElement;
 import com.intellij.psi.PsiFile;
+import org.jetbrains.yaml.psi.YAMLScalar;
 
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Optional;
 
 import static com.github.yunabraska.githubworkflow.helper.AutoPopupInsertHandler.addSuffix;
 import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.FIELD_IF;
 
 public class GitHubWorkflowHelper {
+    private static final String COMPLETION_DUMMY = "IntellijIdeaRulezzz";
 
     private GitHubWorkflowHelper() {
         // static helper
     }
 
     public static Optional<String[]> getCaretBracketItem(final PsiElement position, final int offset, final String[] prefix) {
-        final String wholeText = position.getText();
-        if (wholeText == null) {
+        final PsiElement context = completionContextElement(position, offset);
+        final String rawText = context.getText();
+        if (rawText == null) {
             return Optional.empty();
         }
-        final int cursorRel = offset - position.getTextRange().getStartOffset();
+        final int rawCursorRel = offset - context.getTextRange().getStartOffset();
+        final int dummyIndex = rawText.indexOf(COMPLETION_DUMMY);
+        final String wholeText = rawText.replace(COMPLETION_DUMMY, "");
+        final int adjustedCursorRel = dummyIndex >= 0 && dummyIndex < rawCursorRel
+                ? rawCursorRel - COMPLETION_DUMMY.length()
+                : rawCursorRel;
+        final int cursorRel = Math.max(0, Math.min(adjustedCursorRel, wholeText.length()));
         final String offsetText = wholeText.substring(0, cursorRel);
         final int bracketStart = offsetText.lastIndexOf("${{");
-        if (cursorRel > 2 && isInBrackets(offsetText, bracketStart) || PsiElementHelper.getParent(position, FIELD_IF).isPresent()) {
+        if (cursorRel > 2 && isInBrackets(offsetText, bracketStart) || PsiElementHelper.getParent(context, FIELD_IF).isPresent()) {
             return getCaretBracketItem(prefix, wholeText, cursorRel);
         }
         return Optional.empty();
     }
 
+    private static PsiElement completionContextElement(final PsiElement position, final int offset) {
+        PsiElement current = position;
+        PsiElement fallback = position;
+        while (current != null && current.getParent() != current) {
+            final boolean containsOffset = current.getTextRange() != null
+                    && current.getTextRange().getStartOffset() <= offset
+                    && offset <= current.getTextRange().getEndOffset();
+            if (containsOffset && current.getText() != null && current.getText().contains(COMPLETION_DUMMY)) {
+                fallback = current;
+                if (PsiElementHelper.isTextElement(current) || current instanceof YAMLScalar) {
+                    return current;
+                }
+            }
+            current = current.getParent();
+        }
+        return fallback;
+    }
+
     public static Optional<String[]> getCaretBracketItem(final String[] prefix, final String wholeText, final int cursorRel) {
+        final Optional<String[]> pathItems = getPathCompletionItems(prefix, wholeText, cursorRel);
+        if (pathItems.isPresent()) {
+            return pathItems;
+        }
         final char previousChar = cursorRel == 0 ? ' ' : wholeText.charAt(cursorRel - 1);
         if (cursorRel > 1 && previousChar == '.') {
             //NEXT ELEMENT
@@ -52,6 +85,82 @@ public class GitHubWorkflowHelper {
             prefix[0] = prefArray[prefArray.length - 1];
             return Optional.of(wholeText.substring(indexStart, cursorRel - prefix[0].length()).split("\\."));
         }
+    }
+
+    private static Optional<String[]> getPathCompletionItems(final String[] prefix, final String wholeText, final int cursorRel) {
+        final int pathStart = getPathStartIndex(wholeText, cursorRel);
+        if (pathStart >= cursorRel) {
+            return Optional.empty();
+        }
+        final String path = wholeText.substring(pathStart, cursorRel);
+        if (!path.contains(".") && !path.contains("[")) {
+            return Optional.empty();
+        }
+        final CaretPath caretPath = parseCaretPath(path);
+        if (caretPath.items().length == 0) {
+            return Optional.empty();
+        }
+        prefix[0] = caretPath.prefix();
+        return Optional.of(caretPath.items());
+    }
+
+    private static int getPathStartIndex(final String text, final int cursorRel) {
+        int result = Math.min(cursorRel, text.length());
+        while (result > 0 && isPathChar(text.charAt(result - 1))) {
+            result--;
+        }
+        return result;
+    }
+
+    private static CaretPath parseCaretPath(final String text) {
+        final List<String> items = new ArrayList<>();
+        final StringBuilder current = new StringBuilder();
+        boolean inBracket = false;
+        char quote = 0;
+        for (int index = 0; index < text.length(); index++) {
+            final char character = text.charAt(index);
+            if (inBracket) {
+                if (quote != 0 && character == quote) {
+                    quote = 0;
+                } else if (quote == 0 && (character == '\'' || character == '"')) {
+                    quote = character;
+                } else if (quote == 0 && character == ']') {
+                    addPathItem(items, current);
+                    inBracket = false;
+                } else {
+                    current.append(character);
+                }
+            } else if (character == '.') {
+                addPathItem(items, current);
+            } else if (character == '[') {
+                addPathItem(items, current);
+                inBracket = true;
+            } else if (character != '\'' && character != '"') {
+                current.append(character);
+            }
+        }
+        return new CaretPath(items.toArray(String[]::new), current.toString());
+    }
+
+    private static void addPathItem(final List<String> items, final StringBuilder current) {
+        if (!current.isEmpty()) {
+            items.add(current.toString());
+            current.setLength(0);
+        }
+    }
+
+    private static boolean isPathChar(final char character) {
+        return Character.isLetterOrDigit(character)
+                || character == '_'
+                || character == '-'
+                || character == '.'
+                || character == '['
+                || character == ']'
+                || character == '\''
+                || character == '"';
+    }
+
+    private record CaretPath(String[] items, String prefix) {
     }
 
     public static int getStartIndex(final CharSequence currentText, final int fromIndex) {
@@ -126,7 +235,8 @@ public class GitHubWorkflowHelper {
         return path != null && path.getNameCount() > 2
                 && isYamlFile(path)
                 && path.getName(path.getNameCount() - 2).toString().equalsIgnoreCase("workflows")
-                && path.getName(path.getNameCount() - 3).toString().equalsIgnoreCase(".github");
+                && (path.getName(path.getNameCount() - 3).toString().equalsIgnoreCase(".github")
+                || path.getName(path.getNameCount() - 3).toString().equalsIgnoreCase(".gitea"));
     }
 
     public static boolean isWorkflowTemplatePropertiesFile(final Path path) {
@@ -146,7 +256,7 @@ public class GitHubWorkflowHelper {
     public static boolean isIssueConfigFile(final Path path) {
         return path.getNameCount() > 2
                 && path.getName(path.getNameCount() - 3).toString().equalsIgnoreCase(".github")
-                && path.getName(path.getNameCount() - 2).toString().equalsIgnoreCase("workflow-templates")
+                && path.getName(path.getNameCount() - 2).toString().equalsIgnoreCase("ISSUE_TEMPLATE")
                 && (path.getName(path.getNameCount() - 1).toString().equalsIgnoreCase("config.yml")
                 || path.getName(path.getNameCount() - 1).toString().equalsIgnoreCase("config.yaml"));
     }

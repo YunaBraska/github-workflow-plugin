@@ -25,7 +25,6 @@ import static com.github.yunabraska.githubworkflow.helper.PsiElementHelper.getCh
 import static com.github.yunabraska.githubworkflow.helper.PsiElementHelper.getParentJob;
 import static com.github.yunabraska.githubworkflow.helper.PsiElementHelper.getParentStep;
 import static com.github.yunabraska.githubworkflow.helper.PsiElementHelper.getText;
-import static com.github.yunabraska.githubworkflow.helper.PsiElementHelper.getTextElement;
 import static com.github.yunabraska.githubworkflow.model.NodeIcon.ICON_ENV;
 import static com.github.yunabraska.githubworkflow.model.NodeIcon.ICON_ENV_JOB;
 import static com.github.yunabraska.githubworkflow.model.NodeIcon.ICON_ENV_ROOT;
@@ -101,7 +100,6 @@ public class Envs {
 
     private static Function<List<YAMLKeyValue>, Map<String, String>> toMapWithKeyAndText() {
         return elements -> elements.stream()
-                .filter(keyValue -> getTextElement(keyValue).isPresent())
                 .collect(Collectors.toMap(YAMLKeyValue::getKeyText, keyValue -> getText(keyValue).orElse(""), (existing, replacement) -> existing));
     }
 

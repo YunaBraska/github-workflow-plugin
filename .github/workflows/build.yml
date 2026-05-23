@@ -1,173 +1,386 @@
-# GitHub Actions Workflow is created for testing and preparing the plugin release in the following steps:
-# - validate Gradle Wrapper,
-# - run 'test' and 'verifyPlugin' tasks,
-# - run Qodana inspections,
-# - run 'buildPlugin' task and prepare artifact for the further tests,
-# - run 'runPluginVerifier' task,
-# - create a draft release.
-#
-# Workflow is triggered on push and pull_request events.
-#
-# GitHub Actions reference: https://help.github.com/en/actions
-#
-## JBIJPPTPL
+name: Pipeline
 
-name: Build
 on:
   workflow_dispatch:
-  # Trigger the workflow on pushes to only the 'main' branch (this avoids duplicate checks being run e.g. for dependabot pull requests)
-#  push:
-#    branches: [main]
-  # Trigger the workflow on any pull request
-#  pull_request:
+    inputs:
+      tag:
+        description: Release tag. Empty means today's vYYYY.M.D.
+        required: false
+        type: string
+      dry_run:
+        description: Validate release without publishing.
+        required: true
+        default: false
+        type: boolean
+  push:
+    branches:
+      - '**'
+  pull_request:
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - ready_for_review
+
+permissions:
+  actions: write
+  contents: write
+  packages: write
+
+concurrency:
+  group: pipeline-${{ github.event.pull_request.number || github.ref || github.run_id }}
+  cancel-in-progress: false
 
 jobs:
-
-  # Run Gradle Wrapper Validation Action to verify the wrapper's checksum
-  # Run verifyPlugin, IntelliJ Plugin Verifier, and test Gradle tasks
-  # Build plugin and provide the artifact for the next workflow jobs
-  build:
-    name: Build
+  pipeline:
+    name: Test, Build, Release
     runs-on: ubuntu-latest
-    outputs:
-      version: ${{ steps.properties.outputs.version }}
-      changelog: ${{ steps.properties.outputs.changelog }}
+    timeout-minutes: 60
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
     steps:
-
-      # Free GitHub Actions Environment Disk Space
-      - name: Maximize Build Space
+      - name: 🧹 Free disk space
+        shell: sh
         run: |
-          sudo rm -rf /usr/share/dotnet
-          sudo rm -rf /usr/local/lib/android
-          sudo rm -rf /opt/ghc
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
 
-      # Check out current repository
-      - name: Fetch Sources
-        uses: actions/checkout@v4
-
-      # Validate wrapper
-      - name: Gradle Wrapper Validation
-        uses: gradle/wrapper-validation-action@v3.5.0
-
-      # Setup Java 17 environment for the next steps
-      - name: Setup Java
-        uses: actions/setup-java@v4
+      - name: 📥 Fetch sources
+        uses: actions/checkout@v6
         with:
-          distribution: zulu
-          java-version: 17
+          fetch-depth: 0
+          token: ${{ secrets.RELEASE_TOKEN || github.token }}
 
-      # Set environment variables
-      - name: Export Properties
-        id: properties
-        shell: bash
-        run: |
-          PROPERTIES="$(./gradlew properties --console=plain -q)"
-          VERSION="$(echo "$PROPERTIES" | grep "^version:" | cut -f2- -d ' ')"
-          NAME="$(echo "$PROPERTIES" | grep "^pluginName:" | cut -f2- -d ' ')"
-          CHANGELOG="$(./gradlew getChangelog --unreleased --no-header --console=plain -q)"
-
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "name=$NAME" >> $GITHUB_OUTPUT
-          echo "pluginVerifierHomeDir=~/.pluginVerifier" >> $GITHUB_OUTPUT
-          
-          echo "changelog<<EOF" >> $GITHUB_OUTPUT
-          echo "$CHANGELOG" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
-
-          ./gradlew listProductsReleases # prepare list of IDEs for Plugin Verifier
-
-      # Run tests
-      - name: Run Tests
-        run: ./gradlew check
-
-      # Collect Tests Result of failed tests
-      - name: Collect Tests Result
-        if: ${{ failure() }}
-        uses: actions/upload-artifact@v3
-        with:
-          name: tests-result
-          path: ${{ github.workspace }}/build/reports/tests
-
-      # Upload Kover report to CodeCov
-      - name: Upload Code Coverage Report
-        uses: codecov/codecov-action@v4
-        with:
-          files: ${{ github.workspace }}/build/reports/kover/xml/report.xml
-
-      # Cache Plugin Verifier IDEs
-      - name: Setup Plugin Verifier IDEs Cache
-        uses: actions/cache@v4
-        with:
-          path: ${{ steps.properties.outputs.pluginVerifierHomeDir }}/ides
-          key: plugin-verifier-${{ hashFiles('build/listProductsReleases.txt') }}
-
-      # Run Verify Plugin task and IntelliJ Plugin Verifier tool
-      - name: Run Plugin Verification tasks
-        run: ./gradlew runPluginVerifier -Dplugin.verifier.home.dir=${{ steps.properties.outputs.pluginVerifierHomeDir }}
-
-      # Collect Plugin Verifier Result
-      - name: Collect Plugin Verifier Result
-        if: ${{ always() }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: pluginVerifier-result
-          path: ${{ github.workspace }}/build/reports/pluginVerifier
-
-#      # Run Qodana inspections
-#      - name: Qodana - Code Inspection
-#        uses: JetBrains/qodana-action@v2022.3.4
-
-      # Prepare plugin archive content for creating artifact
-      - name: Prepare Plugin Artifact
-        id: artifact
-        shell: bash
-        run: |
-          cd ${{ github.workspace }}/build/distributions
-          FILENAME=`ls *.zip`
-          unzip "$FILENAME" -d content
-
-          echo "filename=${FILENAME:0:-4}" >> $GITHUB_OUTPUT
-
-      # Store already-built plugin as an artifact for downloading
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ steps.artifact.outputs.filename }}
-          path: ./build/distributions/content/*/*
-
-  # Prepare a draft release for GitHub Releases page for the manual verification
-  # If accepted and published, release workflow would be triggered
-  releaseDraft:
-    name: Release Draft
-    if: github.event_name != 'pull_request'
-    needs: build
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-
-      # Check out current repository
-      - name: Fetch Sources
-        uses: actions/checkout@v4
-
-      # Remove old release drafts by using the curl request for the available releases with a draft flag
-      - name: Remove Old Release Drafts
+      - name: 🧭 Plan run
+        id: plan
+        shell: sh
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HEAD_MESSAGE: ${{ github.event.head_commit.message || '' }}
+          INPUT_DRY_RUN: ${{ inputs.dry_run || 'false' }}
+          INPUT_TAG: ${{ inputs.tag || '' }}
         run: |
-          gh api repos/{owner}/{repo}/releases \
-            --jq '.[] | select(.draft == true) | .id' \
-            | xargs -I '{}' gh api -X DELETE repos/{owner}/{repo}/releases/{}
+          release="false"
+          dry_run="false"
+          plugin_id="$(sed -n 's/^[[:space:]]*pluginId[[:space:]]*=[[:space:]]*//p' gradle.properties | head -n 1 | tr -d '\r')"
+          plugin_version="$(sed -n 's/^[[:space:]]*pluginVersion[[:space:]]*=[[:space:]]*//p' gradle.properties | head -n 1 | tr -d '\r')"
 
-      # Create a new release draft which is not publicly visible and requires manual acceptance
-      - name: Create Release Draft
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          if [ -z "$plugin_id" ] || [ -z "$plugin_version" ]; then
+            echo "Missing pluginId or pluginVersion in gradle.properties." >&2
+            exit 1
+          fi
+
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+            release="true"
+            dry_run="$INPUT_DRY_RUN"
+          elif [ "$GITHUB_EVENT_NAME" = "push" ] \
+            && [ "$GITHUB_REF" = "refs/heads/main" ] \
+            && ! printf '%s\n' "$HEAD_MESSAGE" | grep -Eq '^chore: release '; then
+            release="true"
+          fi
+
+          release_tag=""
+          target_version="$plugin_version"
+          if [ "$release" = "true" ]; then
+            if [ -n "$INPUT_TAG" ]; then
+              release_tag="$INPUT_TAG"
+            else
+              year="$(date -u +%Y)"
+              month="$(date -u +%m | sed 's/^0//')"
+              day="$(date -u +%d | sed 's/^0//')"
+              release_tag="v$year.$month.$day"
+            fi
+
+            if ! printf '%s\n' "$release_tag" | grep -Eq '^v[0-9]{4}[.][1-9][0-9]?[.][1-9][0-9]?$'; then
+              echo "Tag must look like v2026.5.20: $release_tag" >&2
+              exit 1
+            fi
+            target_version="${release_tag#v}"
+          fi
+
+          echo "event=$GITHUB_EVENT_NAME"
+          echo "branch=${GITHUB_REF_NAME:-unknown}"
+          echo "release=$release"
+          echo "dry_run=$dry_run"
+          echo "plugin_id=$plugin_id"
+          echo "plugin_version=$plugin_version"
+          echo "target_version=$target_version"
+          echo "release_tag=$release_tag"
+
+          echo "release=$release" >> "$GITHUB_OUTPUT"
+          echo "dry_run=$dry_run" >> "$GITHUB_OUTPUT"
+          echo "plugin_id=$plugin_id" >> "$GITHUB_OUTPUT"
+          echo "plugin_version=$plugin_version" >> "$GITHUB_OUTPUT"
+          echo "tag=$release_tag" >> "$GITHUB_OUTPUT"
+          echo "version=$target_version" >> "$GITHUB_OUTPUT"
+
+      - name: 🗝️ Resolve cache key
+        id: cache-key
+        shell: sh
         run: |
-          gh release create v${{ needs.build.outputs.version }} \
-            --draft \
-            --title "v${{ needs.build.outputs.version }}" \
-            --notes "$(cat << 'EOM'
-          ${{ needs.build.outputs.changelog }}
-          EOM
-          )"
+          {
+            sed '/^[[:space:]]*pluginVersion[[:space:]]*=/d' gradle.properties
+            cat build.gradle settings.gradle gradle/wrapper/gradle-wrapper.properties
+          } | sha256sum | awk '{ print "key=plugin-ci-${{ runner.os }}-" $1 }' >> "$GITHUB_OUTPUT"
+
+      - name: ♻️ Restore cache
+        id: cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            ~/.gradle/caches/transforms-*
+            ~/.gradle/caches/*/transforms
+            ~/.gradle/wrapper
+          key: ${{ steps.cache-key.outputs.key }}
+          restore-keys: |
+            plugin-ci-${{ runner.os }}-
+
+      - name: ☕ Set up Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 25
+
+      - name: 🏷️ Prepare release metadata
+        if: steps.plan.outputs.release == 'true'
+        shell: sh
+        env:
+          DRY_RUN: ${{ steps.plan.outputs.dry_run }}
+          RELEASE_TAG: ${{ steps.plan.outputs.tag }}
+          RELEASE_VERSION: ${{ steps.plan.outputs.version }}
+        run: |
+          git fetch --tags --force
+          if git rev-parse -q --verify "refs/tags/$RELEASE_TAG" >/dev/null; then
+            echo "Tag already exists: $RELEASE_TAG" >&2
+            exit 1
+          fi
+
+          awk -v version="$RELEASE_VERSION" '
+            /^[[:space:]]*pluginVersion[[:space:]]*=/ {
+              print "pluginVersion = " version
+              next
+            }
+            { print }
+          ' gradle.properties > gradle.properties.tmp
+          mv gradle.properties.tmp gradle.properties
+
+          release_date="$(date -u +%Y-%m-%d)"
+          if grep -Eq "^## \\[$RELEASE_VERSION\\]" CHANGELOG.md; then
+            echo "CHANGELOG.md already contains $RELEASE_VERSION"
+          else
+            awk -v version="$RELEASE_VERSION" -v release_date="$release_date" '
+              /^## \[Unreleased\]/ && !released {
+                print "## [Unreleased]"
+                print ""
+                print "## [" version "] - " release_date
+                released = 1
+                next
+              }
+              { print }
+            ' CHANGELOG.md > CHANGELOG.md.tmp
+            mv CHANGELOG.md.tmp CHANGELOG.md
+          fi
+
+          if ! git diff --quiet -- gradle.properties CHANGELOG.md; then
+            git config user.name "Kira"
+            git config user.email "kira@yuna.berlin"
+            git add gradle.properties CHANGELOG.md
+            if [ "$DRY_RUN" = "true" ]; then
+              echo "Dry run: would commit release metadata $RELEASE_VERSION"
+            else
+              git commit -m "chore: release $RELEASE_VERSION [skip ci]"
+            fi
+          fi
+
+      - name: 🔐 Validate release secrets
+        if: steps.plan.outputs.release == 'true' && steps.plan.outputs.dry_run != 'true'
+        shell: sh
+        env:
+          PUBLISH_TOKEN: ${{ secrets.PUBLISH_TOKEN }}
+        run: |
+          if [ -z "$PUBLISH_TOKEN" ]; then
+            echo "Missing release secret: PUBLISH_TOKEN" >&2
+            exit 1
+          fi
+
+          case "$PUBLISH_TOKEN" in
+            *[[:space:]]*)
+              echo "PUBLISH_TOKEN contains whitespace." >&2
+              exit 1
+              ;;
+            perm-*|perm:*)
+              ;;
+            *)
+              echo "PUBLISH_TOKEN does not look like a JetBrains permanent token." >&2
+              exit 1
+              ;;
+          esac
+
+          token_length="$(printf '%s' "$PUBLISH_TOKEN" | wc -c | tr -d ' ')"
+          if [ "$token_length" -lt 20 ]; then
+            echo "PUBLISH_TOKEN is too short." >&2
+            exit 1
+          fi
+          echo "publish_token=present length=$token_length format=permanent-token"
+
+      - name: 🧪 Test and package
+        shell: sh
+        env:
+          RELEASE: ${{ steps.plan.outputs.release }}
+        run: |
+          if [ "$RELEASE" = "true" ]; then
+            ./gradlew --no-daemon check verifyPlugin buildPlugin --warning-mode all
+          else
+            ./gradlew --no-daemon check buildPlugin --warning-mode all
+          fi
+
+      - name: 📦 Locate release archive
+        id: archive
+        if: steps.plan.outputs.release == 'true'
+        shell: sh
+        run: |
+          archive="$(find build/distributions -maxdepth 1 -type f -name '*.zip' | sort | head -n 1)"
+
+          if [ -z "$archive" ]; then
+            echo "No release archive found." >&2
+            exit 1
+          fi
+
+          echo "path=$archive" >> "$GITHUB_OUTPUT"
+          echo "name=$(basename "$archive")" >> "$GITHUB_OUTPUT"
+
+      - name: 📝 Extract release notes
+        if: steps.plan.outputs.release == 'true'
+        shell: sh
+        env:
+          RELEASE_TAG: ${{ steps.plan.outputs.tag }}
+        run: |
+          version="${RELEASE_TAG#v}"
+          awk -v version="$version" '
+            $0 ~ "^## \\[" version "\\]" { found = 1; next }
+            found && $0 ~ /^## / { exit }
+            found { print }
+          ' CHANGELOG.md > release-notes.md
+
+          if [ ! -s release-notes.md ]; then
+            awk '
+              /^## \[Unreleased\]/ { found = 1; next }
+              found && /^## / { exit }
+              found { print }
+            ' CHANGELOG.md > release-notes.md
+          fi
+
+          if [ ! -s release-notes.md ]; then
+            printf 'Plugin release %s\n' "$RELEASE_TAG" > release-notes.md
+          fi
+
+      - name: 📚 Publish GitHub package
+        if: steps.plan.outputs.release == 'true' && steps.plan.outputs.dry_run != 'true'
+        shell: sh
+        env:
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          ./gradlew --no-daemon publishPluginZipPublicationToGitHubPackagesRepository --warning-mode all
+
+      - name: 🛒 Publish Marketplace
+        if: steps.plan.outputs.release == 'true' && steps.plan.outputs.dry_run != 'true'
+        shell: sh
+        env:
+          ARCHIVE_PATH: ${{ steps.archive.outputs.path }}
+          MARKETPLACE_CHANNEL: ${{ vars.MARKETPLACE_CHANNEL || '' }}
+          PLUGIN_ID: ${{ steps.plan.outputs.plugin_id }}
+          PUBLISH_TOKEN: ${{ secrets.PUBLISH_TOKEN }}
+        run: |
+          set -- --fail-with-body --retry 3 --retry-delay 10 \
+            --header "Authorization: Bearer $PUBLISH_TOKEN" \
+            -F "xmlId=$PLUGIN_ID" \
+            -F "file=@$ARCHIVE_PATH"
+
+          if [ -n "$MARKETPLACE_CHANNEL" ]; then
+            set -- "$@" -F "channel=$MARKETPLACE_CHANNEL"
+          fi
+          curl "$@" https://plugins.jetbrains.com/api/updates/upload
+
+      - name: 📤 Push release commit and tag
+        if: steps.plan.outputs.release == 'true' && steps.plan.outputs.dry_run != 'true'
+        shell: sh
+        env:
+          RELEASE_TAG: ${{ steps.plan.outputs.tag }}
+          RELEASE_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+        run: |
+          git config user.name "Kira"
+          git config user.email "kira@yuna.berlin"
+
+          if [ -n "$RELEASE_TOKEN" ]; then
+            git remote set-url origin "https://x-access-token:${RELEASE_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          fi
+
+          target_branch="${GITHUB_REF_NAME:-main}"
+          git push origin "HEAD:$target_branch"
+          git tag -a "$RELEASE_TAG" -m "$RELEASE_TAG [skip ci]"
+          git push origin "refs/tags/$RELEASE_TAG"
+
+      - name: 🚀 Create GitHub release
+        if: steps.plan.outputs.release == 'true' && steps.plan.outputs.dry_run != 'true'
+        shell: sh
+        env:
+          ARCHIVE_PATH: ${{ steps.archive.outputs.path }}
+          GH_TOKEN: ${{ secrets.RELEASE_TOKEN || github.token }}
+          RELEASE_TAG: ${{ steps.plan.outputs.tag }}
+        run: |
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" "$ARCHIVE_PATH" --clobber
+            gh release edit "$RELEASE_TAG" --title "$RELEASE_TAG" --notes-file release-notes.md
+          else
+            gh release create "$RELEASE_TAG" "$ARCHIVE_PATH" --title "$RELEASE_TAG" --notes-file release-notes.md --verify-tag
+          fi
+
+      - name: 💾 Save cache
+        if: success() && github.event_name != 'pull_request' && steps.cache.outputs.cache-hit != 'true'
+        continue-on-error: true
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            ~/.gradle/caches/transforms-*
+            ~/.gradle/caches/*/transforms
+            ~/.gradle/wrapper
+          key: ${{ steps.cache-key.outputs.key }}
+
+      - name: 🧽 Prune old caches
+        if: success() && github.event_name != 'pull_request'
+        continue-on-error: true
+        shell: sh
+        env:
+          CACHE_KEY: ${{ steps.cache-key.outputs.key }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh cache list --json id,key --limit 100 \
+            --jq ".[] | select(.key != \"$CACHE_KEY\") | .id" \
+            | while IFS= read -r cache_id; do
+                if [ -n "$cache_id" ]; then
+                  gh cache delete "$cache_id" || true
+                fi
+              done
+
+      - name: 📊 Upload test reports
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-reports
+          path: |
+            build/reports/tests
+            build/reports/jacoco
+
+      - name: 🧾 Upload verifier reports
+        if: always() && steps.plan.outputs.release == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: plugin-verifier-reports
+          path: build/reports/pluginVerifier
+
+      - name: 📮 Upload plugin archive
+        if: success()
+        uses: actions/upload-artifact@v7
+        with:
+          name: plugin-archive
+          path: build/distributions/*.zip
