@@ -71,6 +71,14 @@ jobs:
           ' CHANGELOG.md > release-notes.md
 
           if [ ! -s release-notes.md ]; then
+            awk '
+              /^## \[Unreleased\]/ { found = 1; next }
+              found && /^## / { exit }
+              found { print }
+            ' CHANGELOG.md > release-notes.md
+          fi
+
+          if [ ! -s release-notes.md ]; then
             printf 'Plugin release %s\n' "$RELEASE_TAG" > release-notes.md
           fi
 

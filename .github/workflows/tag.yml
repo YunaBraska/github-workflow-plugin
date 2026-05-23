@@ -95,12 +95,29 @@ jobs:
           ' gradle.properties > gradle.properties.tmp
           mv gradle.properties.tmp gradle.properties
 
-          if ! git diff --quiet -- gradle.properties; then
+          release_date="$(date -u +%Y-%m-%d)"
+          if grep -Eq "^## \\[$RELEASE_VERSION\\]" CHANGELOG.md; then
+            echo "CHANGELOG.md already contains $RELEASE_VERSION"
+          else
+            awk -v version="$RELEASE_VERSION" -v release_date="$release_date" '
+              /^## \[Unreleased\]/ && !released {
+                print "## [Unreleased]"
+                print ""
+                print "## [" version "] - " release_date
+                released = 1
+                next
+              }
+              { print }
+            ' CHANGELOG.md > CHANGELOG.md.tmp
+            mv CHANGELOG.md.tmp CHANGELOG.md
+          fi
+
+          if ! git diff --quiet -- gradle.properties CHANGELOG.md; then
             git config user.name "Kira"
             git config user.email "kira@yuna.berlin"
-            git add gradle.properties
+            git add gradle.properties CHANGELOG.md
             if [ "$DRY_RUN" = "true" ]; then
-              echo "Dry run: would commit pluginVersion $RELEASE_VERSION"
+              echo "Dry run: would commit release metadata $RELEASE_VERSION"
             else
               git commit -m "chore: release $RELEASE_VERSION"
             fi
