@@ -2,11 +2,13 @@ package com.github.yunabraska.githubworkflow.services;
 
 import com.intellij.codeInsight.intention.IntentionAction;
 import com.intellij.openapi.util.Iconable;
+import com.intellij.testFramework.fixtures.impl.CodeInsightTestFixtureImpl;
 
-import java.util.Map;
 import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 
 public class WorkflowQuickFixTest extends EditorFeatureTestCase {
 
@@ -161,6 +163,26 @@ public class WorkflowQuickFixTest extends EditorFeatureTestCase {
                       - id: package
                         run: echo "artifact=dist" >> "$GITHUB_OUTPUT"
                 """)).contains("Unused [artifact]");
+    }
+
+    public void testQueuedCacheHighlightRefreshDoesNotModifyDuringHighlighting() {
+        configureWorkflowProjectFile("""
+                name: Quick Fixes
+                on: workflow_dispatch
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - uses: owner/tool@v1
+                """);
+        ((CodeInsightTestFixtureImpl) myFixture).canChangeDocumentDuringHighlighting(false);
+        try {
+            GitHubActionCache.triggerSyntaxHighlightingForActiveFiles();
+            assertThatCode(() -> myFixture.doHighlighting())
+                    .doesNotThrowAnyException();
+        } finally {
+            ((CodeInsightTestFixtureImpl) myFixture).canChangeDocumentDuringHighlighting(true);
+        }
     }
 
     public void testReplaceQuickFixUpdatesWorkflowInputReference() {

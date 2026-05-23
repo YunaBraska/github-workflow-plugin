@@ -4,6 +4,7 @@ import com.github.yunabraska.githubworkflow.helper.GitHubWorkflowHelper;
 import com.github.yunabraska.githubworkflow.helper.PsiElementHelper;
 import com.github.yunabraska.githubworkflow.model.GitHubAction;
 import com.intellij.codeInsight.daemon.DaemonCodeAnalyzer;
+import com.intellij.openapi.application.Application;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.components.PersistentStateComponent;
 import com.intellij.openapi.components.State;
@@ -417,7 +418,11 @@ public class GitHubActionCache implements PersistentStateComponent<GitHubActionC
     }
 
     public static void triggerSyntaxHighlightingForActiveFiles() {
-        ApplicationManager.getApplication().invokeLater(() ->
+        final Application application = ApplicationManager.getApplication();
+        if (application.isUnitTestMode()) {
+            return;
+        }
+        application.invokeLater(() ->
                 Stream.of(ProjectManager.getInstance().getOpenProjects()).forEach(GitHubActionCache::triggerSyntaxHighlightingForActiveFiles)
         );
     }
