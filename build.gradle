@@ -93,7 +93,7 @@ publishing {
             groupId = requiredProperty('pluginGroup')
             artifactId = rootProject.name
             version = requiredProperty('pluginVersion')
-            artifact(tasks.named('signPlugin').flatMap { it.archiveFile }) {
+            artifact(tasks.named('buildPlugin').flatMap { it.archiveFile }) {
                 extension = 'zip'
             }
             pom {
@@ -292,12 +292,6 @@ intellijPlatform {
 
     publishing {
         token = providers.environmentVariable('PUBLISH_TOKEN')
-    }
-
-    signing {
-        certificateChain = providers.environmentVariable('CERTIFICATE_CHAIN')
-        privateKey = providers.environmentVariable('PRIVATE_KEY')
-        password = providers.environmentVariable('PRIVATE_KEY_PASSWORD')
     }
 }
 

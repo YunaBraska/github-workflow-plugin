@@ -81,16 +81,13 @@ Plugin downloads the IDE, bundled plugins, verifier, and test runtime.
 
 One GitHub Actions workflow runs for branch pushes, PRs, and manual dispatches. It has one job and one cache. Branch and
 PR runs do the normal test/package pass. A merge to `main`, or a manual workflow run, prepares the date-based version,
-runs the full checks and Plugin Verifier, signs the ZIP, creates the GitHub release, publishes the signed ZIP to GitHub
-Packages, and uploads the same signed ZIP to JetBrains Marketplace.
+runs the full checks and Plugin Verifier, publishes the plugin ZIP to GitHub Packages, uploads the same ZIP to
+JetBrains Marketplace, pushes the release commit and tag, and creates the GitHub release.
 
 The workflow prunes old GitHub Actions caches after a successful non-PR run so only the current pipeline cache remains.
 
 Required repository secrets:
 
-* `CERTIFICATE_CHAIN`
-* `PRIVATE_KEY`
-* `PRIVATE_KEY_PASSWORD`
 * `PUBLISH_TOKEN`
 
 Optional repository secret:

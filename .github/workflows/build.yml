@@ -177,21 +177,9 @@ jobs:
         if: steps.mode.outputs.release == 'true' && steps.mode.outputs.dry_run != 'true'
         shell: sh
         env:
-          CERTIFICATE_CHAIN: ${{ secrets.CERTIFICATE_CHAIN }}
-          PRIVATE_KEY: ${{ secrets.PRIVATE_KEY }}
-          PRIVATE_KEY_PASSWORD: ${{ secrets.PRIVATE_KEY_PASSWORD }}
           PUBLISH_TOKEN: ${{ secrets.PUBLISH_TOKEN }}
         run: |
           missing=""
-          if [ -z "$CERTIFICATE_CHAIN" ]; then
-            missing="$missing CERTIFICATE_CHAIN"
-          fi
-          if [ -z "$PRIVATE_KEY" ]; then
-            missing="$missing PRIVATE_KEY"
-          fi
-          if [ -z "$PRIVATE_KEY_PASSWORD" ]; then
-            missing="$missing PRIVATE_KEY_PASSWORD"
-          fi
           if [ -z "$PUBLISH_TOKEN" ]; then
             missing="$missing PUBLISH_TOKEN"
           fi
@@ -204,14 +192,11 @@ jobs:
       - name: 🧪 Test and package
         shell: sh
         env:
-          CERTIFICATE_CHAIN: ${{ secrets.CERTIFICATE_CHAIN }}
-          PRIVATE_KEY: ${{ secrets.PRIVATE_KEY }}
-          PRIVATE_KEY_PASSWORD: ${{ secrets.PRIVATE_KEY_PASSWORD }}
           RELEASE: ${{ steps.mode.outputs.release }}
           DRY_RUN: ${{ steps.mode.outputs.dry_run }}
         run: |
           if [ "$RELEASE" = "true" ] && [ "$DRY_RUN" != "true" ]; then
-            ./gradlew --no-daemon check verifyPlugin signPlugin verifyPluginSignature --warning-mode all
+            ./gradlew --no-daemon check verifyPlugin buildPlugin --warning-mode all
           elif [ "$RELEASE" = "true" ]; then
             ./gradlew --no-daemon check verifyPlugin buildPlugin --warning-mode all
           else
@@ -225,11 +210,7 @@ jobs:
         env:
           DRY_RUN: ${{ steps.mode.outputs.dry_run }}
         run: |
-          if [ "$DRY_RUN" = "true" ]; then
-            archive="$(find build/distributions -maxdepth 1 -type f -name '*.zip' | sort | head -n 1)"
-          else
-            archive="$(find build/distributions -maxdepth 1 -type f -name '*-signed.zip' | sort | head -n 1)"
-          fi
+          archive="$(find build/distributions -maxdepth 1 -type f -name '*.zip' | sort | head -n 1)"
 
           if [ -z "$archive" ]; then
             echo "No release archive found." >&2
@@ -264,30 +245,12 @@ jobs:
             printf 'Plugin release %s\n' "$RELEASE_TAG" > release-notes.md
           fi
 
-      - name: 🚀 Create GitHub release
-        if: steps.mode.outputs.release == 'true' && steps.mode.outputs.dry_run != 'true'
-        shell: sh
-        env:
-          ARCHIVE_PATH: ${{ steps.archive.outputs.path }}
-          GH_TOKEN: ${{ secrets.RELEASE_TOKEN || github.token }}
-          RELEASE_TAG: ${{ steps.mode.outputs.tag }}
-        run: |
-          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
-            gh release upload "$RELEASE_TAG" "$ARCHIVE_PATH" --clobber
-            gh release edit "$RELEASE_TAG" --title "$RELEASE_TAG" --notes-file release-notes.md
-          else
-            gh release create "$RELEASE_TAG" "$ARCHIVE_PATH" --title "$RELEASE_TAG" --notes-file release-notes.md
-          fi
-
       - name: 📚 Publish GitHub package
         if: steps.mode.outputs.release == 'true' && steps.mode.outputs.dry_run != 'true'
         shell: sh
         env:
-          CERTIFICATE_CHAIN: ${{ secrets.CERTIFICATE_CHAIN }}
           GITHUB_ACTOR: ${{ github.actor }}
           GITHUB_TOKEN: ${{ github.token }}
-          PRIVATE_KEY: ${{ secrets.PRIVATE_KEY }}
-          PRIVATE_KEY_PASSWORD: ${{ secrets.PRIVATE_KEY_PASSWORD }}
         run: |
           ./gradlew --no-daemon publishPluginZipPublicationToGitHubPackagesRepository --warning-mode all
 
@@ -338,6 +301,21 @@ jobs:
           git push origin "HEAD:$target_branch"
           git tag -a "$RELEASE_TAG" -m "$RELEASE_TAG [skip ci]"
           git push origin "refs/tags/$RELEASE_TAG"
+
+      - name: 🚀 Create GitHub release
+        if: steps.mode.outputs.release == 'true' && steps.mode.outputs.dry_run != 'true'
+        shell: sh
+        env:
+          ARCHIVE_PATH: ${{ steps.archive.outputs.path }}
+          GH_TOKEN: ${{ secrets.RELEASE_TOKEN || github.token }}
+          RELEASE_TAG: ${{ steps.mode.outputs.tag }}
+        run: |
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" "$ARCHIVE_PATH" --clobber
+            gh release edit "$RELEASE_TAG" --title "$RELEASE_TAG" --notes-file release-notes.md
+          else
+            gh release create "$RELEASE_TAG" "$ARCHIVE_PATH" --title "$RELEASE_TAG" --notes-file release-notes.md --verify-tag
+          fi
 
       - name: 💾 Save cache
         if: success() && github.event_name != 'pull_request' && steps.cache.outputs.cache-hit != 'true'
