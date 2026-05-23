@@ -30,22 +30,26 @@ jobs:
       - name: Fetch sources
         uses: actions/checkout@v6
 
-      - name: Set up Java
-        uses: actions/setup-java@v5
+      - name: Set up plugin build
+        id: plugin-build
+        uses: ./.github/actions/setup-plugin-build
         with:
-          distribution: temurin
-          java-version: 25
+          gradle-cache-read-only: ${{ github.event_name == 'pull_request' }}
 
-      - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v6
-
-      - name: Test and verify plugin
+      - name: Test, verify, and build plugin
         shell: sh
-        run: ./gradlew --no-daemon check verifyPlugin --warning-mode all
+        run: ./gradlew --no-daemon check verifyPlugin buildPlugin --warning-mode all
 
-      - name: Build plugin archive
-        shell: sh
-        run: ./gradlew --no-daemon buildPlugin --warning-mode all
+      - name: Save IntelliJ Platform cache
+        if: success() && steps.plugin-build.outputs.intellij-cache-hit != 'true' && github.event_name != 'pull_request'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            .intellijPlatform/ides
+            .intellijPlatform/localPlatformArtifacts
+            .intellijPlatform/layoutIndex
+            .intellijPlatform/*.jar
+          key: ${{ steps.plugin-build.outputs.intellij-cache-key }}
 
       - name: Upload test reports
         if: failure()

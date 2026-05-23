@@ -38,14 +38,11 @@ jobs:
           fetch-depth: 0
           token: ${{ secrets.RELEASE_TOKEN || github.token }}
 
-      - name: Set up Java
-        uses: actions/setup-java@v5
+      - name: Set up plugin build
+        id: plugin-build
+        uses: ./.github/actions/setup-plugin-build
         with:
-          distribution: temurin
-          java-version: 25
-
-      - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v6
+          gradle-cache-read-only: ${{ github.event_name != 'push' || github.ref != 'refs/heads/main' }}
 
       - name: Resolve release tag
         id: tag
@@ -124,6 +121,17 @@ jobs:
       - name: Test, verify, and build plugin
         shell: sh
         run: ./gradlew --no-daemon check verifyPlugin buildPlugin --warning-mode all
+
+      - name: Save IntelliJ Platform cache
+        if: success() && steps.plugin-build.outputs.intellij-cache-hit != 'true' && github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            .intellijPlatform/ides
+            .intellijPlatform/localPlatformArtifacts
+            .intellijPlatform/layoutIndex
+            .intellijPlatform/*.jar
+          key: ${{ steps.plugin-build.outputs.intellij-cache-key }}
 
       - name: Push release commit and tag
         shell: sh

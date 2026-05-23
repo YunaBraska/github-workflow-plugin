@@ -203,6 +203,12 @@ jacocoTestReport {
 }
 
 intellijPlatform {
+    caching {
+        ides {
+            enabled = true
+        }
+    }
+
     pluginConfiguration {
         id = requiredProperty('pluginId')
         name = requiredProperty('pluginName')

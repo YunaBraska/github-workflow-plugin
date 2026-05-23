@@ -47,14 +47,10 @@ jobs:
         with:
           ref: ${{ env.RELEASE_TAG }}
 
-      - name: Set up Java
-        uses: actions/setup-java@v5
+      - name: Set up plugin build
+        uses: ./.github/actions/setup-plugin-build
         with:
-          distribution: temurin
-          java-version: 25
-
-      - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v6
+          gradle-cache-read-only: 'true'
 
       - name: Test, verify, and build plugin
         shell: sh

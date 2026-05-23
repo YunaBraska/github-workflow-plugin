@@ -1,0 +1,53 @@
+name: Setup Plugin Build
+description: Set up Java, IntelliJ Platform caches, and Gradle for plugin workflows.
+
+inputs:
+  gradle-cache-read-only:
+    description: Whether Gradle User Home cache should be read-only.
+    required: false
+    default: 'true'
+
+outputs:
+  intellij-cache-key:
+    description: Primary key used for the IntelliJ Platform cache.
+    value: ${{ steps.intellij-cache-key.outputs.key }}
+  intellij-cache-hit:
+    description: Whether the IntelliJ Platform cache had an exact hit.
+    value: ${{ steps.intellij-cache.outputs.cache-hit }}
+
+runs:
+  using: composite
+  steps:
+    - name: Resolve IntelliJ cache key
+      id: intellij-cache-key
+      shell: sh
+      run: |
+        {
+          sed '/^[[:space:]]*pluginVersion[[:space:]]*=/d' gradle.properties
+          cat build.gradle settings.gradle gradle/wrapper/gradle-wrapper.properties
+        } | sha256sum | awk '{ print "key=intellij-platform-${{ runner.os }}-" $1 }' >> "$GITHUB_OUTPUT"
+
+    - name: Restore IntelliJ Platform cache
+      id: intellij-cache
+      uses: actions/cache/restore@v4
+      with:
+        path: |
+          .intellijPlatform/ides
+          .intellijPlatform/localPlatformArtifacts
+          .intellijPlatform/layoutIndex
+          .intellijPlatform/*.jar
+        key: ${{ steps.intellij-cache-key.outputs.key }}
+        restore-keys: |
+          intellij-platform-${{ runner.os }}-
+
+    - name: Set up Java
+      uses: actions/setup-java@v5
+      with:
+        distribution: temurin
+        java-version: 25
+
+    - name: Set up Gradle
+      uses: gradle/actions/setup-gradle@v6
+      with:
+        cache-read-only: ${{ inputs.gradle-cache-read-only }}
+        add-job-summary: on-failure
