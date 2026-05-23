@@ -1,9 +1,7 @@
 name: Tag
 
 on:
-  pull_request:
-    types:
-      - closed
+  push:
     branches:
       - main
   workflow_dispatch:
@@ -23,13 +21,13 @@ permissions:
   contents: write
 
 concurrency:
-  group: tag-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  group: tag-${{ github.event_name }}-${{ github.ref || github.sha }}
   cancel-in-progress: false
 
 jobs:
   tag:
     name: Test, Verify, Build, Tag
-    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.merged == true
+    if: "${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main' && !startsWith(github.event.head_commit.message || '', 'chore: release ')) }}"
     runs-on: ubuntu-latest
     timeout-minutes: 60
 
@@ -147,10 +145,7 @@ jobs:
             git remote set-url origin "https://x-access-token:${RELEASE_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
           fi
 
-          target_branch="$GITHUB_REF_NAME"
-          if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
-            target_branch="${GITHUB_BASE_REF:-main}"
-          fi
+          target_branch="${GITHUB_REF_NAME:-main}"
           git push origin "HEAD:$target_branch"
 
           git tag -a "$RELEASE_TAG" -m "$RELEASE_TAG"
