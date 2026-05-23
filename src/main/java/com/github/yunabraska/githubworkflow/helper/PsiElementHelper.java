@@ -8,13 +8,9 @@ import com.intellij.openapi.util.TextRange;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.psi.PsiElement;
 import com.intellij.psi.impl.source.tree.LeafPsiElement;
-import com.github.yunabraska.githubworkflow.services.GitHubWorkflowBundle;
 import org.jetbrains.annotations.NotNull;
-import org.jetbrains.yaml.psi.YAMLAlias;
-import org.jetbrains.yaml.psi.YAMLAnchor;
 import org.jetbrains.yaml.psi.YAMLKeyValue;
 import org.jetbrains.yaml.psi.YAMLQuotedText;
-import org.jetbrains.yaml.psi.YAMLScalarText;
 import org.jetbrains.yaml.psi.YAMLSequenceItem;
 import org.jetbrains.yaml.psi.impl.YAMLBlockScalarImpl;
 import org.jetbrains.yaml.psi.impl.YAMLBlockSequenceImpl;
@@ -27,7 +23,6 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -40,10 +35,7 @@ import java.util.stream.Collectors;
 import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.FIELD_JOBS;
 import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.FIELD_STEPS;
 import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.PATTERN_GITHUB_ENV;
-import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.PATTERN_GITHUB_ENV_MULTILINE;
 import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.PATTERN_GITHUB_OUTPUT;
-import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.PATTERN_GITHUB_OUTPUT_MULTILINE;
-import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.PATTERN_GITHUB_OUTPUT_TEE;
 import static java.util.Collections.unmodifiableList;
 import static java.util.Optional.ofNullable;
 
@@ -135,7 +127,7 @@ public class PsiElementHelper {
     }
 
     public static boolean isTextElement(final PsiElement element) {
-        return element instanceof YAMLScalarText || element instanceof YAMLPlainTextImpl || element instanceof YAMLQuotedText;
+        return element instanceof YAMLPlainTextImpl || element instanceof YAMLQuotedText;
     }
 
     public static List<YAMLKeyValue> getAllElements(final PsiElement psiElement, final String keyName) {
@@ -174,57 +166,11 @@ public class PsiElementHelper {
                 .map(PsiElement::getChildren)
                 .map(psiElements -> Arrays.stream(psiElements).filter(clazz::isInstance).map(clazz::cast).toList())
                 .filter(children -> !children.isEmpty())
-                .or(() -> getAliasedChildren(psiElement, clazz))
                 .or(() -> ofNullable(psiElement)
                         .map(PsiElement::getChildren)
                         .flatMap(psiElements -> Arrays.stream(psiElements).map(child -> getChildren(child, clazz)).filter(children -> !children.isEmpty()).findFirst())
                 )
                 .orElseGet(Collections::emptyList);
-    }
-
-    private static <T> Optional<List<T>> getAliasedChildren(final PsiElement psiElement, final Class<T> clazz) {
-        return findDirectAlias(psiElement)
-                .flatMap(alias -> findAnchor(alias.getContainingFile(), alias.getAliasName()))
-                .map(YAMLAnchor::getMarkedValue)
-                .map(value -> getChildren(value, clazz))
-                .filter(children -> !children.isEmpty());
-    }
-
-    private static Optional<YAMLAlias> findDirectAlias(final PsiElement psiElement) {
-        return ofNullable(psiElement)
-                .map(PsiElement::getChildren)
-                .flatMap(children -> Arrays.stream(children)
-                        .filter(YAMLAlias.class::isInstance)
-                        .map(YAMLAlias.class::cast)
-                        .findFirst());
-    }
-
-    private static Optional<YAMLAnchor> findAnchor(final PsiElement psiElement, final String name) {
-        final String normalizedName = normalizeAnchorName(name);
-        return ofNullable(psiElement)
-                .map(element -> {
-                    if (element instanceof final YAMLAnchor anchor && isAnchorName(anchor, normalizedName)) {
-                        return Optional.of(anchor);
-                    }
-                    return Arrays.stream(element.getChildren())
-                            .map(child -> findAnchor(child, normalizedName))
-                            .filter(Optional::isPresent)
-                            .map(Optional::get)
-                            .findFirst();
-                })
-                .orElseGet(Optional::empty);
-    }
-
-    private static boolean isAnchorName(final YAMLAnchor anchor, final String name) {
-        return Objects.equals(name, normalizeAnchorName(anchor.getName()))
-                || Objects.equals(name, normalizeAnchorName(anchor.getText()));
-    }
-
-    private static String normalizeAnchorName(final String name) {
-        if (name == null || name.isBlank()) {
-            return "";
-        }
-        return name.startsWith("&") || name.startsWith("*") ? name.substring(1) : name;
     }
 
     public static Optional<YAMLKeyValue> getChild(final PsiElement psiElement, final String childKey) {
@@ -270,22 +216,9 @@ public class PsiElementHelper {
     }
 
     public static String getDescription(final PsiElement psiElement, final boolean requiredField) {
-        if (psiElement == null) {
-            return "";
-        }
-        final List<String> details = new ArrayList<>();
-        getText(psiElement, "description").or(() -> getText(psiElement, "desc"))
-                .ifPresent(description -> details.add(GitHubWorkflowBundle.message("documentation.description", description)));
-        getText(psiElement, "type")
-                .ifPresent(type -> details.add(GitHubWorkflowBundle.message("documentation.type", type)));
-        if (requiredField) {
-            details.add(GitHubWorkflowBundle.message("documentation.required", getText(psiElement, "required").map(Boolean::parseBoolean).orElse(false)));
-        }
-        getText(psiElement, "default")
-                .ifPresent(defaultValue -> details.add(GitHubWorkflowBundle.message("documentation.default", defaultValue)));
-        getText(psiElement, "deprecationMessage")
-                .ifPresent(message -> details.add(GitHubWorkflowBundle.message("documentation.deprecated", message)));
-        return String.join("\n", details);
+        return psiElement == null ? "" : requiredString(psiElement, requiredField)
+                + getText(psiElement, "default").map(def -> "def[" + def + "]").orElse("")
+                + getText(psiElement, "description").or(() -> getText(psiElement, "desc")).map(desc -> " " + desc).orElse("");
     }
 
     public static Optional<Path> toPath(final VirtualFile virtualFile) {
@@ -294,19 +227,16 @@ public class PsiElementHelper {
 
     public static Optional<Path> toPath(final String path) {
         try {
-            return ofNullable(path)
-                    .map(String::trim)
-                    .filter(PsiElementHelper::looksLikePathText)
-                    .map(Paths::get)
-                    .filter(p -> Files.exists(p) || ApplicationManager.getApplication().isUnitTestMode());
+            return ofNullable(path).map(Paths::get).filter(p -> Files.exists(p) || ApplicationManager.getApplication().isUnitTestMode());
         } catch (final Exception ignored) {
             //e.g. java.nio.file.InvalidPathException: Illegal char <<> at index 0: <36ba1c43-b8f1-4f54-ace0-cef443d1e8f0>/etc/php/8.1/apache2/php.ini
             return Optional.empty();
         }
     }
 
-    private static boolean looksLikePathText(final String path) {
-        return hasText(path) && !path.startsWith("{") && !path.matches("^<[0-9a-fA-F-]{36}>.*");
+    @NotNull
+    private static String requiredString(final PsiElement psiElement, final boolean requiredField) {
+        return requiredField ? "r[" + getText(psiElement, "required").map(Boolean::parseBoolean).orElse(false) + "] " : "";
     }
 
     public static Project getProject(final PsiElement psiElement) {
@@ -322,7 +252,7 @@ public class PsiElementHelper {
     }
 
     public static String goToDeclarationString() {
-        return GitHubWorkflowBundle.message("documentation.open.declaration", Arrays.stream(KeymapUtil.getActiveKeymapShortcuts("GotoDeclaration").getShortcuts())
+        return String.format("Open declaration (%s)", Arrays.stream(KeymapUtil.getActiveKeymapShortcuts("GotoDeclaration").getShortcuts())
                 .limit(2)
                 .map(KeymapUtil::getShortcutText)
                 .collect(Collectors.joining(", "))
@@ -332,9 +262,12 @@ public class PsiElementHelper {
     private static Map<String, String> toGithubOutputs(final String text) {
         final Map<String, String> variables = new HashMap<>();
         if (text.contains("GITHUB_OUTPUT")) {
-            putMatches(variables, PATTERN_GITHUB_OUTPUT.matcher(text), false);
-            putMatches(variables, PATTERN_GITHUB_OUTPUT_TEE.matcher(text), false);
-            putMatches(variables, PATTERN_GITHUB_OUTPUT_MULTILINE.matcher(text), true);
+            final Matcher matcher = PATTERN_GITHUB_OUTPUT.matcher(text);
+            while (matcher.find()) {
+                if (matcher.groupCount() >= 2) {
+                    variables.put(matcher.group(1), matcher.group(2));
+                }
+            }
         }
         return variables;
     }
@@ -342,18 +275,14 @@ public class PsiElementHelper {
     private static Map<String, String> toGithubEnvs(final String text) {
         final Map<String, String> variables = new HashMap<>();
         if (text.contains("GITHUB_ENV")) {
-            putMatches(variables, PATTERN_GITHUB_ENV.matcher(text), false);
-            putMatches(variables, PATTERN_GITHUB_ENV_MULTILINE.matcher(text), true);
-        }
-        return variables;
-    }
-
-    private static void putMatches(final Map<String, String> variables, final Matcher matcher, final boolean multiline) {
-        while (matcher.find()) {
-            if (matcher.groupCount() >= 1) {
-                variables.putIfAbsent(matcher.group(1), multiline ? "<multiline>" : matcher.group(2));
+            final Matcher matcher = PATTERN_GITHUB_ENV.matcher(text);
+            while (matcher.find()) {
+                if (matcher.groupCount() >= 2) {
+                    variables.put(matcher.group(1), matcher.group(2));
+                }
             }
         }
+        return variables;
     }
 
     private static String removeBrackets(final String text, final char... chars) {
@@ -402,10 +331,7 @@ public class PsiElementHelper {
 
     private static List<SimpleElement> parseVariables(final PsiElement psiElement, final Function<String, Map<String, String>> method) {
         final List<SimpleElement> lineElements = getLineElements(psiElement);
-        final Map<String, SimpleElement> result = new LinkedHashMap<>();
-        lineElements.forEach(line -> method.apply(line.text()).forEach((key, value) -> result.putIfAbsent(key, new SimpleElement(key, value, line.range()))));
-        method.apply(psiElement.getText()).forEach((key, value) -> result.putIfAbsent(key, new SimpleElement(key, value, psiElement.getTextRange())));
-        return new ArrayList<>(result.values());
+        return lineElements.stream().flatMap(line -> method.apply(line.text()).entrySet().stream().map(env -> new SimpleElement(env.getKey(), env.getValue(), line.range()))).toList();
     }
 
     private static List<SimpleElement> getLineElements(final PsiElement psiElement) {

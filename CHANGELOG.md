@@ -4,45 +4,6 @@
 
 ## [Unreleased]
 
-### Fresh Start
-
-- Better workflow editing with broader completion, highlighting, navigation, and hover help for GitHub Actions files.
-- Resolved action and reusable workflow metadata now improves `with`, `secrets`, `outputs`, and version suggestions.
-- Major-version action refs can now show an update quick fix when newer cached refs are available.
-- GitHub Workflow Run Configurations can dispatch `workflow_dispatch`, collect inputs, show run status/logs, and cancel
-  remote runs from the IDE Run tool window.
-- Gutter-created workflow runs now default to the current checked-out branch instead of always using `main`.
-- Workflow runs now try IDE accounts in host-priority order, then configured/default local env tokens
-  (`GITHUB_TOKEN`, `GH_TOKEN`, `GITHUB_PAT`), then anonymous access, so live logs can fall back to a stronger token when
-  an IDE account token can dispatch but cannot download in-progress logs.
-- `shell:` now completes GitHub-supported shell values.
-- Public GitHub and GitHub Enterprise accounts configured in the IDE are used for action metadata resolution.
-- Workflow expressions inside strings are highlighted separately from surrounding text.
-- Shell snippets inside `run` blocks can use shell-aware editing where the IDE supports it.
-- Cache controls are available through Find Action and, where visible, `Tools > GitHub Workflow` to refresh metadata,
-  clear cached entries, or restore hidden warnings.
-- The plugin build, tests, verifier checks, release packaging, PR build checks, and local development setup are ready for the next version.
-- Release automation now supports manual workflow runs, PR/branch testing, merged-PR tagging, tag-based GitHub releases,
-  and release-based JetBrains Marketplace publishing.
-- Release tags now use date-based SemVer (`vYYYY.M.D`); the tag workflow updates `pluginVersion`.
-- Thanks to @SilverNicktail, @tomsit-ionos, @jbw9964, @nyurik, @Lordfirespeed, @ris58h, @holomekc,
-  @InSyncWithFoo, @LecrisUT, @enobrev, @bartei, @gilzow, @zaaraungkam, @PeerHofmannGSG, and @zwj-cheer for reports and
-  context that shaped this hardening round.
-
-### Workflow Runs
-
-- Workflow runs now use one Run tool-window view with a JUnit-style workflow tree, grouped jobs, selected-node log
-  output, test-style status icons, and a thin progress bar instead of separate job tabs.
-- Workflow job logs now render GitHub `group` blocks as named sections, reset to tidy `0001 |` line numbers per block,
-  show command markers as `run:`, strip ANSI escape noise, and classify warnings/errors for colored console output.
-
-### Settings And Localization
-
-- Added a `Settings > Tools > GitHub Workflow` page for language override, cache review/delete, cache import/export,
-  cache memory estimates, and a small support button with nerd fuel.
-- Moved common run-configuration, cache, quick-fix, documentation, and settings strings into resource bundles and added
-  locale coverage checks for the top-20 language bundle set.
-
 ## [3.2.1] - 2023-11-04
 
 ### Investigating UI Freeze

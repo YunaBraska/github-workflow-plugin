@@ -26,7 +26,6 @@ public enum NodeIcon {
     SETTINGS(AllIcons.General.Settings),
     HYPERLINK(AllIcons.Ide.External_link_arrow),
     JUMP_TO_IMPLEMENTATION(AllIcons.Gutter.ImplementedMethod),
-    SUPPRESS_ON(AllIcons.Actions.Cancel),
     SUPPRESS_OFF(AllIcons.Actions.OfflineMode),
     IGNORED(AllIcons.Actions.Regex),
     EMPTY(AllIcons.Nodes.EmptyNode),

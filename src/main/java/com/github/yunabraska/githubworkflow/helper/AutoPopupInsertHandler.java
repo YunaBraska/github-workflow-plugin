@@ -12,7 +12,7 @@ public class AutoPopupInsertHandler<T extends LookupElement> implements InsertHa
 
     @Override
     public void handleInsert(@NotNull final InsertionContext context, @NotNull final T item) {
-        AutoPopupController.getInstance(context.getProject()).scheduleAutoPopup(context.getEditor());
+        AutoPopupController.getInstance(context.getProject()).autoPopupMemberLookup(context.getEditor(), null);
     }
 
     public static void addSuffix(final InsertionContext ctx, final LookupElement item, final char suffix) {
@@ -55,8 +55,8 @@ public class AutoPopupInsertHandler<T extends LookupElement> implements InsertHa
     private static String toInsertString(final char suffix, final CharSequence documentChars, final int tailOffset) {
         final StringBuilder sb = new StringBuilder();
         sb.append(suffix);
-        final boolean isNextCharSpace = tailOffset < documentChars.length() && documentChars.charAt(tailOffset) == ' ';
-        if (suffix != '.' && !isNextCharSpace) {
+        final boolean isNextChatSpace = tailOffset < documentChars.length() && documentChars.charAt(tailOffset + 1) == ' ';
+        if (suffix != '.' && !isNextChatSpace) {
             sb.append(' ');
         }
         return sb.toString();

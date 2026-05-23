@@ -17,7 +17,6 @@ import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.F
 import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.FIELD_JOBS;
 import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.FIELD_ON;
 import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.FIELD_OUTPUTS;
-import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.FIELD_RESULT;
 import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.FIELD_USES;
 import static com.github.yunabraska.githubworkflow.helper.HighlightAnnotatorHelper.ifEnoughItems;
 import static com.github.yunabraska.githubworkflow.helper.HighlightAnnotatorHelper.isDefinedItem0;
@@ -36,16 +35,11 @@ import static java.util.Optional.ofNullable;
 public class Jobs {
 
     public static void highLightJobs(final AnnotationHolder holder, final LeafPsiElement element, final SimpleElement[] parts) {
-        ifEnoughItems(holder, element, parts, 3, 4, jobId -> {
+        ifEnoughItems(holder, element, parts, 4, 4, jobId -> {
             final List<YAMLKeyValue> jobs = listJobs(element);
-            if (isDefinedItem0(element, holder, jobId, jobs.stream().map(YAMLKeyValue::getKeyText).toList()) && isField2Valid(element, holder, parts[2], List.of(FIELD_OUTPUTS, FIELD_RESULT))) {
-                if (FIELD_RESULT.equals(parts[2].text())) {
-                    return;
-                }
+            if (isDefinedItem0(element, holder, jobId, jobs.stream().map(YAMLKeyValue::getKeyText).toList()) && isField2Valid(element, holder, parts[2])) {
                 final List<String> outputs = listJobOutputs(jobs.stream().filter(job -> job.getKeyText().equals(jobId.text())).findFirst().orElse(null)).stream().map(SimpleElement::key).toList();
-                if (parts.length > 3) {
-                    isValidItem3(element, holder, parts[3], outputs);
-                }
+                isValidItem3(element, holder, parts[3], outputs);
             }
         });
     }

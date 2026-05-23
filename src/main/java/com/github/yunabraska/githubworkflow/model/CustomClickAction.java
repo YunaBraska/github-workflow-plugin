@@ -13,7 +13,6 @@ public class CustomClickAction extends AnAction {
     private final PsiElement psiElement;
 
     public CustomClickAction(final SyntaxAnnotation quickFix, final PsiElement psiElement) {
-        super(quickFix.getText());
         this.quickFix = quickFix;
         this.psiElement = psiElement;
     }
