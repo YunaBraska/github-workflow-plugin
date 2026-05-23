@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Release tag. Empty means today's vYYYY.M.D.
+        description: Release tag. Empty means today's YYYY.M.D.
         required: false
         type: string
       dry_run:
@@ -81,20 +81,25 @@ jobs:
           release_tag=""
           target_version="$plugin_version"
           if [ "$release" = "true" ]; then
-            if [ -n "$INPUT_TAG" ]; then
-              release_tag="$INPUT_TAG"
+            input_tag="$INPUT_TAG"
+            case "$input_tag" in
+              v*) input_tag="${input_tag#v}" ;;
+            esac
+
+            if [ -n "$input_tag" ]; then
+              release_tag="$input_tag"
             else
               year="$(date -u +%Y)"
               month="$(date -u +%m | sed 's/^0//')"
               day="$(date -u +%d | sed 's/^0//')"
-              release_tag="v$year.$month.$day"
+              release_tag="$year.$month.$day"
             fi
 
-            if ! printf '%s\n' "$release_tag" | grep -Eq '^v[0-9]{4}[.][1-9][0-9]?[.][1-9][0-9]?$'; then
-              echo "Tag must look like v2026.5.20: $release_tag" >&2
+            if ! printf '%s\n' "$release_tag" | grep -Eq '^[0-9]{4}[.][1-9][0-9]?[.][1-9][0-9]?$'; then
+              echo "Tag must look like 2026.5.20: $release_tag" >&2
               exit 1
             fi
-            target_version="${release_tag#v}"
+            target_version="$release_tag"
           fi
 
           echo "event=$GITHUB_EVENT_NAME"
@@ -254,7 +259,10 @@ jobs:
         env:
           RELEASE_TAG: ${{ steps.plan.outputs.tag }}
         run: |
-          version="${RELEASE_TAG#v}"
+          version="$RELEASE_TAG"
+          case "$version" in
+            v*) version="${version#v}" ;;
+          esac
           awk -v version="$version" '
             $0 ~ "^## \\[" version "\\]" { found = 1; next }
             found && $0 ~ /^## / { exit }

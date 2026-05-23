@@ -261,8 +261,9 @@ intellijPlatform {
         name = requiredProperty('pluginName')
         version = requiredProperty('pluginVersion')
         description = requiredProperty('pluginDescription')
-        changeNotes = provider {
-            changelog.renderItem(changelog.getLatest(), Changelog.OutputType.HTML)
+        changeNotes = providers.gradleProperty('pluginVersion').map { pluginVersion ->
+            def item = changelog.has(pluginVersion) ? changelog.get(pluginVersion) : changelog.getLatest()
+            changelog.renderItem(item.withHeader(false).withEmptySections(false), Changelog.OutputType.HTML)
         }
 
         ideaVersion {

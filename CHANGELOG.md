@@ -4,6 +4,12 @@
 
 ## [Unreleased]
 
+### Release Polish
+
+- Marketplace change notes skip the duplicated version heading.
+- Future GitHub release tags use plain date versions without a leading `v`.
+- Dependabot dependency bumps are grouped into one weekly cross-ecosystem PR against `dev`.
+
 ## [2026.5.23] - 2026-05-23
 
 ### Fresh Start
