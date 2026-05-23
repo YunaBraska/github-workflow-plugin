@@ -124,7 +124,7 @@ publishing {
 
 dependencies {
     testImplementation 'junit:junit:4.13.2'
-    testImplementation 'org.assertj:assertj-core:3.26.3'
+    testImplementation 'org.assertj:assertj-core:3.27.7'
 
     intellijPlatform {
         intellijIdea(requiredProperty('platformVersion'))
