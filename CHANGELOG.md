@@ -4,6 +4,8 @@
 
 ## [Unreleased]
 
+## [2026.5.23] - 2026-05-23
+
 ### Fresh Start
 
 - Better workflow editing with broader completion, highlighting, navigation, and hover help for GitHub Actions files.
