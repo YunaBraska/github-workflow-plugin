@@ -51,8 +51,8 @@ jobs:
           fetch-depth: 0
           token: ${{ secrets.RELEASE_TOKEN || github.token }}
 
-      - name: 🧭 Decide mode
-        id: mode
+      - name: 🧭 Plan run
+        id: plan
         shell: sh
         env:
           HEAD_MESSAGE: ${{ github.event.head_commit.message || '' }}
@@ -61,6 +61,13 @@ jobs:
         run: |
           release="false"
           dry_run="false"
+          plugin_id="$(sed -n 's/^[[:space:]]*pluginId[[:space:]]*=[[:space:]]*//p' gradle.properties | head -n 1 | tr -d '\r')"
+          plugin_version="$(sed -n 's/^[[:space:]]*pluginVersion[[:space:]]*=[[:space:]]*//p' gradle.properties | head -n 1 | tr -d '\r')"
+
+          if [ -z "$plugin_id" ] || [ -z "$plugin_version" ]; then
+            echo "Missing pluginId or pluginVersion in gradle.properties." >&2
+            exit 1
+          fi
 
           if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
             release="true"
@@ -72,7 +79,7 @@ jobs:
           fi
 
           release_tag=""
-          release_version=""
+          target_version="$plugin_version"
           if [ "$release" = "true" ]; then
             if [ -n "$INPUT_TAG" ]; then
               release_tag="$INPUT_TAG"
@@ -87,13 +94,24 @@ jobs:
               echo "Tag must look like v2026.5.20: $release_tag" >&2
               exit 1
             fi
-            release_version="${release_tag#v}"
+            target_version="${release_tag#v}"
           fi
+
+          echo "event=$GITHUB_EVENT_NAME"
+          echo "branch=${GITHUB_REF_NAME:-unknown}"
+          echo "release=$release"
+          echo "dry_run=$dry_run"
+          echo "plugin_id=$plugin_id"
+          echo "plugin_version=$plugin_version"
+          echo "target_version=$target_version"
+          echo "release_tag=$release_tag"
 
           echo "release=$release" >> "$GITHUB_OUTPUT"
           echo "dry_run=$dry_run" >> "$GITHUB_OUTPUT"
+          echo "plugin_id=$plugin_id" >> "$GITHUB_OUTPUT"
+          echo "plugin_version=$plugin_version" >> "$GITHUB_OUTPUT"
           echo "tag=$release_tag" >> "$GITHUB_OUTPUT"
-          echo "version=$release_version" >> "$GITHUB_OUTPUT"
+          echo "version=$target_version" >> "$GITHUB_OUTPUT"
 
       - name: 🗝️ Resolve cache key
         id: cache-key
@@ -123,12 +141,12 @@ jobs:
           java-version: 25
 
       - name: 🏷️ Prepare release metadata
-        if: steps.mode.outputs.release == 'true'
+        if: steps.plan.outputs.release == 'true'
         shell: sh
         env:
-          DRY_RUN: ${{ steps.mode.outputs.dry_run }}
-          RELEASE_TAG: ${{ steps.mode.outputs.tag }}
-          RELEASE_VERSION: ${{ steps.mode.outputs.version }}
+          DRY_RUN: ${{ steps.plan.outputs.dry_run }}
+          RELEASE_TAG: ${{ steps.plan.outputs.tag }}
+          RELEASE_VERSION: ${{ steps.plan.outputs.version }}
         run: |
           git fetch --tags --force
           if git rev-parse -q --verify "refs/tags/$RELEASE_TAG" >/dev/null; then
@@ -174,30 +192,42 @@ jobs:
           fi
 
       - name: 🔐 Validate release secrets
-        if: steps.mode.outputs.release == 'true' && steps.mode.outputs.dry_run != 'true'
+        if: steps.plan.outputs.release == 'true' && steps.plan.outputs.dry_run != 'true'
         shell: sh
         env:
           PUBLISH_TOKEN: ${{ secrets.PUBLISH_TOKEN }}
         run: |
-          missing=""
           if [ -z "$PUBLISH_TOKEN" ]; then
-            missing="$missing PUBLISH_TOKEN"
-          fi
-
-          if [ -n "$missing" ]; then
-            echo "Missing release secret(s):$missing" >&2
+            echo "Missing release secret: PUBLISH_TOKEN" >&2
             exit 1
           fi
+
+          case "$PUBLISH_TOKEN" in
+            *[[:space:]]*)
+              echo "PUBLISH_TOKEN contains whitespace." >&2
+              exit 1
+              ;;
+            perm-*|perm:*)
+              ;;
+            *)
+              echo "PUBLISH_TOKEN does not look like a JetBrains permanent token." >&2
+              exit 1
+              ;;
+          esac
+
+          token_length="$(printf '%s' "$PUBLISH_TOKEN" | wc -c | tr -d ' ')"
+          if [ "$token_length" -lt 20 ]; then
+            echo "PUBLISH_TOKEN is too short." >&2
+            exit 1
+          fi
+          echo "publish_token=present length=$token_length format=permanent-token"
 
       - name: 🧪 Test and package
         shell: sh
         env:
-          RELEASE: ${{ steps.mode.outputs.release }}
-          DRY_RUN: ${{ steps.mode.outputs.dry_run }}
+          RELEASE: ${{ steps.plan.outputs.release }}
         run: |
-          if [ "$RELEASE" = "true" ] && [ "$DRY_RUN" != "true" ]; then
-            ./gradlew --no-daemon check verifyPlugin buildPlugin --warning-mode all
-          elif [ "$RELEASE" = "true" ]; then
+          if [ "$RELEASE" = "true" ]; then
             ./gradlew --no-daemon check verifyPlugin buildPlugin --warning-mode all
           else
             ./gradlew --no-daemon check buildPlugin --warning-mode all
@@ -205,10 +235,8 @@ jobs:
 
       - name: 📦 Locate release archive
         id: archive
-        if: steps.mode.outputs.release == 'true'
+        if: steps.plan.outputs.release == 'true'
         shell: sh
-        env:
-          DRY_RUN: ${{ steps.mode.outputs.dry_run }}
         run: |
           archive="$(find build/distributions -maxdepth 1 -type f -name '*.zip' | sort | head -n 1)"
 
@@ -221,10 +249,10 @@ jobs:
           echo "name=$(basename "$archive")" >> "$GITHUB_OUTPUT"
 
       - name: 📝 Extract release notes
-        if: steps.mode.outputs.release == 'true'
+        if: steps.plan.outputs.release == 'true'
         shell: sh
         env:
-          RELEASE_TAG: ${{ steps.mode.outputs.tag }}
+          RELEASE_TAG: ${{ steps.plan.outputs.tag }}
         run: |
           version="${RELEASE_TAG#v}"
           awk -v version="$version" '
@@ -246,7 +274,7 @@ jobs:
           fi
 
       - name: 📚 Publish GitHub package
-        if: steps.mode.outputs.release == 'true' && steps.mode.outputs.dry_run != 'true'
+        if: steps.plan.outputs.release == 'true' && steps.plan.outputs.dry_run != 'true'
         shell: sh
         env:
           GITHUB_ACTOR: ${{ github.actor }}
@@ -255,39 +283,29 @@ jobs:
           ./gradlew --no-daemon publishPluginZipPublicationToGitHubPackagesRepository --warning-mode all
 
       - name: 🛒 Publish Marketplace
-        if: steps.mode.outputs.release == 'true' && steps.mode.outputs.dry_run != 'true'
+        if: steps.plan.outputs.release == 'true' && steps.plan.outputs.dry_run != 'true'
         shell: sh
         env:
           ARCHIVE_PATH: ${{ steps.archive.outputs.path }}
           MARKETPLACE_CHANNEL: ${{ vars.MARKETPLACE_CHANNEL || '' }}
+          PLUGIN_ID: ${{ steps.plan.outputs.plugin_id }}
           PUBLISH_TOKEN: ${{ secrets.PUBLISH_TOKEN }}
         run: |
-          plugin_id="$(sed -n 's/^[[:space:]]*pluginId[[:space:]]*=[[:space:]]*//p' gradle.properties | head -n 1 | tr -d '\r')"
-          if [ -z "$plugin_id" ]; then
-            echo "Missing pluginId in gradle.properties." >&2
-            exit 1
-          fi
+          set -- --fail-with-body --retry 3 --retry-delay 10 \
+            --header "Authorization: Bearer $PUBLISH_TOKEN" \
+            -F "xmlId=$PLUGIN_ID" \
+            -F "file=@$ARCHIVE_PATH"
 
           if [ -n "$MARKETPLACE_CHANNEL" ]; then
-            curl --fail-with-body --retry 3 --retry-delay 10 \
-              --header "Authorization: Bearer $PUBLISH_TOKEN" \
-              -F "xmlId=$plugin_id" \
-              -F "file=@$ARCHIVE_PATH" \
-              -F "channel=$MARKETPLACE_CHANNEL" \
-              https://plugins.jetbrains.com/api/updates/upload
-          else
-            curl --fail-with-body --retry 3 --retry-delay 10 \
-              --header "Authorization: Bearer $PUBLISH_TOKEN" \
-              -F "xmlId=$plugin_id" \
-              -F "file=@$ARCHIVE_PATH" \
-              https://plugins.jetbrains.com/api/updates/upload
+            set -- "$@" -F "channel=$MARKETPLACE_CHANNEL"
           fi
+          curl "$@" https://plugins.jetbrains.com/api/updates/upload
 
       - name: 📤 Push release commit and tag
-        if: steps.mode.outputs.release == 'true' && steps.mode.outputs.dry_run != 'true'
+        if: steps.plan.outputs.release == 'true' && steps.plan.outputs.dry_run != 'true'
         shell: sh
         env:
-          RELEASE_TAG: ${{ steps.mode.outputs.tag }}
+          RELEASE_TAG: ${{ steps.plan.outputs.tag }}
           RELEASE_TOKEN: ${{ secrets.RELEASE_TOKEN }}
         run: |
           git config user.name "Kira"
@@ -303,12 +321,12 @@ jobs:
           git push origin "refs/tags/$RELEASE_TAG"
 
       - name: 🚀 Create GitHub release
-        if: steps.mode.outputs.release == 'true' && steps.mode.outputs.dry_run != 'true'
+        if: steps.plan.outputs.release == 'true' && steps.plan.outputs.dry_run != 'true'
         shell: sh
         env:
           ARCHIVE_PATH: ${{ steps.archive.outputs.path }}
           GH_TOKEN: ${{ secrets.RELEASE_TOKEN || github.token }}
-          RELEASE_TAG: ${{ steps.mode.outputs.tag }}
+          RELEASE_TAG: ${{ steps.plan.outputs.tag }}
         run: |
           if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
             gh release upload "$RELEASE_TAG" "$ARCHIVE_PATH" --clobber
@@ -354,7 +372,7 @@ jobs:
             build/reports/jacoco
 
       - name: 🧾 Upload verifier reports
-        if: always() && steps.mode.outputs.release == 'true'
+        if: always() && steps.plan.outputs.release == 'true'
         uses: actions/upload-artifact@v7
         with:
           name: plugin-verifier-reports
