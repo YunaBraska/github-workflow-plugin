@@ -5,6 +5,7 @@ import org.jetbrains.intellij.platform.gradle.tasks.VerifyPluginTask
 plugins {
     id 'java'
     id 'jacoco'
+    id 'maven-publish'
     id 'org.jetbrains.intellij.platform' version '2.16.0'
     id 'org.jetbrains.changelog' version '2.5.0'
 }
@@ -72,6 +73,52 @@ repositories {
     mavenCentral()
     intellijPlatform {
         defaultRepositories()
+    }
+}
+
+publishing {
+    repositories {
+        maven {
+            name = 'GitHubPackages'
+            url = uri("https://maven.pkg.github.com/${System.getenv('GITHUB_REPOSITORY') ?: 'YunaBraska/github-workflow-plugin'}")
+            credentials {
+                username = System.getenv('GITHUB_ACTOR') ?: 'github-actions'
+                password = System.getenv('GITHUB_TOKEN') ?: ''
+            }
+        }
+    }
+
+    publications {
+        pluginZip(MavenPublication) {
+            groupId = requiredProperty('pluginGroup')
+            artifactId = rootProject.name
+            version = requiredProperty('pluginVersion')
+            artifact(tasks.named('signPlugin').flatMap { it.archiveFile }) {
+                extension = 'zip'
+            }
+            pom {
+                name = requiredProperty('pluginName')
+                description = requiredProperty('pluginDescription')
+                url = requiredProperty('pluginUrl')
+                licenses {
+                    license {
+                        name = 'MIT License'
+                        url = 'https://opensource.org/license/mit'
+                    }
+                }
+                developers {
+                    developer {
+                        name = requiredProperty('vendorName')
+                        email = requiredProperty('vendorEmail')
+                    }
+                }
+                scm {
+                    url = requiredProperty('pluginUrl')
+                    connection = "scm:git:${requiredProperty('pluginUrl')}.git"
+                    developerConnection = "scm:git:${requiredProperty('pluginUrl')}.git"
+                }
+            }
+        }
     }
 }
 
