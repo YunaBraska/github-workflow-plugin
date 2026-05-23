@@ -2,6 +2,7 @@ package com.github.yunabraska.githubworkflow.logic;
 
 import com.github.yunabraska.githubworkflow.model.SimpleElement;
 import com.github.yunabraska.githubworkflow.model.SyntaxAnnotation;
+import com.github.yunabraska.githubworkflow.services.GitHubWorkflowBundle;
 import com.intellij.codeInspection.ProblemHighlightType;
 import com.intellij.lang.annotation.AnnotationHolder;
 import com.intellij.lang.annotation.HighlightSeverity;
@@ -10,9 +11,10 @@ import com.intellij.psi.PsiElement;
 import com.intellij.psi.impl.source.tree.LeafPsiElement;
 import org.jetbrains.yaml.psi.YAMLKeyValue;
 
-import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.FIELD_IF;
@@ -28,10 +30,14 @@ import static com.github.yunabraska.githubworkflow.helper.PsiElementHelper.getCh
 import static com.github.yunabraska.githubworkflow.helper.PsiElementHelper.getParent;
 import static com.github.yunabraska.githubworkflow.helper.PsiElementHelper.getText;
 import static com.github.yunabraska.githubworkflow.model.NodeIcon.ICON_SECRET_WORKFLOW;
+import static com.github.yunabraska.githubworkflow.model.NodeIcon.RELOAD;
+import static com.github.yunabraska.githubworkflow.model.NodeIcon.SUPPRESS_ON;
 import static com.github.yunabraska.githubworkflow.model.SimpleElement.completionItemsOf;
 import static com.github.yunabraska.githubworkflow.model.SyntaxAnnotation.createAnnotation;
 
 public class Secrets {
+
+    private static final String GITHUB_TOKEN = "GITHUB_TOKEN";
 
     public static void highLightSecrets(
             final AnnotationHolder holder,
@@ -46,8 +52,8 @@ public class Secrets {
                 final TextRange range = psiElement.getTextRange();
                 final TextRange textRange = new TextRange(range.getStartOffset() + parts[0].startIndexOffset(), range.getStartOffset() + parts[parts.length - 1].endIndexOffset());
                 new SyntaxAnnotation(
-                        "Remove [" + simpleElement.text() + "] - Secrets are not valid in `if` statements",
-                        null,
+                        GitHubWorkflowBundle.message("inspection.secret.invalid.if", simpleElement.text()),
+                        SUPPRESS_ON,
                         deleteElementAction(textRange)
                 ).createAnnotation(psiElement, textRange, holder);
             }
@@ -55,8 +61,8 @@ public class Secrets {
             if (!secrets.contains(secretId.text())) {
                 final TextRange textRange = simpleTextRange(element, secretId);
                 createAnnotation(element, textRange, holder, secrets.stream().map(secret -> new SyntaxAnnotation(
-                        "Replace [" + secretId.text() + "] with [" + secret + "] - if it is not provided at runtime",
-                        null,
+                        GitHubWorkflowBundle.message("inspection.secret.replace.runtime", secretId.text(), secret),
+                        RELOAD,
                         HighlightSeverity.WEAK_WARNING,
                         ProblemHighlightType.WEAK_WARNING,
                         replaceAction(textRange, secret),
@@ -68,11 +74,20 @@ public class Secrets {
 
     public static List<SimpleElement> listSecrets(final PsiElement psiElement) {
         //WORKFLOW SECRETS
-        return getParent(psiElement, FIELD_IF).isPresent() ? Collections.emptyList() : getChild(psiElement.getContainingFile(), FIELD_ON)
+        if (getParent(psiElement, FIELD_IF).isPresent()) {
+            return Collections.emptyList();
+        }
+        final Map<String, String> result = getChild(psiElement.getContainingFile(), FIELD_ON)
                 .map(on -> getAllElements(on, FIELD_SECRETS))
-                .map(secrets -> secrets.stream().flatMap(secret -> getChildren(secret).stream()).collect(Collectors.toMap(YAMLKeyValue::getKeyText, keyValue -> getText(keyValue, "description").orElse(""), (existing, replacement) -> existing)))
-                .map(map -> completionItemsOf(map, ICON_SECRET_WORKFLOW))
-                .orElseGet(ArrayList::new);
+                .map(secrets -> secrets.stream().flatMap(secret -> getChildren(secret).stream()).collect(Collectors.toMap(
+                        YAMLKeyValue::getKeyText,
+                        keyValue -> getText(keyValue, "description").orElse(""),
+                        (existing, replacement) -> existing,
+                        LinkedHashMap::new
+                )))
+                .orElseGet(LinkedHashMap::new);
+        result.putIfAbsent(GITHUB_TOKEN, GitHubWorkflowBundle.message("completion.secret.githubToken"));
+        return completionItemsOf(result, ICON_SECRET_WORKFLOW);
     }
 
     private Secrets() {

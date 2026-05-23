@@ -1,46 +1,40 @@
 package com.github.yunabraska.githubworkflow.logic;
 
 import com.github.yunabraska.githubworkflow.helper.PsiElementHelper;
-import com.github.yunabraska.githubworkflow.model.GitHubAction;
 import com.github.yunabraska.githubworkflow.model.LocalReferenceResolver;
 import com.github.yunabraska.githubworkflow.model.SimpleElement;
 import com.github.yunabraska.githubworkflow.model.SyntaxAnnotation;
+import com.github.yunabraska.githubworkflow.services.GitHubWorkflowBundle;
 import com.intellij.lang.annotation.AnnotationHolder;
 import com.intellij.lang.annotation.HighlightSeverity;
 import com.intellij.openapi.editor.DefaultLanguageHighlighterColors;
-import com.intellij.openapi.keymap.KeymapUtil;
 import com.intellij.psi.PsiElement;
 import com.intellij.psi.PsiReference;
 import com.intellij.psi.impl.source.tree.LeafPsiElement;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.yaml.psi.YAMLKeyValue;
 
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.stream.Collectors;
 
 import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.FIELD_NEEDS;
+import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.FIELD_RESULT;
 import static com.github.yunabraska.githubworkflow.helper.HighlightAnnotatorHelper.addAnnotation;
 import static com.github.yunabraska.githubworkflow.helper.HighlightAnnotatorHelper.deleteElementAction;
 import static com.github.yunabraska.githubworkflow.helper.HighlightAnnotatorHelper.ifEnoughItems;
 import static com.github.yunabraska.githubworkflow.helper.HighlightAnnotatorHelper.isDefinedItem0;
 import static com.github.yunabraska.githubworkflow.helper.HighlightAnnotatorHelper.isField2Valid;
 import static com.github.yunabraska.githubworkflow.helper.HighlightAnnotatorHelper.isValidItem3;
-import static com.github.yunabraska.githubworkflow.helper.HighlightAnnotatorHelper.newJumpToFile;
-import static com.github.yunabraska.githubworkflow.helper.PsiElementHelper.getAllJobs;
 import static com.github.yunabraska.githubworkflow.helper.PsiElementHelper.getChild;
 import static com.github.yunabraska.githubworkflow.helper.PsiElementHelper.getParent;
 import static com.github.yunabraska.githubworkflow.helper.PsiElementHelper.getParentJob;
-import static com.github.yunabraska.githubworkflow.helper.PsiElementHelper.getTextElement;
 import static com.github.yunabraska.githubworkflow.helper.PsiElementHelper.getTextElements;
 import static com.github.yunabraska.githubworkflow.helper.PsiElementHelper.goToDeclarationString;
-import static com.github.yunabraska.githubworkflow.helper.PsiElementHelper.isTextElement;
-import static com.github.yunabraska.githubworkflow.helper.PsiElementHelper.removeQuotes;
 import static com.github.yunabraska.githubworkflow.logic.Jobs.listAllJobs;
 import static com.github.yunabraska.githubworkflow.logic.Jobs.listJobOutputs;
+import static com.github.yunabraska.githubworkflow.model.NodeIcon.SUPPRESS_ON;
 import static java.util.Optional.ofNullable;
 
 public class Needs {
@@ -49,13 +43,16 @@ public class Needs {
 
     // variable field
     public static void highlightNeeds(final AnnotationHolder holder, final LeafPsiElement element, final SimpleElement[] parts) {
-        ifEnoughItems(holder, element, parts, 4, 4, jobId -> {
+        ifEnoughItems(holder, element, parts, 3, 4, jobId -> {
             final List<String> jobIds = listJobNeeds(element);
-            if (isDefinedItem0(element, holder, jobId, jobIds) && isField2Valid(element, holder, parts[2])) {
-                // TODO: find target for highlighting reference
-                // TODO: implement reference ... does highlighting comes after reference which could add an reference indicator?
+            if (isDefinedItem0(element, holder, jobId, jobIds) && isField2Valid(element, holder, parts[2], List.of("outputs", FIELD_RESULT))) {
+                if (FIELD_RESULT.equals(parts[2].text())) {
+                    return;
+                }
                 final List<String> outputs = listJobOutputs(listAllJobs(element).stream().filter(job -> job.getKeyText().equals(jobId.text())).findFirst().orElse(null)).stream().map(SimpleElement::key).toList();
-                isValidItem3(element, holder, parts[3], outputs);
+                if (parts.length > 3) {
+                    isValidItem3(element, holder, parts[3], outputs);
+                }
             }
         });
     }
@@ -70,8 +67,8 @@ public class Needs {
                     if (!jobsNames.contains(element.getText())) {
                         // INVALID JOB_ID
                         addAnnotation(holder, psiElement, new SyntaxAnnotation(
-                                "Remove invalid jobId [" + element.getText() + "] - this jobId doesn't match any previous job",
-                                null,
+                                GitHubWorkflowBundle.message("inspection.needs.invalid.job", element.getText()),
+                                SUPPRESS_ON,
                                 deleteElementAction(psiElement.getTextRange())
                         ));
                     } else {
@@ -86,6 +83,10 @@ public class Needs {
     }
 
     // ########## CODE COMPLETION ##########
+    public static List<SimpleElement> codeCompletionPreviousJobs(final PsiElement psiElement) {
+        return listJobs(psiElement).stream().map(Jobs::jobToCompletionItem).toList();
+    }
+
     public static List<SimpleElement> codeCompletionNeeds(final PsiElement psiElement) {
         final List<YAMLKeyValue> jobs = listJobs(psiElement);
         return listJobNeeds(psiElement).stream()
@@ -108,27 +109,18 @@ public class Needs {
                 .map(job -> new PsiReference[]{new LocalReferenceResolver(psiElement, job)});
     }
 
-    private static void highlightLocalActions(final AnnotationHolder holder, final YAMLKeyValue element, final GitHubAction action, final List<SyntaxAnnotation> result) {
-        if (action.isResolved() && action.isLocal()) {
-            final String tooltip = String.format("Open declaration (%s)", Arrays.stream(KeymapUtil.getActiveKeymapShortcuts("GotoDeclaration").getShortcuts())
-                    .limit(2)
-                    .map(KeymapUtil::getShortcutText)
-                    .collect(Collectors.joining(", "))
-            );
-            getTextElement(element).ifPresent(textElement -> {
-                holder.newAnnotation(HighlightSeverity.INFORMATION, tooltip)
-                        .range(textElement)
-                        .textAttributes(DefaultLanguageHighlighterColors.HIGHLIGHTED_REFERENCE)
-                        .tooltip(tooltip)
-                        .create();
-                result.add(newJumpToFile(action));
-            });
-        }
-    }
-
     // ########## COMMONS ##########
     private static List<YAMLKeyValue> listJobs(final PsiElement psiElement) {
-        return getParentJob(psiElement).map(job -> listAllJobs(psiElement).stream().takeWhile(j -> !j.getKeyText().equals(job.getKeyText())).toList()).orElseGet(Collections::emptyList);
+        return currentJob(psiElement).map(job -> listAllJobs(psiElement).stream().takeWhile(j -> !j.getKeyText().equals(job.getKeyText())).toList()).orElseGet(Collections::emptyList);
+    }
+
+    private static Optional<YAMLKeyValue> currentJob(final PsiElement psiElement) {
+        final int offset = ofNullable(psiElement).map(PsiElement::getTextRange).map(range -> range.getStartOffset()).orElse(-1);
+        return getParentJob(psiElement).or(() -> ofNullable(psiElement)
+                .map(element -> listAllJobs(element).stream()
+                        .filter(job -> job.getTextRange().contains(element.getTextRange().getStartOffset()) || job.getTextRange().getStartOffset() <= offset)
+                        .reduce((previous, current) -> previous.getTextRange().contains(offset) ? previous : current)
+                        .orElse(null)));
     }
 
     public static List<String> listJobNeeds(final PsiElement psiElement) {

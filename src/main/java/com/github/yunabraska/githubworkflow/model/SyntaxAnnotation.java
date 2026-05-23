@@ -11,6 +11,7 @@ import com.intellij.openapi.util.TextRange;
 import com.intellij.psi.PsiElement;
 import com.intellij.psi.PsiFile;
 import com.intellij.util.IncorrectOperationException;
+import com.intellij.openapi.util.Iconable;
 import org.jetbrains.annotations.NotNull;
 
 import javax.swing.*;
@@ -22,7 +23,7 @@ import java.util.stream.Collectors;
 
 import static java.util.Optional.ofNullable;
 
-public class SyntaxAnnotation implements IntentionAction {
+public class SyntaxAnnotation implements IntentionAction, Iconable {
 
     private final String text;
     private final NodeIcon icon;
@@ -99,7 +100,6 @@ public class SyntaxAnnotation implements IntentionAction {
                 ofNullable(range != null ? range : psiElement.getTextRange()).ifPresent(annotation::range);
                 ofNullable(firstItem.type).ifPresent(annotation::highlightType);
                 ofNullable(firstItem.text).filter(text -> firstItem.showToolTip).ifPresent(annotation::tooltip);
-                ofNullable(firstItem.icon).map(i -> new IconRenderer(firstItem, psiElement, firstItem.icon)).ifPresent(annotation::gutterIconRenderer);
                 group.forEach(fix -> ofNullable(fix.execute).ifPresent(exec -> annotation.withFix(fix)));
                 annotation.create();
             });
@@ -109,6 +109,11 @@ public class SyntaxAnnotation implements IntentionAction {
     @SuppressWarnings("unused")
     public Icon icon() {
         return icon.icon();
+    }
+
+    @Override
+    public Icon getIcon(final int flags) {
+        return icon == null ? null : icon.icon();
     }
 
     @NotNull
@@ -131,6 +136,10 @@ public class SyntaxAnnotation implements IntentionAction {
     @Override
     public boolean startInWriteAction() {
         return false;
+    }
+
+    boolean hasExecution() {
+        return execute != null;
     }
 
     @Override

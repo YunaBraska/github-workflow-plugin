@@ -1,7 +1,7 @@
 package com.github.yunabraska.githubworkflow.model;
 
 import com.intellij.openapi.project.Project;
-import com.intellij.openapi.vfs.LocalFileSystem;
+import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.psi.PsiElement;
 import com.intellij.psi.PsiElementResolveResult;
 import com.intellij.psi.PsiManager;
@@ -23,12 +23,13 @@ public class LocalActionReferenceResolver extends PsiReferenceBase<PsiElement> i
 
     @Override
     public @NotNull ResolveResult @NotNull [] multiResolve(final boolean incompleteCode) {
-        return ofNullable(myElement.getUserData(ACTION_KEY)).flatMap(action -> {
+        return ofNullable(myElement.getUserData(ACTION_KEY)).flatMap(cachedAction -> {
             final Project project = getProject(myElement);
             return ofNullable(project)
-                    .flatMap(action::getLocalPath)
-                    .map(path -> LocalFileSystem.getInstance().findFileByPath(path))
+                    .flatMap(cachedAction::getLocalVirtualFile)
+                    .filter(VirtualFile::isValid)
                     .map(virtualFile -> PsiManager.getInstance(project).findFile(virtualFile))
+                    .filter(target -> target != null && target.isValid())
                     .map(target -> target.getChildren().length > 0 ? target.getChildren()[0] : target)
                     .map(target -> new ResolveResult[]{(new PsiElementResolveResult(target))});
         }).orElse(ResolveResult.EMPTY_ARRAY);
