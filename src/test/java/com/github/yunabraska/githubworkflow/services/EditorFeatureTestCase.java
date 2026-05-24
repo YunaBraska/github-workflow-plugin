@@ -33,7 +33,7 @@ abstract class EditorFeatureTestCase extends BasePlatformTestCase {
     protected void setUp() throws Exception {
         super.setUp();
         getActionCache().getState().actions.clear();
-        RemoteServerSettings.getInstance().setCustomServers(List.of());
+        RemoteActionProviders.Settings.getInstance().setCustomServers(List.of());
         ((CodeInsightTestFixtureImpl) myFixture).canChangeDocumentDuringHighlighting(true);
     }
 
@@ -41,7 +41,7 @@ abstract class EditorFeatureTestCase extends BasePlatformTestCase {
     protected void tearDown() throws Exception {
         try {
             getActionCache().getState().actions.clear();
-            RemoteServerSettings.getInstance().setCustomServers(List.of());
+            RemoteActionProviders.Settings.getInstance().setCustomServers(List.of());
         } finally {
             super.tearDown();
         }

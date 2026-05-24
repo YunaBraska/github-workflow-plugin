@@ -28,11 +28,11 @@ public class WorkflowRunProcessHandlerTest extends BasePlatformTestCase {
         final AtomicInteger statusCalls = new AtomicInteger(0);
         final AtomicInteger jobCalls = new AtomicInteger(0);
         final AtomicInteger logCalls = new AtomicInteger(0);
-        final WorkflowRunClient client = new WorkflowRunClient(
+        final WorkflowRun client = new WorkflowRun(
                 request -> responseFor(request, statusCalls, jobCalls, logCalls),
-                request -> List.of(GitHubRequestAuthorizations.Authorization.anonymous())
+                request -> List.of(RemoteActionProviders.Authorizations.Authorization.anonymous())
         );
-        final WorkflowRunRequest request = new WorkflowRunRequest(
+        final WorkflowRun.Request request = new WorkflowRun.Request(
                 "https://api.github.test",
                 "acme",
                 "tool",
@@ -87,11 +87,11 @@ public class WorkflowRunProcessHandlerTest extends BasePlatformTestCase {
         final CountDownLatch statusSeen = new CountDownLatch(1);
         final CountDownLatch cancelSeen = new CountDownLatch(1);
         final CapturingJobConsole jobConsole = new CapturingJobConsole();
-        final WorkflowRunClient client = new WorkflowRunClient(
+        final WorkflowRun client = new WorkflowRun(
                 request -> cancellationResponseFor(request, statusSeen, cancelSeen),
-                request -> List.of(GitHubRequestAuthorizations.Authorization.anonymous())
+                request -> List.of(RemoteActionProviders.Authorizations.Authorization.anonymous())
         );
-        final WorkflowRunRequest request = new WorkflowRunRequest(
+        final WorkflowRun.Request request = new WorkflowRun.Request(
                 "https://api.github.test",
                 "acme",
                 "tool",
@@ -134,11 +134,11 @@ public class WorkflowRunProcessHandlerTest extends BasePlatformTestCase {
     public void testDeleteRemoteRunUsesCompletedRunIdAndReportsToWorkflowConsole() throws Exception {
         final CountDownLatch deleteSeen = new CountDownLatch(1);
         final CapturingJobConsole jobConsole = new CapturingJobConsole();
-        final WorkflowRunClient client = new WorkflowRunClient(
+        final WorkflowRun client = new WorkflowRun(
                 request -> completedRunWithDeleteResponseFor(request, deleteSeen),
-                request -> List.of(GitHubRequestAuthorizations.Authorization.anonymous())
+                request -> List.of(RemoteActionProviders.Authorizations.Authorization.anonymous())
         );
-        final WorkflowRunRequest request = new WorkflowRunRequest(
+        final WorkflowRun.Request request = new WorkflowRun.Request(
                 "https://api.github.test",
                 "acme",
                 "tool",
@@ -178,11 +178,11 @@ public class WorkflowRunProcessHandlerTest extends BasePlatformTestCase {
         final CountDownLatch rerunAllSeen = new CountDownLatch(1);
         final CountDownLatch rerunFailedSeen = new CountDownLatch(1);
         final CapturingJobConsole jobConsole = new CapturingJobConsole();
-        final WorkflowRunClient client = new WorkflowRunClient(
+        final WorkflowRun client = new WorkflowRun(
                 request -> completedRunWithRerunResponseFor(request, rerunAllSeen, rerunFailedSeen),
-                request -> List.of(GitHubRequestAuthorizations.Authorization.anonymous())
+                request -> List.of(RemoteActionProviders.Authorizations.Authorization.anonymous())
         );
-        final WorkflowRunRequest request = new WorkflowRunRequest(
+        final WorkflowRun.Request request = new WorkflowRun.Request(
                 "https://api.github.test",
                 "acme",
                 "tool",
@@ -221,11 +221,11 @@ public class WorkflowRunProcessHandlerTest extends BasePlatformTestCase {
     public void testProcessRoutesEachJobLogToSeparateJobConsole() throws Exception {
         final AtomicInteger statusCalls = new AtomicInteger(0);
         final CapturingJobConsole jobConsole = new CapturingJobConsole();
-        final WorkflowRunClient client = new WorkflowRunClient(
+        final WorkflowRun client = new WorkflowRun(
                 request -> multiJobResponseFor(request, statusCalls),
-                request -> List.of(GitHubRequestAuthorizations.Authorization.anonymous())
+                request -> List.of(RemoteActionProviders.Authorizations.Authorization.anonymous())
         );
-        final WorkflowRunRequest request = new WorkflowRunRequest(
+        final WorkflowRun.Request request = new WorkflowRun.Request(
                 "https://api.github.test",
                 "acme",
                 "tool",
@@ -275,11 +275,11 @@ public class WorkflowRunProcessHandlerTest extends BasePlatformTestCase {
         final AtomicInteger statusCalls = new AtomicInteger(0);
         final AtomicInteger jobCalls = new AtomicInteger(0);
         final CapturingJobConsole jobConsole = new CapturingJobConsole();
-        final WorkflowRunClient client = new WorkflowRunClient(
+        final WorkflowRun client = new WorkflowRun(
                 request -> adminLiveLogResponseFor(request, statusCalls, jobCalls),
-                request -> List.of(new GitHubRequestAuthorizations.Authorization("github.com", "Bearer account-token"))
+                request -> List.of(new RemoteActionProviders.Authorizations.Authorization("github.com", "Bearer account-token"))
         );
-        final WorkflowRunRequest request = new WorkflowRunRequest(
+        final WorkflowRun.Request request = new WorkflowRun.Request(
                 "https://api.github.test",
                 "acme",
                 "tool",
@@ -323,11 +323,11 @@ public class WorkflowRunProcessHandlerTest extends BasePlatformTestCase {
         final AtomicInteger jobCalls = new AtomicInteger(0);
         final AtomicInteger completedLogFetchedAtStatusCall = new AtomicInteger(-1);
         final CapturingJobConsole jobConsole = new CapturingJobConsole();
-        final WorkflowRunClient client = new WorkflowRunClient(
+        final WorkflowRun client = new WorkflowRun(
                 request -> completedJobLogAfterLiveFailureResponseFor(request, statusCalls, jobCalls, completedLogFetchedAtStatusCall),
-                request -> List.of(new GitHubRequestAuthorizations.Authorization("github.com", "Bearer account-token"))
+                request -> List.of(new RemoteActionProviders.Authorizations.Authorization("github.com", "Bearer account-token"))
         );
-        final WorkflowRunRequest request = new WorkflowRunRequest(
+        final WorkflowRun.Request request = new WorkflowRun.Request(
                 "https://api.github.test",
                 "acme",
                 "tool",
@@ -371,11 +371,11 @@ public class WorkflowRunProcessHandlerTest extends BasePlatformTestCase {
         final AtomicInteger statusCalls = new AtomicInteger(0);
         final AtomicInteger jobCalls = new AtomicInteger(0);
         final AtomicInteger logCalls = new AtomicInteger(0);
-        final WorkflowRunClient client = new WorkflowRunClient(
+        final WorkflowRun client = new WorkflowRun(
                 request -> responseFor(request, statusCalls, jobCalls, logCalls),
-                request -> List.of(GitHubRequestAuthorizations.Authorization.anonymous())
+                request -> List.of(RemoteActionProviders.Authorizations.Authorization.anonymous())
         );
-        final WorkflowRunRequest request = new WorkflowRunRequest(
+        final WorkflowRun.Request request = new WorkflowRun.Request(
                 "https://github.acme.test/api/v3",
                 "tools",
                 "workflow-box",
@@ -417,11 +417,11 @@ public class WorkflowRunProcessHandlerTest extends BasePlatformTestCase {
         final AtomicInteger statusCalls = new AtomicInteger(0);
         final AtomicInteger logCalls = new AtomicInteger(0);
         final CapturingJobConsole jobConsole = new CapturingJobConsole();
-        final WorkflowRunClient client = new WorkflowRunClient(
+        final WorkflowRun client = new WorkflowRun(
                 request -> retryableLiveLogResponseFor(request, statusCalls, logCalls),
-                request -> List.of(new GitHubRequestAuthorizations.Authorization("github.com", "Bearer account-token"))
+                request -> List.of(new RemoteActionProviders.Authorizations.Authorization("github.com", "Bearer account-token"))
         );
-        final WorkflowRunRequest request = new WorkflowRunRequest(
+        final WorkflowRun.Request request = new WorkflowRun.Request(
                 "https://api.github.test",
                 "acme",
                 "tool",
@@ -734,7 +734,7 @@ public class WorkflowRunProcessHandlerTest extends BasePlatformTestCase {
         }
     }
 
-    private static final class CapturingJobConsole implements WorkflowRunJobConsole {
+    private static final class CapturingJobConsole implements WorkflowRunProcessHandler.JobConsole {
         private final Object lock = new Object();
         private final Map<Long, StringBuilder> output = new HashMap<>();
         private final StringBuilder workflowOutput = new StringBuilder();
@@ -742,26 +742,26 @@ public class WorkflowRunProcessHandlerTest extends BasePlatformTestCase {
         private final java.util.ArrayList<Long> deleted = new java.util.ArrayList<>();
 
         @Override
-        public boolean jobStatus(final WorkflowRunClient.JobStatus job, final String text) {
+        public boolean jobStatus(final WorkflowRun.JobStatus job, final String text) {
             append(job, text);
             return true;
         }
 
         @Override
-        public boolean jobStdout(final WorkflowRunClient.JobStatus job, final String text) {
+        public boolean jobStdout(final WorkflowRun.JobStatus job, final String text) {
             append(job, text);
             return true;
         }
 
         @Override
-        public boolean jobStderr(final WorkflowRunClient.JobStatus job, final String text) {
+        public boolean jobStderr(final WorkflowRun.JobStatus job, final String text) {
             append(job, text);
             return true;
         }
 
         @Override
-        public boolean jobLog(final WorkflowRunClient.JobStatus job, final String text) {
-            WorkflowRunLogRenderer.renderOnce(text).forEach(segment -> append(job, segment.text()));
+        public boolean jobLog(final WorkflowRun.JobStatus job, final String text) {
+            WorkflowRunView.LogRenderer.renderOnce(text).forEach(segment -> append(job, segment.text()));
             return true;
         }
 
@@ -786,7 +786,7 @@ public class WorkflowRunProcessHandlerTest extends BasePlatformTestCase {
             }
         }
 
-        private void append(final WorkflowRunClient.JobStatus job, final String text) {
+        private void append(final WorkflowRun.JobStatus job, final String text) {
             synchronized (lock) {
                 output.computeIfAbsent(job.id(), ignored -> new StringBuilder()).append(text);
             }

@@ -13,7 +13,7 @@ public class RemoteActionProvidersTest extends BasePlatformTestCase {
     @Override
     protected void tearDown() throws Exception {
         try {
-            RemoteServerSettings.getInstance().setCustomServers(List.of());
+            RemoteActionProviders.Settings.getInstance().setCustomServers(List.of());
         } finally {
             super.tearDown();
         }
@@ -212,8 +212,50 @@ public class RemoteActionProvidersTest extends BasePlatformTestCase {
         }
     }
 
+    public void testStandardEnvironmentTokensAreTriedBeforeAnonymous() {
+        final List<RemoteActionProviders.Authorizations.Authorization> authorizations = RemoteActionProviders.Authorizations.forApiUrl(
+                "https://api.example.test",
+                "",
+                null,
+                Map.of("GITHUB_TOKEN", "env-token")
+        );
+
+        assertThat(authorizations)
+                .extracting(RemoteActionProviders.Authorizations.Authorization::source)
+                .containsSubsequence("GITHUB_TOKEN", "anonymous");
+        assertThat(authorizations)
+                .extracting(RemoteActionProviders.Authorizations.Authorization::authorizationHeader)
+                .contains("Bearer env-token");
+    }
+
+    public void testExplicitEnvironmentTokenIsTriedBeforeStandardEnvironmentTokens() {
+        final List<RemoteActionProviders.Authorizations.Authorization> authorizations = RemoteActionProviders.Authorizations.forApiUrl(
+                "https://github.acme.test/api/v3",
+                "ACME_GITHUB_TOKEN",
+                null,
+                Map.of("ACME_GITHUB_TOKEN", "enterprise-token", "GITHUB_TOKEN", "default-token")
+        );
+
+        assertThat(authorizations)
+                .extracting(RemoteActionProviders.Authorizations.Authorization::source)
+                .containsSubsequence("ACME_GITHUB_TOKEN", "GITHUB_TOKEN", "anonymous");
+    }
+
+    public void testMissingEnvironmentTokensFallBackToAnonymous() {
+        final List<RemoteActionProviders.Authorizations.Authorization> authorizations = RemoteActionProviders.Authorizations.forApiUrl(
+                "https://github.acme.test/api/v3",
+                "ACME_GITHUB_TOKEN",
+                null,
+                Map.of()
+        );
+
+        assertThat(authorizations)
+                .extracting(RemoteActionProviders.Authorizations.Authorization::source)
+                .containsExactly("anonymous");
+    }
+
     private static void useServer(final FakeRemoteServer server, final String apiPrefix) {
-        RemoteServerSettings.getInstance().setCustomServers(List.of(new RemoteServerSettings.Server(
+        RemoteActionProviders.Settings.getInstance().setCustomServers(List.of(new RemoteActionProviders.Server(
                 "Fake",
                 server.webUrl(),
                 server.apiUrl(apiPrefix),

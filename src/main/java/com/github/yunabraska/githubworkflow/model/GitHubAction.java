@@ -1,6 +1,6 @@
 package com.github.yunabraska.githubworkflow.model;
 
-import com.github.yunabraska.githubworkflow.helper.PsiElementHelper;
+import com.github.yunabraska.githubworkflow.services.WorkflowPsi;
 import com.github.yunabraska.githubworkflow.services.RemoteActionProviders;
 import com.intellij.openapi.application.ReadAction;
 import com.intellij.openapi.diagnostic.Logger;
@@ -13,7 +13,6 @@ import com.intellij.psi.PsiElement;
 import com.intellij.psi.PsiFile;
 import com.intellij.psi.PsiFileFactory;
 import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
 import org.jetbrains.yaml.YAMLFileType;
 import org.jetbrains.yaml.psi.YAMLKeyValue;
 
@@ -35,13 +34,13 @@ import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.CACHE_ONE_DAY;
-import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.FIELD_INPUTS;
-import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.FIELD_ON;
-import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.FIELD_OUTPUTS;
-import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.FIELD_SECRETS;
-import static com.github.yunabraska.githubworkflow.helper.PsiElementHelper.getChild;
-import static com.github.yunabraska.githubworkflow.helper.PsiElementHelper.hasText;
+import static com.github.yunabraska.githubworkflow.services.WorkflowContextCatalog.CACHE_ONE_DAY;
+import static com.github.yunabraska.githubworkflow.services.WorkflowContextCatalog.FIELD_INPUTS;
+import static com.github.yunabraska.githubworkflow.services.WorkflowContextCatalog.FIELD_ON;
+import static com.github.yunabraska.githubworkflow.services.WorkflowContextCatalog.FIELD_OUTPUTS;
+import static com.github.yunabraska.githubworkflow.services.WorkflowContextCatalog.FIELD_SECRETS;
+import static com.github.yunabraska.githubworkflow.services.WorkflowPsi.getChild;
+import static com.github.yunabraska.githubworkflow.services.WorkflowPsi.hasText;
 import static java.lang.Boolean.parseBoolean;
 import static java.util.Collections.unmodifiableMap;
 import static java.util.Optional.of;
@@ -80,49 +79,85 @@ public class GitHubAction implements Serializable {
                 .expiryTime(System.currentTimeMillis() + (CACHE_ONE_DAY * 30));
     }
 
-    @SuppressWarnings("java:S3776")
     public static GitHubAction createGithubAction(final boolean isLocal, final String usesValue, final String absolutePath) {
-        final int tagIndex = usesValue.indexOf("@");
-        final int userNameIndex = usesValue.indexOf("/");
-        final int repoNameIndex = usesValue.indexOf("/", userNameIndex + 1);
-        final String ref = tagIndex != -1 ? usesValue.substring(tagIndex + 1) : null;
-        final String tmpName;
-        String slug = null;
-        String tmpSub = null;
-
-        final boolean isAction = isLocal ? !isWorkflowFile(usesValue) : (!absolutePath.contains(".yaml") && !absolutePath.contains(".yml") && !absolutePath.contains(".action.y"));
-
-        // START [EXTRACT PARTS]
-        if (tagIndex != -1 && userNameIndex < tagIndex) {
-            slug = usesValue.substring(0, repoNameIndex > 0 ? repoNameIndex : tagIndex);
-            if (!isAction) {
-                final int beginIndex = usesValue.lastIndexOf("/") + 1;
-                tmpName = beginIndex >= tagIndex ? "InvalidAction" : usesValue.substring(beginIndex, tagIndex);
-            } else {
-                tmpSub = repoNameIndex < tagIndex && repoNameIndex > 0 ? "/" + usesValue.substring(repoNameIndex + 1, tagIndex) : "";
-                tmpName = usesValue.substring(userNameIndex + 1, tagIndex);
-            }
-        } else {
-            tmpName = usesValue;
-        }
-        // END [EXTRACT PARTS]
-
+        final GitHubActionCoordinates coordinates = GitHubActionCoordinates.of(isLocal, usesValue, absolutePath);
         return new GitHubAction()
-                .name(slug != null ? slug + ofNullable(tmpSub).orElse("") : tmpName)
-                .usesValue(usesValue)
-                .downloadUrl(isLocal ? absolutePath : toRemoteDownloadUrl(isAction, ref, slug, tmpSub, tmpName))
-                .githubUrl(isAction ? toGitHubActionUrl(ref, slug, tmpSub) : toGitHubWorkflowUrl(ref, slug, tmpName))
+                .name(coordinates.name())
+                .usesValue(coordinates.usesValue())
+                .downloadUrl(coordinates.downloadUrl())
+                .githubUrl(coordinates.githubUrl())
                 .expiryTime(System.currentTimeMillis() + (CACHE_ONE_DAY * 14))
-                .isLocal(isLocal)
-                .setAction(isAction)
+                .isLocal(coordinates.local())
+                .setAction(coordinates.action())
                 .isSuppressed(false)
                 ;
+    }
+
+    private record GitHubActionCoordinates(
+            boolean local,
+            boolean action,
+            String name,
+            String usesValue,
+            String downloadUrl,
+            String githubUrl
+    ) {
+
+        static GitHubActionCoordinates of(final boolean local, final String usesValue, final String absolutePath) {
+            final String safeUses = ofNullable(usesValue).orElse("");
+            final String safePath = ofNullable(absolutePath).orElse("");
+            final boolean action = local ? !isWorkflowFile(safeUses) : isRemoteActionPath(safePath);
+            final int tagIndex = safeUses.indexOf('@');
+            final int ownerSeparator = safeUses.indexOf('/');
+            final int repoSeparator = safeUses.indexOf('/', ownerSeparator + 1);
+            if (tagIndex == -1 || ownerSeparator >= tagIndex) {
+                return new GitHubActionCoordinates(local, action, safeUses, safeUses, local ? safePath : "", "");
+            }
+            final String ref = safeUses.substring(tagIndex + 1);
+            final String slug = safeUses.substring(0, repoSeparator > 0 ? repoSeparator : tagIndex);
+            if (action) {
+                final String subPath = repoSeparator < tagIndex && repoSeparator > 0 ? "/" + safeUses.substring(repoSeparator + 1, tagIndex) : "";
+                return new GitHubActionCoordinates(
+                        local,
+                        true,
+                        slug + subPath,
+                        safeUses,
+                        local ? safePath : rawUrl(slug, ref, subPath + "/action.yml"),
+                        local ? "" : "https://github.com/" + slug + "/tree/" + ref + subPath + "#readme"
+                );
+            }
+            final int fileStart = safeUses.lastIndexOf('/') + 1;
+            final String workflowName = fileStart >= tagIndex ? "InvalidAction" : safeUses.substring(fileStart, tagIndex);
+            return new GitHubActionCoordinates(
+                    local,
+                    false,
+                    slug,
+                    safeUses,
+                    local ? safePath : rawUrl(slug, ref, ".github/workflows/" + workflowName),
+                    local ? "" : "https://github.com/" + slug + "/blob/" + ref + "/.github/workflows/" + workflowName
+            );
+        }
+
+        private static boolean isRemoteActionPath(final String absolutePath) {
+            return !absolutePath.contains(".yaml") && !absolutePath.contains(".yml") && !absolutePath.contains(".action.y");
+        }
+
+        private static boolean isWorkflowFile(final String usesValue) {
+            return ofNullable(usesValue)
+                    .map(value -> value.replace('\\', '/'))
+                    .filter(value -> value.contains(".github/workflows/") || value.contains(".gitea/workflows/"))
+                    .filter(value -> value.endsWith(".yml") || value.endsWith(".yaml"))
+                    .isPresent();
+        }
+
+        private static String rawUrl(final String slug, final String ref, final String path) {
+            return "https://raw.githubusercontent.com/" + slug + "/" + ref + "/" + path.replaceFirst("^/+", "");
+        }
     }
 
     public Optional<String> getLocalPath(final Project project) {
         return getLocalVirtualFile(project)
                 .map(VirtualFile::getPath)
-                .or(() -> isLocal() ? ofNullable(downloadUrl()).filter(PsiElementHelper::hasText) : Optional.empty());
+                .or(() -> isLocal() ? ofNullable(downloadUrl()).filter(WorkflowPsi::hasText) : Optional.empty());
     }
 
     public Optional<VirtualFile> getLocalVirtualFile(final Project project) {
@@ -144,7 +179,7 @@ public class GitHubAction implements Serializable {
         if (isLocal()) {
             extractLocalParameters();
         }
-        return concatMap(inputs, ignoredInputs.stream().filter(PsiElementHelper::hasText).collect(Collectors.toMap(key -> key, value -> "*** manual added input ***")));
+        return concatMap(inputs, ignoredInputs.stream().filter(WorkflowPsi::hasText).collect(Collectors.toMap(key -> key, value -> "*** manual added input ***")));
     }
 
     public Map<String, String> freshOutputs() {
@@ -155,7 +190,7 @@ public class GitHubAction implements Serializable {
         if (isLocal()) {
             extractLocalParameters();
         }
-        return withIgnoredItems ? concatMap(outputs, ignoredOutputs.stream().filter(PsiElementHelper::hasText).collect(Collectors.toMap(key -> key, value -> "*** manual added output ***"))) : unmodifiableMap(outputs);
+        return withIgnoredItems ? concatMap(outputs, ignoredOutputs.stream().filter(WorkflowPsi::hasText).collect(Collectors.toMap(key -> key, value -> "*** manual added output ***"))) : unmodifiableMap(outputs);
     }
 
     public Map<String, String> freshSecrets() {
@@ -179,7 +214,7 @@ public class GitHubAction implements Serializable {
     }
 
     public GitHubAction displayName(final String displayName) {
-        ofNullable(displayName).filter(PsiElementHelper::hasText).ifPresent(s -> metaData.put("displayName", s));
+        ofNullable(displayName).filter(WorkflowPsi::hasText).ifPresent(s -> metaData.put("displayName", s));
         return this;
     }
 
@@ -188,7 +223,7 @@ public class GitHubAction implements Serializable {
     }
 
     public GitHubAction description(final String description) {
-        ofNullable(description).filter(PsiElementHelper::hasText).ifPresent(s -> metaData.put("description", s));
+        ofNullable(description).filter(WorkflowPsi::hasText).ifPresent(s -> metaData.put("description", s));
         return this;
     }
 
@@ -270,7 +305,7 @@ public class GitHubAction implements Serializable {
         } else {
             ignoredInputs.remove(id);
         }
-        metaData.put("ignoredInputs", ignoredInputs.stream().filter(PsiElementHelper::hasText).collect(Collectors.joining(";")));
+        metaData.put("ignoredInputs", ignoredInputs.stream().filter(WorkflowPsi::hasText).collect(Collectors.joining(";")));
         return this;
     }
 
@@ -280,19 +315,19 @@ public class GitHubAction implements Serializable {
         } else {
             ignoredOutputs.remove(id);
         }
-        metaData.put("ignoredOutputs", ignoredOutputs.stream().filter(PsiElementHelper::hasText).collect(Collectors.joining(";")));
+        metaData.put("ignoredOutputs", ignoredOutputs.stream().filter(WorkflowPsi::hasText).collect(Collectors.joining(";")));
         return this;
     }
 
     public Set<String> ignoredInputs() {
         return ignoredInputs.stream()
-                .filter(PsiElementHelper::hasText)
+                .filter(WorkflowPsi::hasText)
                 .collect(Collectors.toUnmodifiableSet());
     }
 
     public Set<String> ignoredOutputs() {
         return ignoredOutputs.stream()
-                .filter(PsiElementHelper::hasText)
+                .filter(WorkflowPsi::hasText)
                 .collect(Collectors.toUnmodifiableSet());
     }
 
@@ -303,8 +338,8 @@ public class GitHubAction implements Serializable {
      */
     public boolean hasSuppressedWarnings() {
         return isSuppressed()
-                || ignoredInputs.stream().anyMatch(PsiElementHelper::hasText)
-                || ignoredOutputs.stream().anyMatch(PsiElementHelper::hasText);
+                || ignoredInputs.stream().anyMatch(WorkflowPsi::hasText)
+                || ignoredOutputs.stream().anyMatch(WorkflowPsi::hasText);
     }
 
     /**
@@ -355,8 +390,8 @@ public class GitHubAction implements Serializable {
     public GitHubAction setMetaData(final Map<String, String> metaData) {
         ofNullable(metaData).ifPresent(values -> {
             this.metaData.putAll(values);
-            this.ignoredInputs.addAll(Arrays.stream(values.getOrDefault("ignoredInputs", "").split(";")).filter(PsiElementHelper::hasText).toList());
-            this.ignoredOutputs.addAll(Arrays.stream(values.getOrDefault("ignoredOutputs", "").split(";")).filter(PsiElementHelper::hasText).toList());
+            this.ignoredInputs.addAll(Arrays.stream(values.getOrDefault("ignoredInputs", "").split(";")).filter(WorkflowPsi::hasText).toList());
+            this.ignoredOutputs.addAll(Arrays.stream(values.getOrDefault("ignoredOutputs", "").split(";")).filter(WorkflowPsi::hasText).toList());
         });
         return this;
     }
@@ -378,14 +413,6 @@ public class GitHubAction implements Serializable {
 
     private static String actionYamlPath(final String localPath, final String fileName) {
         return localPath.isBlank() ? fileName : localPath + "/" + fileName;
-    }
-
-    private static boolean isWorkflowFile(final String usesValue) {
-        return ofNullable(usesValue)
-                .map(value -> value.replace('\\', '/'))
-                .filter(value -> value.contains(".github/workflows/") || value.contains(".gitea/workflows/"))
-                .filter(value -> value.endsWith(".yml") || value.endsWith(".yaml"))
-                .isPresent();
     }
 
     private void extractParameters() {
@@ -426,7 +453,7 @@ public class GitHubAction implements Serializable {
     }
 
     private void extractLocalParameters() {
-        of(downloadUrl()).flatMap(PsiElementHelper::toPath).filter(Files::isRegularFile).map(file -> {
+        of(downloadUrl()).flatMap(WorkflowPsi::toPath).filter(Files::isRegularFile).map(file -> {
             try {
                 return Files.readString(file);
             } catch (final IOException ignored) {
@@ -456,8 +483,8 @@ public class GitHubAction implements Serializable {
     private void setParameters(final String content) {
         isResolved(hasText(content));
         readPsiElement(ProjectManager.getInstance().getDefaultProject(), downloadUrl(), content, psiFile -> {
-            displayName(PsiElementHelper.getText(psiFile.getContainingFile(), "name").orElse(name()));
-            description(PsiElementHelper.getText(psiFile.getContainingFile(), "description").orElse(""));
+            displayName(WorkflowPsi.getText(psiFile.getContainingFile(), "name").orElse(name()));
+            description(WorkflowPsi.getText(psiFile.getContainingFile(), "description").orElse(""));
             inputs.clear();
             inputs.putAll(getActionParameters(psiFile, FIELD_INPUTS, isAction()));
             outputs.clear();
@@ -467,42 +494,15 @@ public class GitHubAction implements Serializable {
         });
     }
 
-    @Nullable
-    private static String toRemoteDownloadUrl(final boolean isAction, final String ref, final String slug, final String sub, final String name) {
-        return isAction ? toActionDownloadUrl(ref, slug, sub) : toWorkflowDownloadUrl(ref, slug, name);
-    }
-
-    @Nullable
-    private static String toWorkflowDownloadUrl(final String ref, final String slug, final String name) {
-        return (ref != null && slug != null) ? "https://raw.githubusercontent.com/" + slug + "/" + ref + "/.github/workflows/" + name : null;
-    }
-
-    @Nullable
-    private static String toActionDownloadUrl(final String ref, final String slug, final String sub) {
-        return (ref != null && slug != null && sub != null) ? "https://raw.githubusercontent.com/" + slug + "/" + ref + sub + "/action.yml" : null;
-    }
-
-    @Nullable
-    private static String toGitHubWorkflowUrl(final String ref, final String slug, final String name) {
-        return (ref != null && slug != null) ? "https://github.com/" + slug + "/blob/" + ref + "/.github/workflows/" + name : null;
-    }
-
-    @Nullable
-    private static String toGitHubActionUrl(final String ref, final String slug, final String sub) {
-        //        return (ref != null && slug != null && sub != null) ? "https://github.com/" + slug + "/blob/" + ref + sub + "/action.yml" : null;
-        //        https://github.com/actions/checkout/tree/Update-description#readme
-        return (ref != null && slug != null && sub != null) ? "https://github.com/" + slug + "/tree/" + ref + sub + "#readme" : null;
-    }
-
     public List<String> remoteRefs() {
         return Arrays.stream(metaData.getOrDefault("remoteRefs", "").split(";"))
-                .filter(PsiElementHelper::hasText)
+                .filter(WorkflowPsi::hasText)
                 .toList();
     }
 
     public GitHubAction remoteRefs(final List<String> refs) {
         metaData.put("remoteRefs", ofNullable(refs).orElseGet(List::of).stream()
-                .filter(PsiElementHelper::hasText)
+                .filter(WorkflowPsi::hasText)
                 .distinct()
                 .collect(Collectors.joining(";")));
         return this;
@@ -515,8 +515,8 @@ public class GitHubAction implements Serializable {
                 : getChild(psiElement.getContainingFile(), FIELD_ON)
                         .flatMap(on -> getChild(on, "workflow_call"))
                         .flatMap(workflowCall -> getChild(workflowCall, fieldName)))
-                .map(PsiElementHelper::getChildren)
-                .map(children -> children.stream().collect(Collectors.toMap(YAMLKeyValue::getKeyText, field -> PsiElementHelper.getDescription(field, FIELD_INPUTS.equals(fieldName)))))
+                .map(WorkflowPsi::getChildren)
+                .map(children -> children.stream().collect(Collectors.toMap(YAMLKeyValue::getKeyText, field -> WorkflowPsi.getDescription(field, FIELD_INPUTS.equals(fieldName)))))
                 .orElseGet(Collections::emptyMap);
     }
 

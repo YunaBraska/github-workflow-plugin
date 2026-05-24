@@ -6,19 +6,25 @@ import com.intellij.notification.NotificationType;
 import com.intellij.execution.Executor;
 import com.intellij.execution.process.ProcessHandler;
 import com.intellij.execution.process.ProcessOutputTypes;
+import com.intellij.ide.actions.RevealFileAction;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.options.ShowSettingsUtil;
+import com.intellij.openapi.application.PathManager;
 import com.intellij.openapi.project.Project;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.io.IOException;
 import java.io.OutputStream;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -33,11 +39,11 @@ import java.util.concurrent.ThreadLocalRandom;
  */
 public final class WorkflowRunProcessHandler extends ProcessHandler {
 
-    private final WorkflowRunRequest request;
-    private final WorkflowRunClient client;
+    private final WorkflowRun.Request request;
+    private final WorkflowRun client;
     private final Project project;
     private final PollSettings pollSettings;
-    private WorkflowRunJobConsole jobConsole = WorkflowRunJobConsole.none();
+    private JobConsole jobConsole = JobConsole.none();
     private final AtomicBoolean stopping = new AtomicBoolean(false);
     private final AtomicBoolean terminated = new AtomicBoolean(false);
     private final AtomicBoolean deleteRequested = new AtomicBoolean(false);
@@ -47,24 +53,24 @@ public final class WorkflowRunProcessHandler extends ProcessHandler {
     private final AtomicLong runId = new AtomicLong(-1);
     private final AtomicReference<Future<?>> task = new AtomicReference<>();
 
-    WorkflowRunProcessHandler(final Project project, final WorkflowRunRequest request, final WorkflowRunClient client) {
+    WorkflowRunProcessHandler(final Project project, final WorkflowRun.Request request, final WorkflowRun client) {
         this(project, request, client, PollSettings.defaults());
     }
 
     WorkflowRunProcessHandler(
             final Project project,
-            final WorkflowRunRequest request,
-            final WorkflowRunClient client,
+            final WorkflowRun.Request request,
+            final WorkflowRun client,
             final Executor executor
     ) {
         this(project, request, client, PollSettings.defaults());
-        this.jobConsole = new WorkflowRunConsoleTabs(project, executor, this);
+        this.jobConsole = new WorkflowRunView(project, executor, this);
     }
 
     WorkflowRunProcessHandler(
             final Project project,
-            final WorkflowRunRequest request,
-            final WorkflowRunClient client,
+            final WorkflowRun.Request request,
+            final WorkflowRun client,
             final PollSettings pollSettings
     ) {
         this.project = project;
@@ -75,19 +81,19 @@ public final class WorkflowRunProcessHandler extends ProcessHandler {
 
     WorkflowRunProcessHandler(
             final Project project,
-            final WorkflowRunRequest request,
-            final WorkflowRunClient client,
+            final WorkflowRun.Request request,
+            final WorkflowRun client,
             final PollSettings pollSettings,
-            final WorkflowRunJobConsole jobConsole
+            final JobConsole jobConsole
     ) {
         this(project, request, client, pollSettings);
-        this.jobConsole = jobConsole == null ? WorkflowRunJobConsole.none() : jobConsole;
+        this.jobConsole = jobConsole == null ? JobConsole.none() : jobConsole;
     }
 
     @Override
     public void startNotify() {
         super.startNotify();
-        WorkflowRunTracker.getInstance(project).register(request.workflowPath(), this);
+        WorkflowRun.Tracker.getInstance(project).register(request.workflowPath(), this);
         task.set(ApplicationManager.getApplication().executeOnPooledThread(this::runWorkflow));
     }
 
@@ -110,7 +116,7 @@ public final class WorkflowRunProcessHandler extends ProcessHandler {
     private void cancelRemoteRun(final long id) {
         if (id > 0) {
             try {
-                final WorkflowRunClient.CancelResult result = client.cancel(request, id);
+                final WorkflowRun.CancelResult result = client.cancel(request, id);
                 stderr(GitHubWorkflowBundle.message("workflow.run.cancel.http", result.statusCode()) + "\n");
             } catch (final IOException | InterruptedException exception) {
                 if (exception instanceof InterruptedException) {
@@ -126,7 +132,7 @@ public final class WorkflowRunProcessHandler extends ProcessHandler {
     protected void detachProcessImpl() {
         stopping.set(true);
         if (terminated.compareAndSet(false, true)) {
-            WorkflowRunTracker.getInstance(project).unregister(request.workflowPath(), this);
+            WorkflowRun.Tracker.getInstance(project).unregister(request.workflowPath(), this);
             jobConsole.close();
             notifyProcessDetached();
         }
@@ -144,19 +150,9 @@ public final class WorkflowRunProcessHandler extends ProcessHandler {
 
     private void runWorkflow() {
         try {
-            stdout(dispatchMessage() + "\n");
-            final WorkflowRunClient.DispatchResult dispatch = client.dispatch(request);
-            final long id = resolveRunId(dispatch);
-            if (id > 0) {
-                runId.set(id);
-            }
-            final String conclusion = poll(id);
-            final String terminalConclusion = stopping.get()
-                    ? "cancelled"
-                    : hasText(conclusion) ? conclusion : "success";
-            terminate(successful(terminalConclusion) ? 0 : 1, terminalConclusion);
+            terminate(runFromTrigger());
         } catch (final IOException | RuntimeException exception) {
-            if (exception instanceof WorkflowRunClient.WorkflowRunHttpException httpException && httpException.accountActionRecommended()) {
+            if (exception instanceof WorkflowRun.WorkflowRunHttpException httpException && httpException.accountActionRecommended()) {
                 notifyAuthenticationHelp();
             }
             stderr(exception.getMessage() + "\n");
@@ -170,7 +166,20 @@ public final class WorkflowRunProcessHandler extends ProcessHandler {
         }
     }
 
-    private long resolveRunId(final WorkflowRunClient.DispatchResult dispatch) throws IOException, InterruptedException {
+    private RunOutcome runFromTrigger() throws IOException, InterruptedException {
+        final long id = dispatchFromTrigger();
+        if (id > 0) {
+            runId.set(id);
+        }
+        return RunOutcome.from(poll(id), stopping.get());
+    }
+
+    private long dispatchFromTrigger() throws IOException, InterruptedException {
+        stdout(dispatchMessage() + "\n");
+        return resolveRunId(client.dispatch(request));
+    }
+
+    private long resolveRunId(final WorkflowRun.DispatchResult dispatch) throws IOException, InterruptedException {
         if (hasText(dispatch.htmlUrl())) {
             stdout(GitHubWorkflowBundle.message("workflow.run.link", dispatch.htmlUrl()) + "\n");
         }
@@ -181,7 +190,7 @@ public final class WorkflowRunProcessHandler extends ProcessHandler {
         for (int attempt = 0; attempt < 12 && !stopping.get(); attempt++) {
             final var latest = client.latestRun(request);
             if (latest.isPresent()) {
-                final WorkflowRunClient.RunStatus run = latest.get();
+                final WorkflowRun.RunStatus run = latest.get();
                 if (hasText(run.htmlUrl())) {
                     stdout(GitHubWorkflowBundle.message("workflow.run.link", run.htmlUrl()) + "\n");
                 }
@@ -197,10 +206,10 @@ public final class WorkflowRunProcessHandler extends ProcessHandler {
         if (id <= 0) {
             return "";
         }
-        WorkflowRunClient.RunStatus previous = new WorkflowRunClient.RunStatus(id, "", "", "");
+        WorkflowRun.RunStatus previous = new WorkflowRun.RunStatus(id, "", "", "");
         final Map<Long, JobLogState> jobLogs = new LinkedHashMap<>();
         while (!stopping.get()) {
-            final WorkflowRunClient.RunStatus status = client.status(request, id);
+            final WorkflowRun.RunStatus status = client.status(request, id);
             if (!status.status().equals(previous.status()) || !status.conclusion().equals(previous.conclusion())) {
                 stdout(GitHubWorkflowBundle.message("workflow.run.status", status.status(), suffix(status.conclusion())) + "\n");
                 previous = status;
@@ -218,18 +227,18 @@ public final class WorkflowRunProcessHandler extends ProcessHandler {
     private void streamJobLogs(final long id, final Map<Long, JobLogState> jobLogs, final boolean finalPass) throws IOException, InterruptedException {
         final long now = System.currentTimeMillis();
         boolean changed = false;
-        for (final WorkflowRunClient.JobStatus job : client.jobs(request, id)) {
+        for (final WorkflowRun.JobStatus job : client.jobs(request, id)) {
             final JobLogState state = jobLogs.computeIfAbsent(job.id(), ignored -> new JobLogState());
-            if (!job.status().equals(state.status) || !job.conclusion().equals(state.conclusion)) {
+            if (state.changed(job)) {
                 printJobHeader(job, state);
-                updateTiming(state, job, now);
+                state.seen(job, now);
                 final String status = GitHubWorkflowBundle.message(
                         "workflow.run.job.main",
                         statePrefix(job),
                         job.name(),
                         job.status(),
                         suffix(job.conclusion()),
-                        durationSuffix(state, now)
+                        state.durationSuffix(now)
                 ) + "\n";
                 stdout(status);
                 jobConsole.jobStatus(job, GitHubWorkflowBundle.message(
@@ -237,11 +246,9 @@ public final class WorkflowRunProcessHandler extends ProcessHandler {
                         statePrefix(job),
                         job.status(),
                         suffix(job.conclusion()),
-                        durationSuffix(state, now)
+                        state.durationSuffix(now)
                 ) + "\n");
-                state.status = job.status();
-                state.conclusion = job.conclusion();
-                state.name = job.name();
+                state.status(job);
                 changed = true;
             }
             if (shouldFetchLog(job, state, now, finalPass)) {
@@ -249,170 +256,76 @@ public final class WorkflowRunProcessHandler extends ProcessHandler {
             }
         }
         if (changed) {
-            stdout(overview(jobLogs, now));
+            stdout(overview(jobLogs.values(), now));
         }
     }
 
     private boolean shouldFetchLog(
-            final WorkflowRunClient.JobStatus job,
+            final WorkflowRun.JobStatus job,
             final JobLogState state,
             final long now,
             final boolean finalPass
     ) {
-        if (!"in_progress".equals(job.status()) && !"completed".equals(job.status())) {
-            return false;
-        }
-        if (finalPass || "completed".equals(job.status())) {
-            return !state.finalLogFetched;
-        }
-        if (now < state.nextLiveLogFetchMillis) {
-            return false;
-        }
-        return now - state.lastLogFetchMillis >= pollSettings.logPollMillis();
+        return state.shouldFetchLog(job, now, finalPass, pollSettings.logPollMillis());
     }
 
     private void fetchJobLog(
-            final WorkflowRunClient.JobStatus job,
+            final WorkflowRun.JobStatus job,
             final JobLogState state,
             final long now,
             final boolean finalPass
     ) throws InterruptedException {
-        state.lastLogFetchMillis = now;
+        state.lastLogFetchMillis(now);
         try {
             final String logs = client.jobLogs(request, job.id());
             if (hasText(logs)) {
                 printLogDelta(job, state, logs);
             }
             if (finalPass || "completed".equals(job.status())) {
-                state.finalLogFetched = true;
+                state.finalLogFetched(true);
             }
         } catch (final IOException exception) {
             if (shouldDeferLiveLogFailure(exception, finalPass)) {
-                if (!state.liveLogNoticeShown) {
+                if (!state.liveLogNoticeShown()) {
                     final String notice = GitHubWorkflowBundle.message("workflow.run.logs.later") + "\n";
                     if (!jobConsole.jobStatus(job, notice)) {
                         stdout(GitHubWorkflowBundle.message("workflow.run.job.logs.later", job.name(), notice));
                     }
-                    state.liveLogNoticeShown = true;
+                    state.liveLogNoticeShown(true);
                 }
-                state.nextLiveLogFetchMillis = now + pollSettings.liveLogFailureRetryMillis();
+                state.nextLiveLogFetchMillis(now + pollSettings.liveLogFailureRetryMillis());
                 return;
             }
-            if (finalPass || !state.logErrorShown) {
+            if (finalPass || !state.logErrorShown()) {
                 final String message = GitHubWorkflowBundle.message("workflow.run.log.failed", exception.getMessage()) + "\n";
                 if (!jobConsole.jobStderr(job, message)) {
                     stderr(GitHubWorkflowBundle.message("workflow.run.log.failed.job", job.name(), exception.getMessage()) + "\n");
                 }
-                state.logErrorShown = true;
+                state.logErrorShown(true);
             }
         }
     }
 
-    private void printLogDelta(final WorkflowRunClient.JobStatus job, final JobLogState state, final String logs) {
-        final String text = logs.stripTrailing();
-        if (text.length() <= state.printedLength) {
-            return;
-        }
-        final String delta = text.substring(state.printedLength).stripLeading();
+    private void printLogDelta(final WorkflowRun.JobStatus job, final JobLogState state, final String logs) {
+        final String delta = state.delta(logs);
         if (hasText(delta)) {
             if (!jobConsole.jobLog(job, delta + "\n")) {
-                final String rendered = state.fallbackRenderer.renderPlain(delta + "\n");
+                final String rendered = state.plain(delta + "\n");
                 final String fallbackText = "\n== " + job.name() + " ==\n" + rendered;
                 stdout(fallbackText);
             }
         }
-        state.printedLength = text.length();
     }
 
-    private void printJobHeader(final WorkflowRunClient.JobStatus job, final JobLogState state) {
-        if (state.headerPrinted) {
+    private void printJobHeader(final WorkflowRun.JobStatus job, final JobLogState state) {
+        if (state.headerPrinted()) {
             return;
         }
         final String url = hasText(job.htmlUrl()) ? GitHubWorkflowBundle.message("workflow.run.job.url", job.htmlUrl()) + "\n" : "";
         final String header = GitHubWorkflowBundle.message("workflow.run.job.header", job.name()) + "\n" + url;
         stdout(header);
         jobConsole.jobStatus(job, header);
-        state.headerPrinted = true;
-    }
-
-    private static void updateTiming(final JobLogState state, final WorkflowRunClient.JobStatus job, final long now) {
-        if (state.firstSeenMillis == 0) {
-            state.firstSeenMillis = now;
-        }
-        if ("in_progress".equals(job.status()) && state.startedMillis == 0) {
-            state.startedMillis = now;
-        }
-        if ("completed".equals(job.status()) && state.completedMillis == 0) {
-            state.completedMillis = now;
-        }
-    }
-
-    private static String overview(final Map<Long, JobLogState> states, final long now) {
-        final long total = states.size();
-        final long done = states.values().stream().filter(state -> "completed".equals(state.status)).count();
-        final long running = states.values().stream().filter(state -> "in_progress".equals(state.status)).count();
-        final StringBuilder result = new StringBuilder()
-                .append(GitHubWorkflowBundle.message("workflow.run.overview", progressBar(done, total), done, total, running))
-                .append("\n");
-        int index = 0;
-        for (final JobLogState state : states.values()) {
-            final boolean last = ++index == states.size();
-            result.append(last ? "`-- " : "|-- ")
-                    .append(statePrefix(state))
-                    .append(" ")
-                    .append(state.name)
-                    .append(durationSuffix(state, now))
-                    .append("\n");
-        }
-        return result.toString();
-    }
-
-    private static String progressBar(final long done, final long total) {
-        if (total <= 0) {
-            return "[----------]";
-        }
-        final int width = 10;
-        final int filled = (int) Math.min(width, Math.max(0, done * width / total));
-        return "[" + "#".repeat(filled) + "-".repeat(width - filled) + "]";
-    }
-
-    private static String durationSuffix(final JobLogState state, final long now) {
-        final long start = state.startedMillis > 0 ? state.startedMillis : state.firstSeenMillis;
-        final long end = state.completedMillis > 0 ? state.completedMillis : now;
-        if (start <= 0 || end < start) {
-            return "";
-        }
-        return " " + formatDuration(end - start);
-    }
-
-    private static String formatDuration(final long millis) {
-        final long seconds = Math.max(0, TimeUnit.MILLISECONDS.toSeconds(millis));
-        final long minutes = seconds / 60;
-        return String.format(Locale.ROOT, "%02d:%02d", minutes, seconds % 60);
-    }
-
-    private static String statePrefix(final WorkflowRunClient.JobStatus job) {
-        return statePrefix(job.status(), job.conclusion());
-    }
-
-    private static String statePrefix(final JobLogState state) {
-        return statePrefix(state.status, state.conclusion);
-    }
-
-    private static String statePrefix(final String status, final String conclusion) {
-        if ("completed".equals(status)) {
-            return successful(conclusion)
-                    ? GitHubWorkflowBundle.message("workflow.run.state.ok")
-                    : GitHubWorkflowBundle.message("workflow.run.state.fail");
-        }
-        if ("in_progress".equals(status)) {
-            return GitHubWorkflowBundle.message("workflow.run.state.running");
-        }
-        return GitHubWorkflowBundle.message("workflow.run.state.waiting");
-    }
-
-    private static boolean successful(final String conclusion) {
-        return "success".equals(conclusion) || "skipped".equals(conclusion) || "neutral".equals(conclusion);
+        state.headerPrinted(true);
     }
 
     private String dispatchMessage() {
@@ -431,11 +344,7 @@ public final class WorkflowRunProcessHandler extends ProcessHandler {
     }
 
     private static boolean shouldDeferLiveLogFailure(final IOException exception, final boolean finalPass) {
-        return !finalPass && exception instanceof WorkflowRunClient.WorkflowRunHttpException;
-    }
-
-    private static String suffix(final String conclusion) {
-        return conclusion == null || conclusion.isBlank() ? "" : "/" + conclusion;
+        return !finalPass && exception instanceof WorkflowRun.WorkflowRunHttpException;
     }
 
     private static boolean hasText(final String value) {
@@ -456,7 +365,7 @@ public final class WorkflowRunProcessHandler extends ProcessHandler {
             jobConsole.runDeleteFailed(id);
             deleteRequested.set(false);
         }, () -> {
-            final WorkflowRunClient.DeleteResult result = client.delete(request, id);
+            final WorkflowRun.DeleteResult result = client.delete(request, id);
             final String message = result.accepted()
                     ? GitHubWorkflowBundle.message("workflow.run.delete.done", id)
                     : GitHubWorkflowBundle.message("workflow.run.delete.http", result.statusCode());
@@ -484,7 +393,7 @@ public final class WorkflowRunProcessHandler extends ProcessHandler {
                 ? "workflow.run.rerun.failed.requested"
                 : "workflow.run.rerun.all.requested", id) + "\n", false);
         inBackground("workflow.run.rerun.failed", ignored -> gate.set(false), () -> {
-            final WorkflowRunClient.RerunResult result = client.rerun(request, id, failedOnly);
+            final WorkflowRun.RerunResult result = client.rerun(request, id, failedOnly);
             final String message = result.accepted()
                     ? GitHubWorkflowBundle.message(failedOnly
                             ? "workflow.run.rerun.failed.done"
@@ -534,9 +443,9 @@ public final class WorkflowRunProcessHandler extends ProcessHandler {
         workflowStatus(GitHubWorkflowBundle.message("workflow.run.download.log.requested", jobName) + "\n", false);
         inBackground("workflow.run.download.failed", () -> {
             final String log = client.jobLogs(request, jobId);
-            final Path file = WorkflowRunDownloads.writeJobLog(request, id, jobId, jobName, log);
+            final Path file = writeJobLog(id, jobId, jobName, log);
             workflowStatus(GitHubWorkflowBundle.message("workflow.run.download.log.done", file) + "\n", false);
-            WorkflowRunDownloads.reveal(file);
+            reveal(file);
         });
     }
 
@@ -548,7 +457,7 @@ public final class WorkflowRunProcessHandler extends ProcessHandler {
         }
         workflowStatus(GitHubWorkflowBundle.message("workflow.run.download.artifacts.requested") + "\n", false);
         inBackground("workflow.run.download.failed", () -> {
-            final List<WorkflowRunClient.ArtifactStatus> artifacts = client.artifacts(request, id);
+            final List<WorkflowRun.ArtifactStatus> artifacts = client.artifacts(request, id);
             if (artifacts.isEmpty()) {
                 artifactAvailability.set(0);
                 workflowStatus(GitHubWorkflowBundle.message("workflow.run.download.artifacts.empty") + "\n", false);
@@ -556,13 +465,13 @@ public final class WorkflowRunProcessHandler extends ProcessHandler {
             }
             Path lastFile = null;
             int downloaded = 0;
-            for (final WorkflowRunClient.ArtifactStatus artifact : artifacts) {
+            for (final WorkflowRun.ArtifactStatus artifact : artifacts) {
                 if (artifact.expired()) {
                     workflowStatus(GitHubWorkflowBundle.message("workflow.run.download.artifact.expired", artifact.name()) + "\n", false);
                     continue;
                 }
                 final byte[] zip = client.artifactZip(request, artifact.id());
-                lastFile = WorkflowRunDownloads.writeArtifact(request, id, artifact, zip);
+                lastFile = writeArtifact(id, artifact, zip);
                 downloaded++;
                 workflowStatus(GitHubWorkflowBundle.message("workflow.run.download.artifact.done", artifact.name(), lastFile) + "\n", false);
             }
@@ -573,7 +482,7 @@ public final class WorkflowRunProcessHandler extends ProcessHandler {
             }
             artifactAvailability.set(1);
             if (lastFile != null) {
-                WorkflowRunDownloads.reveal(lastFile.getParent());
+                reveal(lastFile.getParent());
             }
         });
     }
@@ -606,18 +515,22 @@ public final class WorkflowRunProcessHandler extends ProcessHandler {
 
     private void terminate(final int exitCode, final String conclusion) {
         if (terminated.compareAndSet(false, true)) {
-            WorkflowRunTracker.getInstance(project).unregister(request.workflowPath(), this);
+            WorkflowRun.Tracker.getInstance(project).unregister(request.workflowPath(), this);
             jobConsole.runFinished(runId.get(), conclusion);
             jobConsole.close();
             notifyProcessTerminated(exitCode);
         }
     }
 
+    private void terminate(final RunOutcome outcome) {
+        terminate(outcome.exitCode(), outcome.conclusion());
+    }
+
     private void notifyAuthenticationHelp() {
         final var notification = NotificationGroupManager.getInstance()
                 .getNotificationGroup("GitHub Workflow")
                 .createNotification(
-                        GitHubWorkflowBundle.message("workflow.run.notification.auth", GitHubRequestAuthorizations.settingsHint()),
+                        GitHubWorkflowBundle.message("workflow.run.notification.auth", RemoteActionProviders.Authorizations.settingsHint()),
                         NotificationType.WARNING
                 );
         notification.addAction(NotificationAction.createSimple(GitHubWorkflowBundle.message("workflow.run.notification.openSettings"), () ->
@@ -634,15 +547,116 @@ public final class WorkflowRunProcessHandler extends ProcessHandler {
         notifyTextAvailable(text, ProcessOutputTypes.STDERR);
     }
 
-    record PollSettings(long statusPollMillis, long logPollMillis, long runDiscoveryMillis, long liveLogFailureRetryMillis) {
+    private Path writeJobLog(
+            final long id,
+            final long jobId,
+            final String jobName,
+            final String log
+    ) throws IOException {
+        final Path file = runDirectory(id).resolve(safeName(jobName) + "-" + jobId + ".log");
+        Files.writeString(file, Optional.ofNullable(log).orElse(""), StandardCharsets.UTF_8);
+        return file;
+    }
 
-        PollSettings(final long statusPollMillis, final long logPollMillis, final long runDiscoveryMillis) {
-            this(statusPollMillis, logPollMillis, runDiscoveryMillis, Math.max(logPollMillis, 60_000));
-        }
+    private Path writeArtifact(
+            final long id,
+            final WorkflowRun.ArtifactStatus artifact,
+            final byte[] zip
+    ) throws IOException {
+        final Path file = runDirectory(id).resolve(safeName(artifact.name()) + "-" + artifact.id() + ".zip");
+        Files.write(file, Optional.ofNullable(zip).orElseGet(() -> new byte[0]));
+        return file;
+    }
 
-        private static PollSettings defaults() {
-            return new PollSettings(10_000, 30_000, 2_000, 60_000);
+    private Path runDirectory(final long id) throws IOException {
+        final Path directory = Path.of(
+                PathManager.getSystemPath(),
+                "github-workflow-plugin",
+                "downloads",
+                safeName(request.repositorySlug()),
+                "run-" + id
+        );
+        Files.createDirectories(directory);
+        return directory;
+    }
+
+    private static void reveal(final Path path) {
+        if (path == null) {
+            return;
         }
+        ApplicationManager.getApplication().invokeLater(() -> RevealFileAction.openFile(path.toFile()));
+    }
+
+    private static String safeName(final String value) {
+        final String normalized = Optional.ofNullable(value)
+                .filter(text -> !text.isBlank())
+                .orElse("download")
+                .toLowerCase(Locale.ROOT)
+                .replaceAll("[^a-z0-9._-]+", "-")
+                .replaceAll("^-+|-+$", "");
+        return normalized.isBlank() ? "download" : normalized;
+    }
+
+    private static String overview(final Collection<JobLogState> states, final long now) {
+        final long total = states.size();
+        final long done = states.stream().filter(JobLogState::completed).count();
+        final long running = states.stream().filter(JobLogState::running).count();
+        final StringBuilder result = new StringBuilder()
+                .append(GitHubWorkflowBundle.message("workflow.run.overview", progressBar(done, total), done, total, running))
+                .append("\n");
+        int index = 0;
+        for (final JobLogState state : states) {
+            final boolean last = ++index == states.size();
+            result.append(last ? "`-- " : "|-- ")
+                    .append(statePrefix(state))
+                    .append(" ")
+                    .append(state.name())
+                    .append(state.durationSuffix(now))
+                    .append("\n");
+        }
+        return result.toString();
+    }
+
+    private static String progressBar(final long done, final long total) {
+        if (total <= 0) {
+            return "[----------]";
+        }
+        final int width = 10;
+        final int filled = (int) Math.min(width, Math.max(0, done * width / total));
+        return "[" + "#".repeat(filled) + "-".repeat(width - filled) + "]";
+    }
+
+    private static String statePrefix(final WorkflowRun.JobStatus job) {
+        return statePrefix(job.status(), job.conclusion());
+    }
+
+    private static String statePrefix(final JobLogState state) {
+        return statePrefix(state.status(), state.conclusion());
+    }
+
+    private static String statePrefix(final String status, final String conclusion) {
+        if ("completed".equals(status)) {
+            return successful(conclusion)
+                    ? GitHubWorkflowBundle.message("workflow.run.state.ok")
+                    : GitHubWorkflowBundle.message("workflow.run.state.fail");
+        }
+        if ("in_progress".equals(status)) {
+            return GitHubWorkflowBundle.message("workflow.run.state.running");
+        }
+        return GitHubWorkflowBundle.message("workflow.run.state.waiting");
+    }
+
+    private static String suffix(final String conclusion) {
+        return conclusion == null || conclusion.isBlank() ? "" : "/" + conclusion;
+    }
+
+    private static boolean successful(final String conclusion) {
+        return "success".equals(conclusion) || "skipped".equals(conclusion) || "neutral".equals(conclusion);
+    }
+
+    private static String formatDuration(final long millis) {
+        final long seconds = Math.max(0, TimeUnit.MILLISECONDS.toSeconds(millis));
+        return String.format(Locale.ROOT, "%02d:%02d", seconds / 60, seconds % 60);
     }
 
     private static final class JobLogState {
@@ -655,11 +669,209 @@ public final class WorkflowRunProcessHandler extends ProcessHandler {
         private int printedLength = 0;
         private long lastLogFetchMillis = 0;
         private long nextLiveLogFetchMillis = 0;
-        private final WorkflowRunLogRenderer fallbackRenderer = new WorkflowRunLogRenderer();
+        private final WorkflowRunView.LogRenderer fallbackRenderer = new WorkflowRunView.LogRenderer();
         private boolean finalLogFetched = false;
         private boolean logErrorShown = false;
         private boolean headerPrinted = false;
         private boolean liveLogNoticeShown = false;
+
+        private boolean changed(final WorkflowRun.JobStatus job) {
+            return !job.status().equals(status) || !job.conclusion().equals(conclusion);
+        }
+
+        private JobLogState seen(final WorkflowRun.JobStatus job, final long now) {
+            if (firstSeenMillis == 0) {
+                firstSeenMillis = now;
+            }
+            if ("in_progress".equals(job.status()) && startedMillis == 0) {
+                startedMillis = now;
+            }
+            if ("completed".equals(job.status()) && completedMillis == 0) {
+                completedMillis = now;
+            }
+            return this;
+        }
+
+        private JobLogState status(final WorkflowRun.JobStatus job) {
+            status = job.status();
+            conclusion = job.conclusion();
+            name = job.name();
+            return this;
+        }
+
+        private boolean shouldFetchLog(
+                final WorkflowRun.JobStatus job,
+                final long now,
+                final boolean finalPass,
+                final long logPollMillis
+        ) {
+            if (!"in_progress".equals(job.status()) && !"completed".equals(job.status())) {
+                return false;
+            }
+            if (finalPass || "completed".equals(job.status())) {
+                return !finalLogFetched;
+            }
+            if (now < nextLiveLogFetchMillis) {
+                return false;
+            }
+            return now - lastLogFetchMillis >= logPollMillis;
+        }
+
+        private String delta(final String logs) {
+            final String text = logs.stripTrailing();
+            if (text.length() <= printedLength) {
+                return "";
+            }
+            final String result = text.substring(printedLength).stripLeading();
+            printedLength = text.length();
+            return result;
+        }
+
+        private String plain(final String text) {
+            return fallbackRenderer.renderPlain(text);
+        }
+
+        private String durationSuffix(final long now) {
+            final long start = startedMillis > 0 ? startedMillis : firstSeenMillis;
+            final long end = completedMillis > 0 ? completedMillis : now;
+            if (start <= 0 || end < start) {
+                return "";
+            }
+            return " " + formatDuration(end - start);
+        }
+
+        private boolean completed() {
+            return "completed".equals(status);
+        }
+
+        private boolean running() {
+            return "in_progress".equals(status);
+        }
+
+        private String name() {
+            return name;
+        }
+
+        private String status() {
+            return status;
+        }
+
+        private String conclusion() {
+            return conclusion;
+        }
+
+        private JobLogState lastLogFetchMillis(final long value) {
+            lastLogFetchMillis = value;
+            return this;
+        }
+
+        private JobLogState finalLogFetched(final boolean value) {
+            finalLogFetched = value;
+            return this;
+        }
+
+        private boolean logErrorShown() {
+            return logErrorShown;
+        }
+
+        private JobLogState logErrorShown(final boolean value) {
+            logErrorShown = value;
+            return this;
+        }
+
+        private boolean headerPrinted() {
+            return headerPrinted;
+        }
+
+        private JobLogState headerPrinted(final boolean value) {
+            headerPrinted = value;
+            return this;
+        }
+
+        private boolean liveLogNoticeShown() {
+            return liveLogNoticeShown;
+        }
+
+        private JobLogState liveLogNoticeShown(final boolean value) {
+            liveLogNoticeShown = value;
+            return this;
+        }
+
+        private JobLogState nextLiveLogFetchMillis(final long value) {
+            nextLiveLogFetchMillis = value;
+            return this;
+        }
+    }
+
+    record PollSettings(long statusPollMillis, long logPollMillis, long runDiscoveryMillis, long liveLogFailureRetryMillis) {
+
+        PollSettings(final long statusPollMillis, final long logPollMillis, final long runDiscoveryMillis) {
+            this(statusPollMillis, logPollMillis, runDiscoveryMillis, Math.max(logPollMillis, 60_000));
+        }
+
+        private static PollSettings defaults() {
+            return new PollSettings(10_000, 30_000, 2_000, 60_000);
+        }
+    }
+
+    /**
+     * Receives workflow job status and logs for a Run tool-window workflow view.
+     */
+    interface JobConsole {
+
+        boolean jobStatus(WorkflowRun.JobStatus job, String text);
+
+        boolean jobStdout(WorkflowRun.JobStatus job, String text);
+
+        boolean jobStderr(WorkflowRun.JobStatus job, String text);
+
+        default boolean jobLog(final WorkflowRun.JobStatus job, final String text) {
+            return jobStdout(job, text);
+        }
+
+        default void workflowStatus(final String text, final boolean error) {
+        }
+
+        default void runFinished(final long runId, final String conclusion) {
+        }
+
+        default void runDeleted(final long runId) {
+        }
+
+        default void runDeleteFailed(final long runId) {
+        }
+
+        default void close() {
+        }
+
+        static JobConsole none() {
+            return new JobConsole() {
+                @Override
+                public boolean jobStatus(final WorkflowRun.JobStatus job, final String text) {
+                    return false;
+                }
+
+                @Override
+                public boolean jobStdout(final WorkflowRun.JobStatus job, final String text) {
+                    return false;
+                }
+
+                @Override
+                public boolean jobStderr(final WorkflowRun.JobStatus job, final String text) {
+                    return false;
+                }
+            };
+        }
+    }
+
+    private record RunOutcome(int exitCode, String conclusion) {
+
+        private static RunOutcome from(final String conclusion, final boolean stopping) {
+            final String terminalConclusion = stopping
+                    ? "cancelled"
+                    : hasText(conclusion) ? conclusion : "success";
+            return new RunOutcome(successful(terminalConclusion) ? 0 : 1, terminalConclusion);
+        }
     }
 
     private interface RemoteWork {

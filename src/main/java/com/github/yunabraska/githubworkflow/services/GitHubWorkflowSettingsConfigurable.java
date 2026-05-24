@@ -42,7 +42,7 @@ public final class GitHubWorkflowSettingsConfigurable implements SearchableConfi
     private static final String SUPPORT_URL = "https://github.com/sponsors/YunaBraska";
     private static final DateTimeFormatter DATE_TIME = DateTimeFormatter.ISO_LOCAL_DATE_TIME.withZone(ZoneId.systemDefault());
     private static final List<LocaleOption> LOCALES = List.of(
-            new LocaleOption(PluginSettings.SYSTEM_LANGUAGE, "settings.language.system", true),
+            new LocaleOption(GitHubWorkflowBundle.Settings.SYSTEM_LANGUAGE, "settings.language.system", true),
             new LocaleOption("ar", "Arabic"),
             new LocaleOption("cs", "Czech"),
             new LocaleOption("de", "Deutsch"),
@@ -65,7 +65,7 @@ public final class GitHubWorkflowSettingsConfigurable implements SearchableConfi
             new LocaleOption("zh-CN", "简体中文")
     );
 
-    private final PluginSettings settings = PluginSettings.getInstance();
+    private final GitHubWorkflowBundle.Settings settings = GitHubWorkflowBundle.Settings.getInstance();
     private final GitHubActionCache cache = GitHubActionCache.getActionCache();
     private final JComboBox<LocaleOption> language = new JComboBox<>(LOCALES.toArray(LocaleOption[]::new));
     private final DefaultTableModel tableModel = new DefaultTableModel();
@@ -102,7 +102,7 @@ public final class GitHubWorkflowSettingsConfigurable implements SearchableConfi
     @Override
     public void apply() throws ConfigurationException {
         final LocaleOption option = (LocaleOption) language.getSelectedItem();
-        settings.languageTag(option == null ? PluginSettings.SYSTEM_LANGUAGE : option.tag());
+        settings.languageTag(option == null ? GitHubWorkflowBundle.Settings.SYSTEM_LANGUAGE : option.tag());
         reloadTable();
         GitHubActionCache.triggerSyntaxHighlightingForActiveFiles();
     }
