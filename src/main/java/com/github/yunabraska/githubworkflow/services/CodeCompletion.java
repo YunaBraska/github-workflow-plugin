@@ -74,6 +74,9 @@ import static com.github.yunabraska.githubworkflow.model.NodeIcon.ICON_NODE;
 import static com.github.yunabraska.githubworkflow.model.NodeIcon.ICON_OUTPUT;
 import static com.github.yunabraska.githubworkflow.model.SimpleElement.completionItemOf;
 import static com.github.yunabraska.githubworkflow.model.SimpleElement.completionItemsOf;
+import static com.github.yunabraska.githubworkflow.services.WorkflowYamlPaths.isChildOf;
+import static com.github.yunabraska.githubworkflow.services.WorkflowYamlPaths.pathEndsWith;
+import static com.github.yunabraska.githubworkflow.services.WorkflowYamlPaths.pathMatches;
 import static java.util.Collections.singletonList;
 import static java.util.Optional.ofNullable;
 
@@ -459,35 +462,6 @@ public class CodeCompletion extends CompletionContributor {
             return value.substring(1, value.length() - 1);
         }
         return value;
-    }
-
-    private static boolean pathEndsWith(final List<String> path, final String... expected) {
-        if (path.size() < expected.length) {
-            return false;
-        }
-        final int offset = path.size() - expected.length;
-        for (int index = 0; index < expected.length; index++) {
-            if (!expected[index].equals(path.get(offset + index))) {
-                return false;
-            }
-        }
-        return true;
-    }
-
-    private static boolean isChildOf(final List<String> path, final String... expectedParent) {
-        return path.size() == expectedParent.length + 1 && pathEndsWith(path.subList(0, path.size() - 1), expectedParent);
-    }
-
-    private static boolean pathMatches(final List<String> path, final String... pattern) {
-        if (path.size() != pattern.length) {
-            return false;
-        }
-        for (int index = 0; index < pattern.length; index++) {
-            if (!"*".equals(pattern[index]) && !pattern[index].equals(path.get(index))) {
-                return false;
-            }
-        }
-        return true;
     }
 
     private static Map<String, String> workflowDispatchTriggerKeys() {

@@ -326,13 +326,7 @@ public class GitHubActionCache implements PersistentStateComponent<GitHubActionC
 
     // !!! Performs Network and File Operations !!!
     public void resolveAsync(final Collection<GitHubAction> actions) {
-        if (actions == null || actions.isEmpty()) {
-            return;
-        }
-        final List<GitHubAction> queuedActions = actions.stream()
-                .filter(Objects::nonNull)
-                .filter(action -> inFlightResolutions.add(action.usesValue()))
-                .toList();
+        final List<GitHubAction> queuedActions = queuedActions(actions);
         if (queuedActions.isEmpty()) {
             return;
         }
@@ -351,11 +345,7 @@ public class GitHubActionCache implements PersistentStateComponent<GitHubActionC
                                     GitHubWorkflowBundle.message(action.isAction() ? "workflow.cache.kind.action" : "workflow.cache.kind.workflow"),
                                     action.name()
                             ));
-                            jitterBeforeRemoteRequest(action);
-                            actionResolver.get().resolve(action);
-                            if (action.isResolved()) {
-                                action.expiryTime(System.currentTimeMillis() + (CACHE_ONE_DAY * 14));
-                            }
+                            resolveQueuedAction(action);
                         } catch (final Exception ignored) {
                             // Keep the cache stable when a remote action fails to answer.
                         } finally {
@@ -374,24 +364,14 @@ public class GitHubActionCache implements PersistentStateComponent<GitHubActionC
     }
 
     private void resolveInBackground(final Collection<GitHubAction> actions) {
-        if (actions == null || actions.isEmpty()) {
-            return;
-        }
-        final List<GitHubAction> queuedActions = actions.stream()
-                .filter(Objects::nonNull)
-                .filter(action -> inFlightResolutions.add(action.usesValue()))
-                .toList();
+        final List<GitHubAction> queuedActions = queuedActions(actions);
         if (queuedActions.isEmpty()) {
             return;
         }
         ApplicationManager.getApplication().executeOnPooledThread(() -> {
             queuedActions.forEach(action -> {
                 try {
-                    jitterBeforeRemoteRequest(action);
-                    actionResolver.get().resolve(action);
-                    if (action.isResolved()) {
-                        action.expiryTime(System.currentTimeMillis() + (CACHE_ONE_DAY * 14));
-                    }
+                    resolveQueuedAction(action);
                 } catch (final Exception ignored) {
                     // Automatic refresh must never block editing because a network target misbehaved.
                 } finally {
@@ -400,6 +380,22 @@ public class GitHubActionCache implements PersistentStateComponent<GitHubActionC
             });
             triggerSyntaxHighlightingForActiveFiles();
         });
+    }
+
+    private List<GitHubAction> queuedActions(final Collection<GitHubAction> actions) {
+        return ofNullable(actions).stream()
+                .flatMap(Collection::stream)
+                .filter(Objects::nonNull)
+                .filter(action -> inFlightResolutions.add(action.usesValue()))
+                .toList();
+    }
+
+    private void resolveQueuedAction(final GitHubAction action) {
+        jitterBeforeRemoteRequest(action);
+        actionResolver.get().resolve(action);
+        if (action.isResolved()) {
+            action.expiryTime(System.currentTimeMillis() + (CACHE_ONE_DAY * 14));
+        }
     }
 
     ActionResolver useActionResolverForTests(final ActionResolver resolver) {

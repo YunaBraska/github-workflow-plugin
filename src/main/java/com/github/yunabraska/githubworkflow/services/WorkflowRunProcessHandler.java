@@ -392,24 +392,20 @@ public final class WorkflowRunProcessHandler extends ProcessHandler {
     }
 
     private static String statePrefix(final WorkflowRunClient.JobStatus job) {
-        if ("completed".equals(job.status())) {
-            return successful(job.conclusion())
-                    ? GitHubWorkflowBundle.message("workflow.run.state.ok")
-                    : GitHubWorkflowBundle.message("workflow.run.state.fail");
-        }
-        if ("in_progress".equals(job.status())) {
-            return GitHubWorkflowBundle.message("workflow.run.state.running");
-        }
-        return GitHubWorkflowBundle.message("workflow.run.state.waiting");
+        return statePrefix(job.status(), job.conclusion());
     }
 
     private static String statePrefix(final JobLogState state) {
-        if ("completed".equals(state.status)) {
-            return successful(state.conclusion)
+        return statePrefix(state.status, state.conclusion);
+    }
+
+    private static String statePrefix(final String status, final String conclusion) {
+        if ("completed".equals(status)) {
+            return successful(conclusion)
                     ? GitHubWorkflowBundle.message("workflow.run.state.ok")
                     : GitHubWorkflowBundle.message("workflow.run.state.fail");
         }
-        if ("in_progress".equals(state.status)) {
+        if ("in_progress".equals(status)) {
             return GitHubWorkflowBundle.message("workflow.run.state.running");
         }
         return GitHubWorkflowBundle.message("workflow.run.state.waiting");
@@ -456,24 +452,18 @@ public final class WorkflowRunProcessHandler extends ProcessHandler {
             return;
         }
         workflowStatus(GitHubWorkflowBundle.message("workflow.run.delete.requested", id) + "\n", false);
-        ApplicationManager.getApplication().executeOnPooledThread(() -> {
-            try {
-                final WorkflowRunClient.DeleteResult result = client.delete(request, id);
-                final String message = result.accepted()
-                        ? GitHubWorkflowBundle.message("workflow.run.delete.done", id)
-                        : GitHubWorkflowBundle.message("workflow.run.delete.http", result.statusCode());
-                workflowStatus(message + "\n", !result.accepted());
-                if (result.accepted()) {
-                    jobConsole.runDeleted(id);
-                } else {
-                    jobConsole.runDeleteFailed(id);
-                    deleteRequested.set(false);
-                }
-            } catch (final IOException | InterruptedException exception) {
-                if (exception instanceof InterruptedException) {
-                    Thread.currentThread().interrupt();
-                }
-                workflowStatus(GitHubWorkflowBundle.message("workflow.run.delete.failed", exception.getMessage()) + "\n", true);
+        inBackground("workflow.run.delete.failed", exception -> {
+            jobConsole.runDeleteFailed(id);
+            deleteRequested.set(false);
+        }, () -> {
+            final WorkflowRunClient.DeleteResult result = client.delete(request, id);
+            final String message = result.accepted()
+                    ? GitHubWorkflowBundle.message("workflow.run.delete.done", id)
+                    : GitHubWorkflowBundle.message("workflow.run.delete.http", result.statusCode());
+            workflowStatus(message + "\n", !result.accepted());
+            if (result.accepted()) {
+                jobConsole.runDeleted(id);
+            } else {
                 jobConsole.runDeleteFailed(id);
                 deleteRequested.set(false);
             }
@@ -493,23 +483,15 @@ public final class WorkflowRunProcessHandler extends ProcessHandler {
         workflowStatus(GitHubWorkflowBundle.message(failedOnly
                 ? "workflow.run.rerun.failed.requested"
                 : "workflow.run.rerun.all.requested", id) + "\n", false);
-        ApplicationManager.getApplication().executeOnPooledThread(() -> {
-            try {
-                final WorkflowRunClient.RerunResult result = client.rerun(request, id, failedOnly);
-                final String message = result.accepted()
-                        ? GitHubWorkflowBundle.message(failedOnly
-                                ? "workflow.run.rerun.failed.done"
-                                : "workflow.run.rerun.all.done", id)
-                        : GitHubWorkflowBundle.message("workflow.run.rerun.http", result.statusCode());
-                workflowStatus(message + "\n", !result.accepted());
-            } catch (final IOException | InterruptedException exception) {
-                if (exception instanceof InterruptedException) {
-                    Thread.currentThread().interrupt();
-                }
-                workflowStatus(GitHubWorkflowBundle.message("workflow.run.rerun.failed", exception.getMessage()) + "\n", true);
-            } finally {
-                gate.set(false);
-            }
+        inBackground("workflow.run.rerun.failed", ignored -> gate.set(false), () -> {
+            final WorkflowRunClient.RerunResult result = client.rerun(request, id, failedOnly);
+            final String message = result.accepted()
+                    ? GitHubWorkflowBundle.message(failedOnly
+                            ? "workflow.run.rerun.failed.done"
+                            : "workflow.run.rerun.all.done", id)
+                    : GitHubWorkflowBundle.message("workflow.run.rerun.http", result.statusCode());
+            workflowStatus(message + "\n", !result.accepted());
+            gate.set(false);
         });
     }
 
@@ -550,18 +532,11 @@ public final class WorkflowRunProcessHandler extends ProcessHandler {
             return;
         }
         workflowStatus(GitHubWorkflowBundle.message("workflow.run.download.log.requested", jobName) + "\n", false);
-        ApplicationManager.getApplication().executeOnPooledThread(() -> {
-            try {
-                final String log = client.jobLogs(request, jobId);
-                final Path file = WorkflowRunDownloads.writeJobLog(request, id, jobId, jobName, log);
-                workflowStatus(GitHubWorkflowBundle.message("workflow.run.download.log.done", file) + "\n", false);
-                WorkflowRunDownloads.reveal(file);
-            } catch (final IOException | InterruptedException exception) {
-                if (exception instanceof InterruptedException) {
-                    Thread.currentThread().interrupt();
-                }
-                workflowStatus(GitHubWorkflowBundle.message("workflow.run.download.failed", exception.getMessage()) + "\n", true);
-            }
+        inBackground("workflow.run.download.failed", () -> {
+            final String log = client.jobLogs(request, jobId);
+            final Path file = WorkflowRunDownloads.writeJobLog(request, id, jobId, jobName, log);
+            workflowStatus(GitHubWorkflowBundle.message("workflow.run.download.log.done", file) + "\n", false);
+            WorkflowRunDownloads.reveal(file);
         });
     }
 
@@ -572,40 +547,52 @@ public final class WorkflowRunProcessHandler extends ProcessHandler {
             return;
         }
         workflowStatus(GitHubWorkflowBundle.message("workflow.run.download.artifacts.requested") + "\n", false);
+        inBackground("workflow.run.download.failed", () -> {
+            final List<WorkflowRunClient.ArtifactStatus> artifacts = client.artifacts(request, id);
+            if (artifacts.isEmpty()) {
+                artifactAvailability.set(0);
+                workflowStatus(GitHubWorkflowBundle.message("workflow.run.download.artifacts.empty") + "\n", false);
+                return;
+            }
+            Path lastFile = null;
+            int downloaded = 0;
+            for (final WorkflowRunClient.ArtifactStatus artifact : artifacts) {
+                if (artifact.expired()) {
+                    workflowStatus(GitHubWorkflowBundle.message("workflow.run.download.artifact.expired", artifact.name()) + "\n", false);
+                    continue;
+                }
+                final byte[] zip = client.artifactZip(request, artifact.id());
+                lastFile = WorkflowRunDownloads.writeArtifact(request, id, artifact, zip);
+                downloaded++;
+                workflowStatus(GitHubWorkflowBundle.message("workflow.run.download.artifact.done", artifact.name(), lastFile) + "\n", false);
+            }
+            if (downloaded == 0) {
+                artifactAvailability.set(0);
+                workflowStatus(GitHubWorkflowBundle.message("workflow.run.download.artifacts.empty") + "\n", false);
+                return;
+            }
+            artifactAvailability.set(1);
+            if (lastFile != null) {
+                WorkflowRunDownloads.reveal(lastFile.getParent());
+            }
+        });
+    }
+
+    private void inBackground(final String failureKey, final RemoteWork work) {
+        inBackground(failureKey, ignored -> {
+        }, work);
+    }
+
+    private void inBackground(final String failureKey, final Consumer<Exception> onFailure, final RemoteWork work) {
         ApplicationManager.getApplication().executeOnPooledThread(() -> {
             try {
-                final List<WorkflowRunClient.ArtifactStatus> artifacts = client.artifacts(request, id);
-                if (artifacts.isEmpty()) {
-                    artifactAvailability.set(0);
-                    workflowStatus(GitHubWorkflowBundle.message("workflow.run.download.artifacts.empty") + "\n", false);
-                    return;
-                }
-                Path lastFile = null;
-                int downloaded = 0;
-                for (final WorkflowRunClient.ArtifactStatus artifact : artifacts) {
-                    if (artifact.expired()) {
-                        workflowStatus(GitHubWorkflowBundle.message("workflow.run.download.artifact.expired", artifact.name()) + "\n", false);
-                        continue;
-                    }
-                    final byte[] zip = client.artifactZip(request, artifact.id());
-                    lastFile = WorkflowRunDownloads.writeArtifact(request, id, artifact, zip);
-                    downloaded++;
-                    workflowStatus(GitHubWorkflowBundle.message("workflow.run.download.artifact.done", artifact.name(), lastFile) + "\n", false);
-                }
-                if (downloaded == 0) {
-                    artifactAvailability.set(0);
-                    workflowStatus(GitHubWorkflowBundle.message("workflow.run.download.artifacts.empty") + "\n", false);
-                    return;
-                }
-                artifactAvailability.set(1);
-                if (lastFile != null) {
-                    WorkflowRunDownloads.reveal(lastFile.getParent());
-                }
+                work.run();
             } catch (final IOException | InterruptedException exception) {
                 if (exception instanceof InterruptedException) {
                     Thread.currentThread().interrupt();
                 }
-                workflowStatus(GitHubWorkflowBundle.message("workflow.run.download.failed", exception.getMessage()) + "\n", true);
+                workflowStatus(GitHubWorkflowBundle.message(failureKey, exception.getMessage()) + "\n", true);
+                onFailure.accept(exception);
             }
         });
     }
@@ -673,5 +660,9 @@ public final class WorkflowRunProcessHandler extends ProcessHandler {
         private boolean logErrorShown = false;
         private boolean headerPrinted = false;
         private boolean liveLogNoticeShown = false;
+    }
+
+    private interface RemoteWork {
+        void run() throws IOException, InterruptedException;
     }
 }

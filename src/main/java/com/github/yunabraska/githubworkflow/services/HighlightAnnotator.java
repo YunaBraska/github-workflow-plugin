@@ -63,6 +63,9 @@ import static com.github.yunabraska.githubworkflow.model.NodeIcon.ICON_ENV;
 import static com.github.yunabraska.githubworkflow.model.NodeIcon.ICON_TEXT_VARIABLE;
 import static com.github.yunabraska.githubworkflow.model.NodeIcon.RELOAD;
 import static com.github.yunabraska.githubworkflow.model.NodeIcon.SUPPRESS_ON;
+import static com.github.yunabraska.githubworkflow.services.WorkflowYamlPaths.isChildOf;
+import static com.github.yunabraska.githubworkflow.services.WorkflowYamlPaths.pathEndsWith;
+import static com.github.yunabraska.githubworkflow.services.WorkflowYamlPaths.pathMatches;
 import static com.intellij.lang.annotation.HighlightSeverity.INFORMATION;
 import static java.util.Optional.ofNullable;
 
@@ -302,29 +305,7 @@ public class HighlightAnnotator implements Annotator {
         final TextRange range = Optional.ofNullable(element.getKey())
                 .map(PsiElement::getTextRange)
                 .orElseGet(element::getTextRange);
-        final List<SyntaxAnnotation> fixes = new ArrayList<>();
-        fixes.add(new SyntaxAnnotation(
-                GitHubWorkflowBundle.message(messageKey, element.getKeyText()),
-                null,
-                HighlightSeverity.WEAK_WARNING,
-                ProblemHighlightType.WEAK_WARNING,
-                null
-        ));
-        allowed.keySet().stream()
-                .map(candidate -> new SyntaxAnnotation(
-                        GitHubWorkflowBundle.message("inspection.replace.with", candidate),
-                        RELOAD,
-                        HighlightSeverity.WEAK_WARNING,
-                        ProblemHighlightType.WEAK_WARNING,
-                        replaceAction(range, candidate)
-                ))
-                .forEach(fixes::add);
-        SyntaxAnnotation.createAnnotation(
-                element,
-                range,
-                holder,
-                fixes
-        );
+        createKnownAnnotation(holder, element, range, GitHubWorkflowBundle.message(messageKey, element.getKeyText()), allowed);
     }
 
     private static void validateKnownValue(
@@ -343,30 +324,29 @@ public class HighlightAnnotator implements Annotator {
         }
         PsiElementHelper.getTextElement(element).ifPresent(valueElement -> {
             final TextRange range = valueElement.getTextRange();
-            final List<SyntaxAnnotation> fixes = new ArrayList<>();
-            fixes.add(new SyntaxAnnotation(
-                    GitHubWorkflowBundle.message(messageKey, value),
-                    null,
-                    HighlightSeverity.WEAK_WARNING,
-                    ProblemHighlightType.WEAK_WARNING,
-                    null
-            ));
-            allowed.keySet().stream()
-                    .map(candidate -> new SyntaxAnnotation(
-                            GitHubWorkflowBundle.message("inspection.replace.with", candidate),
-                            RELOAD,
-                            HighlightSeverity.WEAK_WARNING,
-                            ProblemHighlightType.WEAK_WARNING,
-                            replaceAction(range, candidate)
-                    ))
-                    .forEach(fixes::add);
-            SyntaxAnnotation.createAnnotation(
-                    element,
-                    range,
-                    holder,
-                    fixes
-            );
+            createKnownAnnotation(holder, element, range, GitHubWorkflowBundle.message(messageKey, value), allowed);
         });
+    }
+
+    private static void createKnownAnnotation(
+            final AnnotationHolder holder,
+            final YAMLKeyValue element,
+            final TextRange range,
+            final String message,
+            final Map<String, String> allowed
+    ) {
+        final List<SyntaxAnnotation> fixes = new ArrayList<>();
+        fixes.add(new SyntaxAnnotation(message, null, HighlightSeverity.WEAK_WARNING, ProblemHighlightType.WEAK_WARNING, null));
+        allowed.keySet().stream()
+                .map(candidate -> new SyntaxAnnotation(
+                        GitHubWorkflowBundle.message("inspection.replace.with", candidate),
+                        RELOAD,
+                        HighlightSeverity.WEAK_WARNING,
+                        ProblemHighlightType.WEAK_WARNING,
+                        replaceAction(range, candidate)
+                ))
+                .forEach(fixes::add);
+        SyntaxAnnotation.createAnnotation(element, range, holder, fixes);
     }
 
     private static List<String> yamlPath(final YAMLKeyValue element) {
@@ -379,34 +359,6 @@ public class HighlightAnnotator implements Annotator {
             current = current.getParent();
         }
         return result;
-    }
-
-    private static boolean isChildOf(final List<String> path, final String... expectedParent) {
-        if (path.size() != expectedParent.length + 1) {
-            return false;
-        }
-        for (int index = 0; index < expectedParent.length; index++) {
-            if (!expectedParent[index].equals(path.get(index))) {
-                return false;
-            }
-        }
-        return true;
-    }
-
-    private static boolean pathMatches(final List<String> path, final String... pattern) {
-        if (path.size() != pattern.length) {
-            return false;
-        }
-        for (int index = 0; index < pattern.length; index++) {
-            if (!"*".equals(pattern[index]) && !pattern[index].equals(path.get(index))) {
-                return false;
-            }
-        }
-        return true;
-    }
-
-    private static boolean pathEndsWith(final List<String> path, final String expected) {
-        return !path.isEmpty() && expected.equals(path.get(path.size() - 1));
     }
 
     private static void outputsHandler(final AnnotationHolder holder, final PsiElement psiElement) {

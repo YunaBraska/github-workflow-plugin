@@ -555,6 +555,22 @@ final class WorkflowRunConsoleTabs implements WorkflowRunJobConsole {
         };
     }
 
+    private Icon aggregateIcon(final List<JobNode> nodes, final boolean running, final Icon emptyIcon, final boolean cancelledRun) {
+        if (running) {
+            return AnimatedIcon.Default.INSTANCE;
+        }
+        if (cancelledRun || nodes.stream().anyMatch(JobNode::cancelled)) {
+            return AllIcons.RunConfigurations.TestTerminated;
+        }
+        if (nodes.stream().anyMatch(JobNode::failed)) {
+            return AllIcons.General.Error;
+        }
+        if (nodes.stream().anyMatch(JobNode::skipped)) {
+            return AllIcons.RunConfigurations.TestState.Yellow2;
+        }
+        return nodes.isEmpty() ? emptyIcon : AllIcons.General.GreenCheckmark;
+    }
+
     private static boolean successful(final String conclusion) {
         return "success".equals(conclusion) || "skipped".equals(conclusion) || "neutral".equals(conclusion);
     }
@@ -669,24 +685,10 @@ final class WorkflowRunConsoleTabs implements WorkflowRunJobConsole {
 
         @Override
         public Icon icon() {
-            if (shouldAnimate()) {
-                return AnimatedIcon.Default.INSTANCE;
-            }
-            if (cancelled(terminalConclusion) || jobs.values().stream().anyMatch(JobNode::cancelled)) {
-                return AllIcons.RunConfigurations.TestTerminated;
-            }
-            if (jobs.values().stream().anyMatch(JobNode::failed)) {
-                return AllIcons.General.Error;
-            }
-            if (jobs.values().stream().anyMatch(JobNode::skipped)) {
-                return AllIcons.RunConfigurations.TestState.Yellow2;
-            }
-            if (jobs.isEmpty() && terminal()) {
-                return successful(terminalConclusion)
-                        ? AllIcons.General.GreenCheckmark
-                        : AllIcons.General.Error;
-            }
-            return AllIcons.General.GreenCheckmark;
+            final Icon empty = terminal() && !successful(terminalConclusion)
+                    ? AllIcons.General.Error
+                    : AllIcons.General.GreenCheckmark;
+            return aggregateIcon(List.copyOf(jobs.values()), shouldAnimate(), empty, cancelled(terminalConclusion));
         }
 
         @Override
@@ -738,19 +740,7 @@ final class WorkflowRunConsoleTabs implements WorkflowRunJobConsole {
         @Override
         public Icon icon() {
             final List<JobNode> children = children();
-            if (children.stream().anyMatch(JobNode::running)) {
-                return AnimatedIcon.Default.INSTANCE;
-            }
-            if (children.stream().anyMatch(JobNode::cancelled)) {
-                return AllIcons.RunConfigurations.TestTerminated;
-            }
-            if (children.stream().anyMatch(JobNode::failed)) {
-                return AllIcons.General.Error;
-            }
-            if (children.stream().anyMatch(JobNode::skipped)) {
-                return AllIcons.RunConfigurations.TestState.Yellow2;
-            }
-            return children.isEmpty() ? AllIcons.RunConfigurations.TestNotRan : AllIcons.General.GreenCheckmark;
+            return aggregateIcon(children, children.stream().anyMatch(JobNode::running), AllIcons.RunConfigurations.TestNotRan, false);
         }
 
         @Override

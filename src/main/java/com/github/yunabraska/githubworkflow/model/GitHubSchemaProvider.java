@@ -9,33 +9,24 @@ import com.jetbrains.jsonSchema.extension.SchemaType;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import java.io.IOException;
+import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.Scanner;
 import java.util.function.Predicate;
-
-import static java.util.Optional.ofNullable;
 
 public class GitHubSchemaProvider implements JsonSchemaFileProvider {
 
+    private final String schemaName;
     private final String displayName;
-    private final VirtualFile schemaFile;
     private final Predicate<Path> validatePath;
 
     public GitHubSchemaProvider(final String schemaName, final String displayName, final Predicate<Path> validatePath) {
+        this.schemaName = schemaName;
         this.displayName = displayName;
         this.validatePath = validatePath;
-
-        schemaFile = ofNullable(getClass().getResourceAsStream("/schemas/" + schemaName + ".json"))
-                .map(schemaStream -> {
-                    try (final Scanner scanner = new Scanner(schemaStream, StandardCharsets.UTF_8)) {
-                        final String schemaContent = scanner.useDelimiter("\\A").next();
-                        return new LightVirtualFile("github_workflow_plugin_" + schemaName + "_schema.json", JsonFileType.INSTANCE, schemaContent);
-                    }
-                })
-                .orElse(null);
     }
 
     @NotNull
@@ -52,7 +43,7 @@ public class GitHubSchemaProvider implements JsonSchemaFileProvider {
     @Nullable
     @Override
     public VirtualFile getSchemaFile() {
-        return schemaFile;
+        return new LightVirtualFile("github_workflow_plugin_" + schemaName + "_schema.json", JsonFileType.INSTANCE, schemaContent());
     }
 
     @NotNull
@@ -72,5 +63,13 @@ public class GitHubSchemaProvider implements JsonSchemaFileProvider {
     @Override
     public int hashCode() {
         return Objects.hash(getName());
+    }
+
+    private String schemaContent() {
+        try (InputStream stream = getClass().getResourceAsStream("/schemas/" + schemaName + ".json")) {
+            return stream == null ? "{}" : new String(stream.readAllBytes(), StandardCharsets.UTF_8);
+        } catch (final IOException ignored) {
+            return "{}";
+        }
     }
 }

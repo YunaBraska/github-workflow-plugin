@@ -296,14 +296,6 @@ final class WorkflowSyntaxSchema {
         );
     }
 
-    private static Map<String, String> map(final String... keys) {
-        final Map<String, String> result = new LinkedHashMap<>();
-        for (final String key : keys) {
-            result.put(key, GitHubWorkflowBundle.message("completion.workflow.syntax"));
-        }
-        return java.util.Collections.unmodifiableMap(result);
-    }
-
     private static Map<String, String> mapWithBundle(final String prefix, final String... keys) {
         final Map<String, String> result = new LinkedHashMap<>();
         for (final String key : keys) {

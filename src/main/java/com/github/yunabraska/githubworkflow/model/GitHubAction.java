@@ -510,26 +510,11 @@ public class GitHubAction implements Serializable {
 
     @NotNull
     private static Map<String, String> getActionParameters(final PsiElement psiElement, final String fieldName, final boolean action) {
-        if (action) {
-            return readActionParameters(psiElement, fieldName);
-        } else {
-            return readWorkflowParameters(psiElement, fieldName);
-        }
-    }
-
-    @NotNull
-    private static Map<String, String> readActionParameters(final PsiElement psiElement, final String fieldName) {
-        return getChild(psiElement.getContainingFile(), fieldName)
-                .map(PsiElementHelper::getChildren)
-                .map(children -> children.stream().collect(Collectors.toMap(YAMLKeyValue::getKeyText, field -> PsiElementHelper.getDescription(field, FIELD_INPUTS.equals(fieldName)))))
-                .orElseGet(Collections::emptyMap);
-    }
-
-    @NotNull
-    private static Map<String, String> readWorkflowParameters(final PsiElement psiElement, final String fieldName) {
-        return getChild(psiElement.getContainingFile(), FIELD_ON)
-                .flatMap(on -> getChild(on, "workflow_call"))
-                .flatMap(workflowCall -> getChild(workflowCall, fieldName))
+        return (action
+                ? getChild(psiElement.getContainingFile(), fieldName)
+                : getChild(psiElement.getContainingFile(), FIELD_ON)
+                        .flatMap(on -> getChild(on, "workflow_call"))
+                        .flatMap(workflowCall -> getChild(workflowCall, fieldName)))
                 .map(PsiElementHelper::getChildren)
                 .map(children -> children.stream().collect(Collectors.toMap(YAMLKeyValue::getKeyText, field -> PsiElementHelper.getDescription(field, FIELD_INPUTS.equals(fieldName)))))
                 .orElseGet(Collections::emptyMap);
