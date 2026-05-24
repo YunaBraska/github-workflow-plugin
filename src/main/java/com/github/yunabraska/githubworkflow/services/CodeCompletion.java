@@ -246,79 +246,15 @@ public class CodeCompletion extends CompletionContributor {
             return Optional.empty();
         }
         final List<String> path = context.get().path();
-        if (path.isEmpty()) {
-            return Optional.of(new StructureCompletion(WorkflowSyntaxSchema.topLevelKeys(), ':'));
-        }
-        if (pathEndsWith(path, FIELD_ON)) {
-            return Optional.of(new StructureCompletion(WorkflowSyntaxSchema.eventKeys(), ':'));
-        }
-        if (pathEndsWith(path, FIELD_ON, "workflow_dispatch")) {
-            return Optional.of(new StructureCompletion(workflowDispatchTriggerKeys(), ':'));
-        }
-        if (pathEndsWith(path, FIELD_ON, "workflow_call")) {
-            return Optional.of(new StructureCompletion(workflowCallTriggerKeys(), ':'));
-        }
-        if (pathEndsWith(path, FIELD_ON, "workflow_dispatch", FIELD_INPUTS)
-                || pathEndsWith(path, FIELD_ON, "workflow_call", FIELD_INPUTS)) {
-            return Optional.empty();
-        }
-        if (isChildOf(path, FIELD_ON, "workflow_dispatch", FIELD_INPUTS)
-                || isChildOf(path, FIELD_ON, "workflow_call", FIELD_INPUTS)) {
-            return Optional.of(new StructureCompletion(WorkflowSyntaxSchema.workflowInputPropertyKeys(), ':'));
-        }
-        if (pathEndsWith(path, FIELD_ON, "workflow_call", FIELD_OUTPUTS)) {
-            return Optional.empty();
-        }
-        if (isChildOf(path, FIELD_ON, "workflow_call", FIELD_OUTPUTS)) {
-            return Optional.of(new StructureCompletion(WorkflowSyntaxSchema.workflowOutputPropertyKeys(), ':'));
-        }
-        if (isChildOf(path, FIELD_ON, "workflow_call", FIELD_SECRETS)) {
-            return Optional.of(new StructureCompletion(WorkflowSyntaxSchema.workflowSecretPropertyKeys(), ':'));
-        }
-        if (pathMatches(path, FIELD_ON, "*")) {
-            return Optional.of(new StructureCompletion(WorkflowSyntaxSchema.eventFilterKeysFor(path.get(path.size() - 1)), ':'));
+        final Optional<Map<String, String>> keys = WorkflowSyntaxSchema.completionKeysForPath(path);
+        if (keys.isPresent()) {
+            return Optional.of(new StructureCompletion(keys.get(), ':'));
         }
         if (pathMatches(path, FIELD_ON, "*", "types")) {
             return Optional.of(new StructureCompletion(WorkflowSyntaxSchema.eventActivityTypesFor(path.get(1)), Character.MIN_VALUE));
         }
         if (pathMatches(path, FIELD_ON, "*", "*")) {
             return workflowEventFilterValueCompletion(completionPsi, context.get());
-        }
-        if (pathEndsWith(path, "permissions")) {
-            return Optional.of(new StructureCompletion(WorkflowSyntaxSchema.permissionScopes(), ':'));
-        }
-        if (pathMatches(path, "defaults", FIELD_RUN) || pathMatches(path, FIELD_JOBS, "*", "defaults", FIELD_RUN)) {
-            return Optional.of(new StructureCompletion(WorkflowSyntaxSchema.defaultsRunKeys(), ':'));
-        }
-        if (pathMatches(path, "concurrency") || pathMatches(path, FIELD_JOBS, "*", "concurrency")) {
-            return Optional.of(new StructureCompletion(WorkflowSyntaxSchema.concurrencyKeys(), ':'));
-        }
-        if (pathMatches(path, FIELD_JOBS, "*", "environment")) {
-            return Optional.of(new StructureCompletion(WorkflowSyntaxSchema.environmentKeys(), ':'));
-        }
-        if (pathMatches(path, FIELD_JOBS, "*")) {
-            return Optional.of(new StructureCompletion(WorkflowSyntaxSchema.jobKeys(), ':'));
-        }
-        if (pathMatches(path, FIELD_JOBS, "*", FIELD_STRATEGY)) {
-            return Optional.of(new StructureCompletion(WorkflowSyntaxSchema.strategyKeys(), ':'));
-        }
-        if (pathMatches(path, FIELD_JOBS, "*", FIELD_STRATEGY, FIELD_MATRIX)) {
-            return Optional.of(new StructureCompletion(WorkflowSyntaxSchema.matrixKeys(), ':'));
-        }
-        if (pathMatches(path, FIELD_JOBS, "*", "container")) {
-            return Optional.of(new StructureCompletion(WorkflowSyntaxSchema.containerKeys(), ':'));
-        }
-        if (pathMatches(path, FIELD_JOBS, "*", "container", "credentials")) {
-            return Optional.of(new StructureCompletion(WorkflowSyntaxSchema.credentialsKeys(), ':'));
-        }
-        if (pathMatches(path, FIELD_JOBS, "*", FIELD_SERVICES, "*")) {
-            return Optional.of(new StructureCompletion(WorkflowSyntaxSchema.serviceKeys(), ':'));
-        }
-        if (pathMatches(path, FIELD_JOBS, "*", FIELD_SERVICES, "*", "credentials")) {
-            return Optional.of(new StructureCompletion(WorkflowSyntaxSchema.credentialsKeys(), ':'));
-        }
-        if (pathMatches(path, FIELD_JOBS, "*", FIELD_STEPS)) {
-            return Optional.of(new StructureCompletion(WorkflowSyntaxSchema.stepKeys(), ':'));
         }
         return Optional.empty();
     }
@@ -350,11 +286,10 @@ public class CodeCompletion extends CompletionContributor {
         if ("types".equals(currentKey) && pathMatches(path, FIELD_ON, "*")) {
             return Optional.of(new StructureCompletion(WorkflowSyntaxSchema.eventActivityTypesFor(path.get(1)), Character.MIN_VALUE));
         }
-        if ("type".equals(currentKey) && isChildOf(path, FIELD_ON, "workflow_dispatch", FIELD_INPUTS)) {
-            return Optional.of(new StructureCompletion(WorkflowSyntaxSchema.workflowInputTypes(), Character.MIN_VALUE));
-        }
-        if ("type".equals(currentKey) && isChildOf(path, FIELD_ON, "workflow_call", FIELD_INPUTS)) {
-            return Optional.of(new StructureCompletion(WorkflowSyntaxSchema.reusableWorkflowInputTypes(), Character.MIN_VALUE));
+        if ("type".equals(currentKey)
+                && (isChildOf(path, FIELD_ON, "workflow_dispatch", FIELD_INPUTS)
+                || isChildOf(path, FIELD_ON, "workflow_call", FIELD_INPUTS))) {
+            return Optional.of(new StructureCompletion(WorkflowSyntaxSchema.workflowInputTypesFor(path.get(1)), Character.MIN_VALUE));
         }
         if (pathEndsWith(path, "permissions")) {
             return Optional.of(new StructureCompletion(WorkflowSyntaxSchema.permissionValuesFor(currentKey), Character.MIN_VALUE));
@@ -462,20 +397,6 @@ public class CodeCompletion extends CompletionContributor {
             return value.substring(1, value.length() - 1);
         }
         return value;
-    }
-
-    private static Map<String, String> workflowDispatchTriggerKeys() {
-        final Map<String, String> result = new LinkedHashMap<>();
-        result.put(FIELD_INPUTS, GitHubWorkflowBundle.message("completion.context.inputs"));
-        return result;
-    }
-
-    private static Map<String, String> workflowCallTriggerKeys() {
-        final Map<String, String> result = new LinkedHashMap<>();
-        result.put(FIELD_INPUTS, GitHubWorkflowBundle.message("completion.context.inputs"));
-        result.put(FIELD_OUTPUTS, GitHubWorkflowBundle.message("completion.jobs.outputs"));
-        result.put(FIELD_SECRETS, GitHubWorkflowBundle.message("completion.context.secrets"));
-        return result;
     }
 
     private static Optional<RemoteUsesRef> remoteUsesRef(final CompletionParameters parameters) {

@@ -1,7 +1,14 @@
 package com.github.yunabraska.githubworkflow.services;
 
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+
+import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.*;
+import static com.github.yunabraska.githubworkflow.services.WorkflowYamlPaths.isChildOf;
+import static com.github.yunabraska.githubworkflow.services.WorkflowYamlPaths.pathEndsWith;
+import static com.github.yunabraska.githubworkflow.services.WorkflowYamlPaths.pathMatches;
 
 /**
  * GitHub Actions workflow syntax completion tables from the public workflow syntax reference.
@@ -90,6 +97,89 @@ final class WorkflowSyntaxSchema {
             case "pull_request", "pull_request_target" -> mapWithBundle("completion.workflow.eventFilter.", "types", "branches", "branches-ignore", "paths", "paths-ignore");
             default -> eventFilterKeys();
         };
+    }
+
+    static Optional<Map<String, String>> completionKeysForPath(final List<String> path) {
+        return knownKeysForPath(path, true).map(KnownKeys::values);
+    }
+
+    static Optional<KnownKeys> validationKeysForPath(final List<String> path) {
+        return knownKeysForPath(path, false);
+    }
+
+    private static Optional<KnownKeys> knownKeysForPath(final List<String> path, final boolean completion) {
+        if (path.isEmpty()) {
+            return known(topLevelKeys(), "inspection.workflow.syntax.unknownTopLevelKey");
+        }
+        if (pathMatches(path, FIELD_ON)) {
+            return known(eventKeys(), "inspection.workflow.syntax.unknownEventKey");
+        }
+        if (pathMatches(path, FIELD_ON, "workflow_dispatch")) {
+            return known(workflowDispatchTriggerKeys(), "inspection.workflow.syntax.unknownTriggerKey");
+        }
+        if (pathMatches(path, FIELD_ON, "workflow_call")) {
+            return known(workflowCallTriggerKeys(), "inspection.workflow.syntax.unknownTriggerKey");
+        }
+        if (pathEndsWith(path, FIELD_ON, "workflow_dispatch", FIELD_INPUTS)
+                || pathEndsWith(path, FIELD_ON, "workflow_call", FIELD_INPUTS)
+                || pathEndsWith(path, FIELD_ON, "workflow_call", FIELD_OUTPUTS)
+                || pathEndsWith(path, FIELD_ON, "workflow_call", FIELD_SECRETS)) {
+            return Optional.empty();
+        }
+        if (isChildOf(path, FIELD_ON, "workflow_dispatch", FIELD_INPUTS)
+                || isChildOf(path, FIELD_ON, "workflow_call", FIELD_INPUTS)) {
+            return known(workflowInputPropertyKeys(), "inspection.workflow.syntax.unknownTriggerKey");
+        }
+        if (isChildOf(path, FIELD_ON, "workflow_call", FIELD_OUTPUTS)) {
+            return known(workflowOutputPropertyKeys(), "inspection.workflow.syntax.unknownTriggerKey");
+        }
+        if (isChildOf(path, FIELD_ON, "workflow_call", FIELD_SECRETS)) {
+            return known(workflowSecretPropertyKeys(), "inspection.workflow.syntax.unknownTriggerKey");
+        }
+        if (pathMatches(path, FIELD_ON, "*")) {
+            return known(eventFilterKeysFor(path.get(path.size() - 1)), "inspection.workflow.syntax.unknownTriggerFilter");
+        }
+        if (pathEndsWith(path, "permissions")) {
+            return known(permissionScopes(), "inspection.workflow.syntax.unknownPermission");
+        }
+        if (pathMatches(path, "defaults", FIELD_RUN) || pathMatches(path, FIELD_JOBS, "*", "defaults", FIELD_RUN)) {
+            return known(defaultsRunKeys(), "inspection.workflow.syntax.unknownTopLevelKey");
+        }
+        if (pathMatches(path, "concurrency") || pathMatches(path, FIELD_JOBS, "*", "concurrency")) {
+            return known(concurrencyKeys(), "inspection.workflow.syntax.unknownTopLevelKey");
+        }
+        if (pathMatches(path, FIELD_JOBS, "*", "environment")) {
+            return known(environmentKeys(), "inspection.workflow.syntax.unknownTopLevelKey");
+        }
+        if (pathMatches(path, FIELD_JOBS, "*")) {
+            return known(jobKeys(), "inspection.workflow.syntax.unknownJobKey");
+        }
+        if (pathMatches(path, FIELD_JOBS, "*", FIELD_STRATEGY)) {
+            return known(strategyKeys(), "inspection.workflow.syntax.unknownTopLevelKey");
+        }
+        if (completion && pathMatches(path, FIELD_JOBS, "*", FIELD_STRATEGY, FIELD_MATRIX)) {
+            return known(matrixKeys(), "inspection.workflow.syntax.unknownTopLevelKey");
+        }
+        if (pathMatches(path, FIELD_JOBS, "*", "container")) {
+            return known(containerKeys(), "inspection.workflow.syntax.unknownTopLevelKey");
+        }
+        if (pathMatches(path, FIELD_JOBS, "*", "container", "credentials")) {
+            return known(credentialsKeys(), "inspection.workflow.syntax.unknownTopLevelKey");
+        }
+        if (pathMatches(path, FIELD_JOBS, "*", FIELD_SERVICES, "*")) {
+            return known(serviceKeys(), "inspection.workflow.syntax.unknownTopLevelKey");
+        }
+        if (pathMatches(path, FIELD_JOBS, "*", FIELD_SERVICES, "*", "credentials")) {
+            return known(credentialsKeys(), "inspection.workflow.syntax.unknownTopLevelKey");
+        }
+        if (pathMatches(path, FIELD_JOBS, "*", FIELD_STEPS)) {
+            return known(stepKeys(), "inspection.workflow.syntax.unknownStepKey");
+        }
+        return Optional.empty();
+    }
+
+    private static Optional<KnownKeys> known(final Map<String, String> values, final String messageKey) {
+        return Optional.of(new KnownKeys(values, messageKey));
     }
 
     static Map<String, String> eventActivityTypesFor(final String event) {
@@ -252,6 +342,22 @@ final class WorkflowSyntaxSchema {
         return mapWithBundle("completion.workflow.inputType.", "string", "boolean", "number");
     }
 
+    static Map<String, String> workflowInputTypesFor(final String trigger) {
+        return "workflow_call".equals(trigger) ? reusableWorkflowInputTypes() : workflowInputTypes();
+    }
+
+    static Map<String, String> workflowDispatchTriggerKeys() {
+        return mapWithBundleKeys("completion.", Map.of(FIELD_INPUTS, "context.inputs"));
+    }
+
+    static Map<String, String> workflowCallTriggerKeys() {
+        final Map<String, String> result = new LinkedHashMap<>();
+        result.put(FIELD_INPUTS, "context.inputs");
+        result.put(FIELD_OUTPUTS, "jobs.outputs");
+        result.put(FIELD_SECRETS, "context.secrets");
+        return mapWithBundleKeys("completion.", result);
+    }
+
     static Map<String, String> workflowInputPropertyKeys() {
         final Map<String, String> result = new LinkedHashMap<>();
         result.put("description", GitHubWorkflowBundle.message("documentation.description.label"));
@@ -316,5 +422,8 @@ final class WorkflowSyntaxSchema {
             result.put(key, GitHubWorkflowBundle.message("completion.workflow.eventFilter.types"));
         }
         return java.util.Collections.unmodifiableMap(result);
+    }
+
+    record KnownKeys(Map<String, String> values, String messageKey) {
     }
 }

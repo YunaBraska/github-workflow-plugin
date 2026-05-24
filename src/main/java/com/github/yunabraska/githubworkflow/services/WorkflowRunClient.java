@@ -357,29 +357,28 @@ public final class WorkflowRunClient {
     }
 
     private static WorkflowRunHttpException failure(final String operation, final HttpResponse<String> response) {
-        final boolean accountActionRecommended = needsAccountAction(response);
-        final String hint = accountActionRecommended
-                ? "\nAdd or refresh GitHub accounts in " + GitHubRequestAuthorizations.settingsHint() + "."
-                : "";
-        final String summary = responseSummary(response);
-        return new WorkflowRunHttpException(
-                operation + " failed with HTTP " + response.statusCode() + (summary.isEmpty() ? "" : ": " + summary) + hint,
-                response.statusCode(),
-                response.body(),
-                accountActionRecommended
-        );
+        return failure(operation, response.statusCode(), response.headers(), response.body());
     }
 
     private static WorkflowRunHttpException failureBytes(final String operation, final HttpResponse<byte[]> response) {
         final String body = new String(Optional.ofNullable(response.body()).orElseGet(() -> new byte[0]), StandardCharsets.UTF_8);
-        final boolean accountActionRecommended = needsAccountAction(response.statusCode(), response.headers(), body);
+        return failure(operation, response.statusCode(), response.headers(), body);
+    }
+
+    private static WorkflowRunHttpException failure(
+            final String operation,
+            final int statusCode,
+            final HttpHeaders headers,
+            final String body
+    ) {
+        final boolean accountActionRecommended = needsAccountAction(statusCode, headers, body);
         final String hint = accountActionRecommended
                 ? "\nAdd or refresh GitHub accounts in " + GitHubRequestAuthorizations.settingsHint() + "."
                 : "";
-        final String summary = responseSummary(response.statusCode(), response.headers(), body);
+        final String summary = responseSummary(statusCode, headers, body);
         return new WorkflowRunHttpException(
-                operation + " failed with HTTP " + response.statusCode() + (summary.isEmpty() ? "" : ": " + summary) + hint,
-                response.statusCode(),
+                operation + " failed with HTTP " + statusCode + (summary.isEmpty() ? "" : ": " + summary) + hint,
+                statusCode,
                 body,
                 accountActionRecommended
         );
@@ -407,10 +406,6 @@ public final class WorkflowRunClient {
 
     private static boolean shouldTryNextAuthorization(final int statusCode) {
         return statusCode == 401 || statusCode == 403 || statusCode == 404 || statusCode == 429;
-    }
-
-    private static boolean rateLimitExceeded(final HttpResponse<String> response) {
-        return rateLimitExceeded(response.statusCode(), response.headers(), response.body());
     }
 
     private static boolean rateLimitExceeded(final int statusCode, final HttpHeaders headers, final String body) {
