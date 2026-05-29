@@ -155,7 +155,7 @@ public class CodeCompletion extends CompletionContributor {
                         } else if (isCompletingShellField(parameters, position)) {
                             addLookupElements(
                                     resultSet.withPrefixMatcher(getDefaultPrefix(parameters)),
-                                    SHELLS,
+                                    shells(),
                                     NodeIcon.ICON_NODE,
                                     Character.MIN_VALUE
                             );

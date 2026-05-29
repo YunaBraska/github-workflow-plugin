@@ -52,7 +52,15 @@ public class GitHubWorkflowConfig {
     public static final String FIELD_CONCLUSION = "conclusion";
     public static final String FIELD_OUTCOME = "outcome";
     public static final Map<String, Supplier<Map<String, String>>> DEFAULT_VALUE_MAP = initProcessorMap();
-    public static final Map<String, String> SHELLS = initShells();
+
+    /**
+     * Returns shell completion values with descriptions localized at call time.
+     *
+     * @return immutable shell command descriptions for the current plugin language setting
+     */
+    public static Map<String, String> shells() {
+        return initShells();
+    }
 
     private static Map<String, Supplier<Map<String, String>>> initProcessorMap() {
         final Map<String, Supplier<Map<String, String>>> result = new LinkedHashMap<>();
