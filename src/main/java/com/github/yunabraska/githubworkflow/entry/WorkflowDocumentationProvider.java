@@ -1,13 +1,13 @@
 package com.github.yunabraska.githubworkflow.entry;
 
+import com.github.yunabraska.githubworkflow.syntax.WorkflowReferences;
+
 import com.github.yunabraska.githubworkflow.state.GitHubActionCache;
 
 import com.github.yunabraska.githubworkflow.i18n.GitHubWorkflowBundle;
 
-import com.github.yunabraska.githubworkflow.helper.PsiElementHelper;
+import com.github.yunabraska.githubworkflow.syntax.WorkflowPsi;
 import com.github.yunabraska.githubworkflow.model.GitHubAction;
-import com.github.yunabraska.githubworkflow.syntax.ExpressionReferenceTarget;
-import com.github.yunabraska.githubworkflow.syntax.ExpressionReferenceTargets;
 import com.intellij.lang.documentation.AbstractDocumentationProvider;
 import com.intellij.openapi.editor.Editor;
 import com.intellij.openapi.util.TextRange;
@@ -24,19 +24,19 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 
-import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.FIELD_SECRETS;
-import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.FIELD_ON;
-import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.FIELD_OUTPUTS;
-import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.FIELD_USES;
-import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.FIELD_WITH;
-import static com.github.yunabraska.githubworkflow.helper.PsiElementHelper.getChild;
-import static com.github.yunabraska.githubworkflow.helper.PsiElementHelper.getParent;
-import static com.github.yunabraska.githubworkflow.helper.PsiElementHelper.getParentStepOrJob;
-import static com.github.yunabraska.githubworkflow.helper.PsiElementHelper.getText;
-import static com.github.yunabraska.githubworkflow.logic.Steps.listStepOutputs;
+import static com.github.yunabraska.githubworkflow.syntax.WorkflowContextCatalog.FIELD_SECRETS;
+import static com.github.yunabraska.githubworkflow.syntax.WorkflowContextCatalog.FIELD_ON;
+import static com.github.yunabraska.githubworkflow.syntax.WorkflowContextCatalog.FIELD_OUTPUTS;
+import static com.github.yunabraska.githubworkflow.syntax.WorkflowContextCatalog.FIELD_USES;
+import static com.github.yunabraska.githubworkflow.syntax.WorkflowContextCatalog.FIELD_WITH;
+import static com.github.yunabraska.githubworkflow.syntax.WorkflowPsi.getChild;
+import static com.github.yunabraska.githubworkflow.syntax.WorkflowPsi.getParent;
+import static com.github.yunabraska.githubworkflow.syntax.WorkflowPsi.getParentStepOrJob;
+import static com.github.yunabraska.githubworkflow.syntax.WorkflowPsi.getText;
+import static com.github.yunabraska.githubworkflow.syntax.Steps.listStepOutputs;
 import static java.util.Optional.ofNullable;
 
-public class WorkflowDocumentationProvider extends AbstractDocumentationProvider {
+public final class WorkflowDocumentationProvider extends AbstractDocumentationProvider {
 
     @Override
     public @Nullable PsiElement getCustomDocumentationElement(
@@ -138,15 +138,15 @@ public class WorkflowDocumentationProvider extends AbstractDocumentationProvider
 
     private static Optional<DocPayload> variableDoc(final PsiElement textElement, final int absoluteOffset) {
         final int offsetInElement = absoluteOffset - textElement.getTextRange().getStartOffset();
-        final Optional<ExpressionReferenceTarget> target = ExpressionReferenceTargets.resolveAt(textElement, offsetInElement).stream().findFirst();
+        final Optional<WorkflowReferences.Target> target = WorkflowReferences.resolveAt(textElement, offsetInElement).stream().findFirst();
         if (target.isPresent()) {
             return Optional.of(referenceDoc(target.get()));
         }
-        return ExpressionReferenceTargets.segmentAt(textElement, offsetInElement)
+        return WorkflowReferences.segmentAt(textElement, offsetInElement)
                 .flatMap(WorkflowDocumentationProvider::contextDoc);
     }
 
-    private static DocPayload referenceDoc(final ExpressionReferenceTarget target) {
+    private static DocPayload referenceDoc(final WorkflowReferences.Target target) {
         return switch (target.kind()) {
             case "input" -> yamlParameterDoc(message("documentation.input.label"), true, target.segment().text(), target.target());
             case "secret" -> yamlParameterDoc(message("documentation.secret.label"), false, target.segment().text(), target.target());
@@ -208,7 +208,7 @@ public class WorkflowDocumentationProvider extends AbstractDocumentationProvider
 
     private static DocPayload yamlParameterDoc(final String label, final boolean input, final String name, final PsiElement target) {
         final String details = target instanceof YAMLKeyValue keyValue
-                ? PsiElementHelper.getDescription(keyValue, input)
+                ? WorkflowPsi.getDescription(keyValue, input)
                 : "";
         return new DocPayload(
                 label + " " + name,
@@ -226,12 +226,12 @@ public class WorkflowDocumentationProvider extends AbstractDocumentationProvider
 
     private static DocPayload stepDoc(final PsiElement target) {
         final YAMLKeyValue id = target instanceof YAMLKeyValue keyValue ? keyValue : null;
-        final Optional<org.jetbrains.yaml.psi.YAMLSequenceItem> stepItem = PsiElementHelper.getParentStep(target);
+        final Optional<org.jetbrains.yaml.psi.YAMLSequenceItem> stepItem = WorkflowPsi.getParentStep(target);
         final String name = id == null ? target.getText() : getText(id).orElse(id.getKeyText());
         final String title = message("documentation.step.title", name);
         final StringBuilder html = new StringBuilder("<h3>").append(escape(title)).append("</h3>");
-        stepItem.flatMap(step -> getChild(step, "name")).flatMap(PsiElementHelper::getText).ifPresent(value -> appendDetail(html, message("documentation.name.label"), value));
-        stepItem.flatMap(step -> getChild(step, FIELD_USES)).flatMap(PsiElementHelper::getText).ifPresent(value -> appendDetail(html, message("documentation.uses.label"), value));
+        stepItem.flatMap(step -> getChild(step, "name")).flatMap(WorkflowPsi::getText).ifPresent(value -> appendDetail(html, message("documentation.name.label"), value));
+        stepItem.flatMap(step -> getChild(step, FIELD_USES)).flatMap(WorkflowPsi::getText).ifPresent(value -> appendDetail(html, message("documentation.uses.label"), value));
         stepItem.flatMap(step -> getChild(step, FIELD_USES))
                 .map(GitHubActionCache::getAction)
                 .filter(action -> action != null && action.isResolved())
@@ -241,7 +241,7 @@ public class WorkflowDocumentationProvider extends AbstractDocumentationProvider
                             : message("documentation.reusableWorkflow.label"), action.displayName());
                     appendParagraph(html, action.description());
                 });
-        stepItem.flatMap(step -> getChild(step, "run")).flatMap(PsiElementHelper::getText).ifPresent(value -> appendDetail(html, message("documentation.run.label"), value));
+        stepItem.flatMap(step -> getChild(step, "run")).flatMap(WorkflowPsi::getText).ifPresent(value -> appendDetail(html, message("documentation.run.label"), value));
         stepItem.ifPresent(step -> appendList(html, message("documentation.outputs.title"), listStepOutputs(step).stream().map(output -> output.key()).toList()));
         return new DocPayload(title, html.toString(), title);
     }
@@ -267,7 +267,7 @@ public class WorkflowDocumentationProvider extends AbstractDocumentationProvider
     }
 
     private static Optional<StepOutputSource> stepOutputSource(final PsiElement target) {
-        final Optional<org.jetbrains.yaml.psi.YAMLSequenceItem> stepItem = PsiElementHelper.getParentStep(target);
+        final Optional<org.jetbrains.yaml.psi.YAMLSequenceItem> stepItem = WorkflowPsi.getParentStep(target);
         return stepItem.map(step -> {
             final String stepId = getText(step, "id").orElse("");
             final String stepName = getText(step, "name").orElse("");
@@ -275,7 +275,7 @@ public class WorkflowDocumentationProvider extends AbstractDocumentationProvider
             final GitHubAction action = uses.map(GitHubActionCache::getAction)
                     .filter(candidate -> candidate != null && candidate.isResolved())
                     .orElse(null);
-            return new StepOutputSource(stepId, stepName, uses.flatMap(PsiElementHelper::getText).orElse(""), action);
+            return new StepOutputSource(stepId, stepName, uses.flatMap(WorkflowPsi::getText).orElse(""), action);
         });
     }
 
@@ -294,9 +294,9 @@ public class WorkflowDocumentationProvider extends AbstractDocumentationProvider
     }
 
     private static Optional<String> outputSourceDetails(final YAMLKeyValue output) {
-        return PsiElementHelper.getTextElement(output)
+        return WorkflowPsi.getTextElement(output)
                 .stream()
-                .flatMap(text -> ExpressionReferenceTargets.resolve(text).stream())
+                .flatMap(text -> WorkflowReferences.resolve(text).stream())
                 .filter(target -> "step-output".equals(target.kind()))
                 .findFirst()
                 .map(target -> target.target() instanceof YAMLKeyValue uses && FIELD_USES.equals(uses.getKeyText())
@@ -424,7 +424,7 @@ public class WorkflowDocumentationProvider extends AbstractDocumentationProvider
     private static Optional<PsiElement> textElement(final PsiElement element) {
         PsiElement current = element;
         while (current != null && current.getParent() != current) {
-            if (PsiElementHelper.isTextElement(current) || current instanceof YAMLScalar) {
+            if (WorkflowPsi.isTextElement(current) || current instanceof YAMLScalar) {
                 return Optional.of(current);
             }
             current = current.getParent();
@@ -497,7 +497,7 @@ public class WorkflowDocumentationProvider extends AbstractDocumentationProvider
         }
     }
 
-    private static class WorkflowDocumentationElement extends FakePsiElement {
+    private static final class WorkflowDocumentationElement extends FakePsiElement {
         private final PsiElement delegate;
         private final DocPayload payload;
 

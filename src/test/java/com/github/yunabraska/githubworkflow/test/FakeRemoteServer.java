@@ -13,7 +13,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-class FakeRemoteServer implements AutoCloseable {
+public final class FakeRemoteServer implements AutoCloseable {
 
     private final HttpServer server;
     private final Map<String, String> contents = new HashMap<>();
@@ -22,7 +22,7 @@ class FakeRemoteServer implements AutoCloseable {
     private final Map<String, Map<String, String>> repositories = new HashMap<>();
     private final List<String> requests = new ArrayList<>();
 
-    FakeRemoteServer() throws IOException {
+    public FakeRemoteServer() throws IOException {
         server = HttpServer.create(new InetSocketAddress(InetAddress.getLoopbackAddress(), 0), 0);
         server.createContext("/", exchange -> {
             final URI uri = exchange.getRequestURI();
@@ -38,31 +38,31 @@ class FakeRemoteServer implements AutoCloseable {
         server.start();
     }
 
-    String webUrl() {
+    public String webUrl() {
         return "http://" + server.getAddress().getHostString() + ":" + server.getAddress().getPort();
     }
 
-    String apiUrl(final String prefix) {
+    public String apiUrl(final String prefix) {
         return webUrl() + prefix;
     }
 
-    List<String> requests() {
+    public List<String> requests() {
         return List.copyOf(requests);
     }
 
-    void addContent(final String owner, final String repo, final String path, final String ref, final String content) {
+    public void addContent(final String owner, final String repo, final String path, final String ref, final String content) {
         contents.put(key(owner, repo, path, ref), content);
     }
 
-    void setBranches(final String owner, final String repo, final List<String> values) {
+    public void setBranches(final String owner, final String repo, final List<String> values) {
         branches.put(owner + "/" + repo, values);
     }
 
-    void setTags(final String owner, final String repo, final List<String> values) {
+    public void setTags(final String owner, final String repo, final List<String> values) {
         tags.put(owner + "/" + repo, values);
     }
 
-    void setRepositories(final String owner, final Map<String, String> values) {
+    public void setRepositories(final String owner, final Map<String, String> values) {
         repositories.put(owner, values);
     }
 

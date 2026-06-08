@@ -8,8 +8,8 @@
 
 - Simplified workflow syntax routing for completion, highlighting, references, and documentation.
 - Reduced duplicated workflow run, action cache, and schema handling internals while keeping behavior stable.
-- Reorganized plugin internals into cleaner entry/client/git/run/settings/state/syntax boundaries, with public service
-  Javadocs where humans might actually read them.
+- Reorganized plugin internals into fewer `Workflow*` service entry points, with public service Javadocs where humans
+  might actually read them.
 - Added the plugin size refactor plan and documented the release/changelog flow.
 - Release automation now uses plain date tags, avoids duplicated Marketplace change-note headings, and groups Dependabot
   dependency updates into one weekly PR against `dev`.
