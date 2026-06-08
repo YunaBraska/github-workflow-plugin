@@ -4,6 +4,8 @@
 
 ## [Unreleased]
 
+## [2026.5.29] - 2026-05-29
+
 ### Release Polish
 
 - Marketplace change notes skip the duplicated version heading.

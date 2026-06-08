@@ -14,6 +14,7 @@ import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.D
 import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.FIELD_ENVS;
 import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.FIELD_GITHUB;
 import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.FIELD_RUNNER;
+import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.shells;
 import static org.assertj.core.api.Assertions.assertThat;
 
 public class GitHubWorkflowConfigTest {
@@ -143,6 +144,13 @@ public class GitHubWorkflowConfigTest {
                 .contains("debug logging")
                 .contains("1")
                 .doesNotContain("preinstalled tools");
+    }
+
+    @Test
+    public void shellCompletionDescriptionsAreResolvedOnDemand() {
+        assertThat(shells())
+                .containsKeys("bash", "sh", "pwsh", "powershell", "cmd", "python")
+                .doesNotContainValue("");
     }
 
     private static List<String> resourceKeys(final String path) throws Exception {
