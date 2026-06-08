@@ -9,32 +9,28 @@ The plugin is intentionally plain Java with Gradle wrapper entrypoints. The usef
 
 ## Runtime Entry Points
 
-- `entry/CodeCompletion` handles workflow expressions, `uses`, `with`, secrets, shell values, local files, remote action refs,
-  and GitHub context/default environment completions.
-- `entry/HighlightAnnotator` handles editor diagnostics, symbol coloring, quick fixes, action update suggestions, and
+- `WorkflowLocation.from(PsiElement)` is the shared PSI/YAML location for workflow keys, paths, files, repositories,
+  and branches.
+- `WorkflowSyntax` owns workflow syntax completions, validation metadata, JSON schema hookup, file icons, and `run`
+  language injection.
+- `WorkflowReferences` owns local PSI references, remote web references, and expression reference targets.
+- `GitHubActionCache` is the cache boundary for action/reusable-workflow metadata, cache actions, warning restore, and
+  startup refresh.
+- `WorkflowRun` is the remote workflow-run boundary: dispatch, cancel, rerun, delete, jobs, logs, artifacts, and branch
+  resolution.
+- `WorkflowCompletion` handles workflow expressions, `uses`, `with`, secrets, shell values, local files, remote action refs,
+  and GitHub context/default environment completions through `WorkflowSyntax`, `WorkflowLocation`, and
+  `GitHubActionCache`.
+- `WorkflowAnnotator` handles editor diagnostics, symbol coloring, quick fixes, action update suggestions, and
   variable/run output highlighting.
-- `entry/ReferenceContributor` handles local PSI references and remote web references.
-- `entry/WorkflowDocumentationProvider` handles hover and quick documentation.
-- `entry/WorkflowRunLanguageInjector` injects shell-like languages into `run` blocks based on `shell`.
-- `entry/WorkflowRunConfigurationType` and `run/*` handle workflow dispatch from the IDE Run tool window.
-- `client/GitHubRequestAuthorizations` centralizes GitHub account, optional token-env fallback, and anonymous request ordering.
-- `state/GitHubActionCache`, `client/RemoteActionProviders`, and `state/RemoteServerSettings` resolve and cache local/remote action and
-  reusable workflow metadata.
-- `settings/GitHubWorkflowSettingsConfigurable` exposes the plugin settings page for language override, cache review/delete,
+- `WorkflowDocumentationProvider` handles hover and quick documentation.
+- `RemoteActionProviders` centralizes GitHub account, enterprise account, optional token-env fallback, anonymous request
+  ordering, and remote server settings.
+- `WorkflowRunConfiguration` handles workflow dispatch from the IDE Run tool window.
+- `GitHubWorkflowSettingsConfigurable` exposes the plugin settings page for language override, cache review/delete,
   cache import/export, plugin cache size, and the tiny support button with suspicious amounts of caffeine energy.
-- `run/WorkflowRunLogRenderer` compacts GitHub Actions logs into named blocks with `0001 |` line numbers, `run:` command
-  lines, ANSI cleanup, and warning/error classification for Run tool-window job consoles.
-
-## Package Shape
-
-- `entry`: IntelliJ extension triggers and UI entry points.
-- `syntax`: workflow key/value metadata shared by completion, validation, documentation, highlighting, and references.
-- `git`: repository and branch discovery.
-- `client`: remote GitHub-compatible HTTP boundaries.
-- `run`: workflow dispatch, run tree, downloads, and log rendering.
-- `state`: persistent IDE services and cache state.
-- `settings`: settings UI.
-- `i18n`: message bundle access.
+- `WorkflowRunView.LogRenderer` compacts GitHub Actions logs into named blocks with `0001 |` line numbers,
+  `run:` command lines, ANSI cleanup, and warning/error classification for Run tool-window job consoles.
 
 ## Tests
 

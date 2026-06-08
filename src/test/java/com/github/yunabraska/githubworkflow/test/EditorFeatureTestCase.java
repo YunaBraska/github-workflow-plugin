@@ -1,6 +1,6 @@
 package com.github.yunabraska.githubworkflow.test;
 
-import com.github.yunabraska.githubworkflow.state.RemoteServerSettings;
+import com.github.yunabraska.githubworkflow.git.RemoteActionProviders;
 
 import com.github.yunabraska.githubworkflow.state.GitHubActionCache;
 
@@ -31,13 +31,13 @@ import java.util.stream.Stream;
 
 import static com.github.yunabraska.githubworkflow.state.GitHubActionCache.getActionCache;
 
-abstract class EditorFeatureTestCase extends BasePlatformTestCase {
+public abstract class EditorFeatureTestCase extends BasePlatformTestCase {
 
     @Override
     protected void setUp() throws Exception {
         super.setUp();
         getActionCache().getState().actions.clear();
-        RemoteServerSettings.getInstance().setCustomServers(List.of());
+        RemoteActionProviders.Settings.getInstance().setCustomServers(List.of());
         ((CodeInsightTestFixtureImpl) myFixture).canChangeDocumentDuringHighlighting(true);
     }
 
@@ -45,7 +45,7 @@ abstract class EditorFeatureTestCase extends BasePlatformTestCase {
     protected void tearDown() throws Exception {
         try {
             getActionCache().getState().actions.clear();
-            RemoteServerSettings.getInstance().setCustomServers(List.of());
+            RemoteActionProviders.Settings.getInstance().setCustomServers(List.of());
         } finally {
             super.tearDown();
         }
@@ -83,14 +83,10 @@ abstract class EditorFeatureTestCase extends BasePlatformTestCase {
     }
 
     protected final void configureWorkflowProjectFile(final String text) {
-        configureProjectFile(".github/workflows/workflow.yml", text);
-    }
-
-    protected final void configureProjectFile(final String path, final String text) {
         final int caretOffset = text.indexOf("<caret>");
         final String fileText = text.replace("<caret>", "");
-        myFixture.addFileToProject(path, fileText);
-        myFixture.configureFromTempProjectFile(path);
+        myFixture.addFileToProject(".github/workflows/workflow.yml", fileText);
+        myFixture.configureFromTempProjectFile(".github/workflows/workflow.yml");
         if (caretOffset >= 0) {
             myFixture.getEditor().getCaretModel().moveToOffset(caretOffset);
         }

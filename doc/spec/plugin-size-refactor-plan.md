@@ -7,7 +7,7 @@ tests.
 
 This is not a feature rollback. The target is a smaller, calmer implementation: same teeth, less boilerplate jaw.
 
-## Marketplace Facts
+## Marketplace Baseline
 
 | Version | Status | Date | Compatibility Range | Size | Uploaded By |
 | --- | --- | --- | --- | --- | --- |
@@ -22,7 +22,7 @@ controls, and top-20 localization.
 The largest cleanup candidates are:
 
 - Completion, validation, documentation, highlighting, and references each walk similar workflow structure.
-- `CodeCompletion` and `WorkflowRunConsoleTabs` are large coordination classes.
+- `WorkflowCompletion` and `WorkflowRunView` are large coordination classes.
 - Resource bundles repeat many full strings across all locale files.
 - Workflow syntax metadata is split across schemas, generated docs snapshots, hard-coded maps, and local presentation
   code.

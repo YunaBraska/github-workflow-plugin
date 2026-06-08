@@ -1,29 +1,47 @@
 package com.github.yunabraska.githubworkflow.state;
 
-import com.github.yunabraska.githubworkflow.entry.ProjectStartup;
+import com.github.yunabraska.githubworkflow.git.RemoteActionProviders;
+
 import com.github.yunabraska.githubworkflow.i18n.GitHubWorkflowBundle;
 
-import com.github.yunabraska.githubworkflow.client.RemoteActionProviders;
-import com.github.yunabraska.githubworkflow.helper.GitHubWorkflowHelper;
-import com.github.yunabraska.githubworkflow.helper.PsiElementHelper;
+import com.github.yunabraska.githubworkflow.syntax.WorkflowYaml;
+import com.github.yunabraska.githubworkflow.syntax.WorkflowPsi;
 import com.github.yunabraska.githubworkflow.model.GitHubAction;
 import com.intellij.codeInsight.daemon.DaemonCodeAnalyzer;
+import com.intellij.notification.NotificationGroupManager;
+import com.intellij.notification.NotificationType;
+import com.intellij.openapi.actionSystem.ActionUpdateThread;
+import com.intellij.openapi.actionSystem.AnActionEvent;
+import com.intellij.openapi.actionSystem.Presentation;
 import com.intellij.openapi.application.Application;
 import com.intellij.openapi.application.ApplicationManager;
+import com.intellij.openapi.application.ReadAction;
 import com.intellij.openapi.components.PersistentStateComponent;
 import com.intellij.openapi.components.State;
 import com.intellij.openapi.components.Storage;
+import com.intellij.openapi.Disposable;
 import com.intellij.openapi.fileEditor.FileEditorManager;
+import com.intellij.openapi.fileEditor.FileEditorManagerListener;
 import com.intellij.openapi.progress.ProgressIndicator;
 import com.intellij.openapi.progress.Task;
+import com.intellij.openapi.project.DumbAwareAction;
+import com.intellij.openapi.project.DumbService;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.project.ProjectManager;
 import com.intellij.openapi.project.ProjectUtil;
+import com.intellij.openapi.startup.ProjectActivity;
+import com.intellij.openapi.util.Disposer;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.psi.PsiElement;
 import com.intellij.psi.PsiFile;
 import com.intellij.psi.PsiManager;
+import com.intellij.psi.PsiTreeChangeAdapter;
+import com.intellij.psi.PsiTreeChangeEvent;
+import com.intellij.util.concurrency.AppExecutorUtil;
+import com.intellij.util.messages.MessageBusConnection;
 import com.intellij.util.xmlb.XmlSerializerUtil;
+import kotlin.Unit;
+import kotlin.coroutines.Continuation;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.yaml.psi.YAMLKeyValue;
@@ -36,6 +54,7 @@ import java.io.StringWriter;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Base64;
 import java.util.Collection;
 import java.util.HashMap;
@@ -46,32 +65,28 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Stream;
 
-import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.CACHE_ONE_DAY;
-import static com.github.yunabraska.githubworkflow.helper.GitHubWorkflowConfig.FIELD_USES;
-import static com.github.yunabraska.githubworkflow.helper.PsiElementHelper.getProject;
-import static com.github.yunabraska.githubworkflow.helper.PsiElementHelper.toPath;
+import static com.github.yunabraska.githubworkflow.syntax.WorkflowContextCatalog.CACHE_ONE_DAY;
+import static com.github.yunabraska.githubworkflow.syntax.WorkflowContextCatalog.FIELD_USES;
+import static com.github.yunabraska.githubworkflow.syntax.WorkflowPsi.getProject;
+import static com.github.yunabraska.githubworkflow.syntax.WorkflowPsi.toPath;
 import static com.github.yunabraska.githubworkflow.model.GitHubAction.createGithubAction;
 import static com.github.yunabraska.githubworkflow.model.GitHubAction.findActionYaml;
-import static com.github.yunabraska.githubworkflow.entry.ProjectStartup.threadPoolExec;
 import static java.util.Optional.ofNullable;
 
-/**
- * Stores resolved action and reusable workflow metadata for editor completion, validation, and documentation.
- */
 @SuppressWarnings("UnusedReturnValue")
 @State(name = "GitHubActionCache", storages = {@Storage("githubActionCache.xml")})
 public class GitHubActionCache implements PersistentStateComponent<GitHubActionCache.State> {
 
     private static final String DEFAULT_REMOTE_REF = "main";
+    private static final String EXPORT_HEADER = "github-workflow-cache-v1";
 
-    /**
-     * Serialized cache state persisted by the IntelliJ platform.
-     */
     public static class State {
         public final Map<String, GitHubAction> actions = new ConcurrentHashMap<>();
     }
@@ -94,39 +109,21 @@ public class GitHubActionCache implements PersistentStateComponent<GitHubActionC
         GitHubAction resolve(GitHubAction action);
     }
 
-    /**
-     * Returns the application-wide action metadata cache service.
-     *
-     * @return action cache service managed by the IDE
-     */
     public static GitHubActionCache getActionCache() {
         return ApplicationManager.getApplication().getService(GitHubActionCache.class);
     }
 
-    /**
-     * Returns the serialized cache state for IDE persistence.
-     *
-     * @return current cache state
-     */
     @Nullable
     @Override
     public State getState() {
         return this.state;
     }
 
-    /**
-     * Loads persisted action metadata into the cache.
-     *
-     * @param state persisted cache state supplied by the IDE
-     */
     @Override
     public void loadState(@NotNull final State state) {
         XmlSerializerUtil.copyBean(state, this.state);
     }
 
-    /**
-     * Removes expired cache entries while preserving manually suppressed warnings.
-     */
     public void cleanUp() {
         final long currentTime = System.currentTimeMillis();
         new HashMap<>(state.actions).forEach((key, action) -> {
@@ -140,13 +137,6 @@ public class GitHubActionCache implements PersistentStateComponent<GitHubActionC
         });
     }
 
-    /**
-     * Returns cached metadata for a workflow `uses` value, creating and queuing a refresh when needed.
-     *
-     * @param project project used to resolve local action paths
-     * @param usesValue raw `uses` value from workflow YAML
-     * @return cached or newly created action metadata
-     */
     public GitHubAction get(final Project project, final String usesValue) {
         final String usesCleaned = usesValue.replace("IntellijIdeaRulezzz", "");
         final boolean isLocal = isLocalUses(usesCleaned);
@@ -182,22 +172,11 @@ public class GitHubActionCache implements PersistentStateComponent<GitHubActionC
         return action;
     }
 
-    /**
-     * Removes one cache entry by key.
-     *
-     * @param usesValue cache key or `uses` value to remove
-     * @return the same value supplied by the caller for fluent quick-fix use
-     */
     public String remove(final String usesValue) {
         ofNullable(usesValue).ifPresent(state.actions::remove);
         return usesValue;
     }
 
-    /**
-     * Calculates a compact summary of the current cache.
-     *
-     * @return cache entry counts grouped by useful settings UI categories
-     */
     public CacheSummary summary() {
         final List<GitHubAction> actions = state.actions.values().stream().distinct().toList();
         final long resolved = actions.stream().filter(GitHubAction::isResolved).count();
@@ -207,11 +186,6 @@ public class GitHubActionCache implements PersistentStateComponent<GitHubActionC
         return new CacheSummary(actions.size(), resolved, remote, expired, suppressed);
     }
 
-    /**
-     * Returns cache entries sorted for display in settings.
-     *
-     * @return immutable sorted cache entry list
-     */
     public List<CacheEntry> entries() {
         final long now = System.currentTimeMillis();
         return state.actions.entrySet().stream()
@@ -220,26 +194,15 @@ public class GitHubActionCache implements PersistentStateComponent<GitHubActionC
                 .toList();
     }
 
-    /**
-     * Removes all cache entries matching the supplied keys.
-     *
-     * @param keys cache keys to remove
-     * @return cache summary after removal
-     */
     public CacheSummary removeAll(final Collection<String> keys) {
         ofNullable(keys).stream()
                 .flatMap(Collection::stream)
-                .filter(PsiElementHelper::hasText)
+                .filter(WorkflowPsi::hasText)
                 .forEach(state.actions::remove);
         triggerSyntaxHighlightingForActiveFiles();
         return summary();
     }
 
-    /**
-     * Estimates serialized cache payload size.
-     *
-     * @return approximate cache payload size in bytes
-     */
     public long estimatedSizeBytes() {
         return state.actions.entrySet().stream()
                 .mapToLong(entry -> estimate(entry.getKey()) + estimate(entry.getValue()))
@@ -255,7 +218,7 @@ public class GitHubActionCache implements PersistentStateComponent<GitHubActionC
      */
     public CacheSummary exportCache(final Path output) throws IOException {
         try (BufferedWriter writer = Files.newBufferedWriter(output, StandardCharsets.UTF_8)) {
-            writer.write("github-workflow-cache-v1");
+            writer.write(EXPORT_HEADER);
             writer.newLine();
             for (final Map.Entry<String, GitHubAction> entry : new LinkedHashMap<>(state.actions).entrySet()) {
                 writer.write(encode(entry.getKey()));
@@ -283,7 +246,7 @@ public class GitHubActionCache implements PersistentStateComponent<GitHubActionC
     public CacheSummary importCache(final Path input) throws IOException {
         try (BufferedReader reader = Files.newBufferedReader(input, StandardCharsets.UTF_8)) {
             final String header = reader.readLine();
-            if (!"github-workflow-cache-v1".equals(header)) {
+            if (!EXPORT_HEADER.equals(header)) {
                 throw new IOException(GitHubWorkflowBundle.message("settings.cache.import.unsupported"));
             }
             String line;
@@ -308,11 +271,6 @@ public class GitHubActionCache implements PersistentStateComponent<GitHubActionC
         return summary();
     }
 
-    /**
-     * Clears all cached action metadata and queued refresh markers.
-     *
-     * @return empty cache summary after clearing
-     */
     public CacheSummary clear() {
         state.actions.clear();
         inFlightResolutions.clear();
@@ -320,11 +278,6 @@ public class GitHubActionCache implements PersistentStateComponent<GitHubActionC
         return summary();
     }
 
-    /**
-     * Queues a refresh for all currently resolved remote actions.
-     *
-     * @return cache summary before the background refresh completes
-     */
     public CacheSummary refreshResolvedRemoteActions() {
         final List<GitHubAction> actions = state.actions.values().stream()
                 .distinct()
@@ -336,11 +289,6 @@ public class GitHubActionCache implements PersistentStateComponent<GitHubActionC
         return summary();
     }
 
-    /**
-     * Restores all warnings previously suppressed on cached actions.
-     *
-     * @return number of action entries whose warnings were restored
-     */
     public long restoreWarnings() {
         final List<GitHubAction> suppressedActions = state.actions.values().stream()
                 .distinct()
@@ -353,13 +301,6 @@ public class GitHubActionCache implements PersistentStateComponent<GitHubActionC
         return suppressedActions.size();
     }
 
-    /**
-     * Returns likely refs for a remote action or reusable workflow base reference.
-     *
-     * @param usesBase remote `owner/repo/path` value without the `@ref` suffix
-     * @param limit maximum number of refs to return
-     * @return cached or freshly queried refs, newest provider order first
-     */
     public List<String> remoteRefsFor(final String usesBase, final int limit) {
         if (usesBase == null || usesBase.isBlank() || limit < 1) {
             return List.of();
@@ -394,19 +335,12 @@ public class GitHubActionCache implements PersistentStateComponent<GitHubActionC
         return refSeparator > 0 ? Optional.of(usesValue.substring(0, refSeparator)) : Optional.empty();
     }
 
-    /**
-     * Queues a refresh for one cached action.
-     *
-     * @param project project used for local path context
-     * @param usesValue cache key or `uses` value to reload
-     * @return action queued for reload, or null when no matching cache entry exists
-     */
     public GitHubAction reloadAsync(final Project project, final String usesValue) {
         return project == null ? null : ofNullable(usesValue)
                 .map(state.actions::get)
                 .map(oldAction -> saveNewAction(project, oldAction))
                 .map(action -> {
-                    threadPoolExec(project, () -> {
+                    smartExecute(project, () -> {
                         actionResolver.get().resolve(action);
                         triggerSyntaxHighlightingForActiveFiles();
                     });
@@ -415,11 +349,7 @@ public class GitHubActionCache implements PersistentStateComponent<GitHubActionC
                 .orElse(null);
     }
 
-    /**
-     * Resolves action metadata in a visible background task.
-     *
-     * @param actions action entries to resolve; null and duplicate in-flight entries are ignored
-     */
+    // !!! Performs Network and File Operations !!!
     public void resolveAsync(final Collection<GitHubAction> actions) {
         final List<GitHubAction> queuedActions = queuedActions(actions);
         if (queuedActions.isEmpty()) {
@@ -493,12 +423,6 @@ public class GitHubActionCache implements PersistentStateComponent<GitHubActionC
         }
     }
 
-    /**
-     * Replaces the action resolver used by cache refresh operations.
-     *
-     * @param resolver replacement resolver, or null to restore the production resolver
-     * @return previously configured resolver so tests can restore it
-     */
     public ActionResolver useActionResolverForTests(final ActionResolver resolver) {
         return actionResolver.getAndSet(ofNullable(resolver).orElse(GitHubAction::resolve));
     }
@@ -514,9 +438,6 @@ public class GitHubActionCache implements PersistentStateComponent<GitHubActionC
         }
     }
 
-    /**
-     * Refreshes highlighting for currently selected workflow files in open projects.
-     */
     public static void triggerSyntaxHighlightingForActiveFiles() {
         final Application application = ApplicationManager.getApplication();
         if (application.isUnitTestMode()) {
@@ -531,7 +452,7 @@ public class GitHubActionCache implements PersistentStateComponent<GitHubActionC
         final DaemonCodeAnalyzer daemonCodeAnalyzer = DaemonCodeAnalyzer.getInstance(project);
         final boolean hasActiveWorkflowFile = Stream.of(FileEditorManager.getInstance(project).getSelectedFiles())
                 .filter(VirtualFile::isValid)
-                .filter(virtualFile -> toPath(virtualFile).map(GitHubWorkflowHelper::isWorkflowPath).orElse(false))
+                .filter(virtualFile -> toPath(virtualFile).map(WorkflowYaml::isWorkflowPath).orElse(false))
                 .map(virtualFile -> PsiManager.getInstance(project).findFile(virtualFile))
                 .filter(Objects::nonNull)
                 .filter(PsiFile::isValid)
@@ -541,82 +462,48 @@ public class GitHubActionCache implements PersistentStateComponent<GitHubActionC
         }
     }
 
-    /**
-     * Resolves action metadata through the shared cache service in the background.
-     *
-     * @param actions action entries to resolve
-     */
     public static void resolveActionsAsync(final Collection<GitHubAction> actions) {
         getActionCache().resolveInBackground(actions);
     }
 
-    /**
-     * Queues a reload for one action through the shared cache service.
-     *
-     * @param project project used for local path context
-     * @param usesValue cache key or `uses` value to reload
-     * @return action queued for reload, or null when no matching cache entry exists
-     */
     public static GitHubAction reloadActionAsync(final Project project, final String usesValue) {
         return getActionCache().reloadAsync(project, usesValue);
     }
 
-    /**
-     * Resolves cached action metadata for a PSI element related to a workflow `uses` value.
-     *
-     * @param psiElement workflow PSI element
-     * @return matching action metadata, or null when no `uses` value is available
-     */
     public static GitHubAction getAction(final PsiElement psiElement) {
         return getUsesString(psiElement).map(usesValue -> getActionCache().get(getProject(psiElement), usesValue)).orElse(null);
     }
 
     @SuppressWarnings("unused")
-    /**
-     * Removes cached metadata referenced by a workflow PSI element.
-     *
-     * @param psiElement workflow PSI element related to a `uses` value
-     * @return the same PSI element for quick-fix chaining
-     */
     public static PsiElement removeAction(final PsiElement psiElement) {
         getUsesString(psiElement).ifPresent(GitHubActionCache::removeAction);
         return psiElement;
     }
 
-    /**
-     * Removes cached metadata for an action object.
-     *
-     * @param action action whose download URL is used as cache key
-     * @return the same action object for quick-fix chaining
-     */
     public static GitHubAction removeAction(final GitHubAction action) {
         ofNullable(action).map(GitHubAction::downloadUrl).ifPresent(GitHubActionCache::removeAction);
         return action;
     }
 
-    /**
-     * Removes cached metadata for a raw `uses` value.
-     *
-     * @param usesValue cache key or raw `uses` value
-     * @return the same value supplied by the caller
-     */
     public static String removeAction(final String usesValue) {
         ofNullable(usesValue).ifPresent(value -> getActionCache().remove(value));
         return usesValue;
     }
 
-    /**
-     * Checks whether a PSI element is a YAML `uses` key/value.
-     *
-     * @param psiElement workflow PSI element
-     * @return matching YAML key/value when the element is a `uses` entry
-     */
     public static Optional<YAMLKeyValue> isUseElement(final PsiElement psiElement) {
         return ofNullable(psiElement)
                 .filter(PsiElement::isValid)
                 .filter(YAMLKeyValue.class::isInstance)
                 .map(YAMLKeyValue.class::cast)
                 .filter(keyValue -> FIELD_USES.equals(keyValue.getKeyText()));
+    }
+
+    private static void smartExecute(final Project project, final Runnable task) {
+        if (!DumbService.isDumb(project)) {
+            AppExecutorUtil.getAppExecutorService().execute(task);
+        } else {
+            DumbService.getInstance(project).runWhenSmart(() -> AppExecutorUtil.getAppExecutorService().execute(task));
+        }
     }
 
     private GitHubAction saveNewAction(final Project project, final GitHubAction oldAction) {
@@ -652,7 +539,7 @@ public class GitHubActionCache implements PersistentStateComponent<GitHubActionC
         return !isLocal ? subPath : ofNullable(project)
                 .map(ProjectUtil::guessProjectDir)
                 .map(projectDir -> findActionYaml(subPath, projectDir))
-                .flatMap(PsiElementHelper::toPath)
+                .flatMap(WorkflowPsi::toPath)
                 .map(Path::toString)
                 .orElse(subPath);
     }
@@ -680,11 +567,11 @@ public class GitHubActionCache implements PersistentStateComponent<GitHubActionC
     }
 
     private static Optional<String> getUsesValue(final PsiElement psiElement) {
-        return isUseElement(psiElement).flatMap(PsiElementHelper::getText);
+        return isUseElement(psiElement).flatMap(WorkflowPsi::getText);
     }
 
     private static Optional<String> getChildWithUsesValue(final PsiElement psiElement) {
-        return ofNullable(psiElement).filter(PsiElement::isValid).flatMap(element -> PsiElementHelper.getChild(element, FIELD_USES)).flatMap(PsiElementHelper::getText);
+        return ofNullable(psiElement).filter(PsiElement::isValid).flatMap(element -> WorkflowPsi.getChild(element, FIELD_USES)).flatMap(WorkflowPsi::getText);
     }
 
     private static long estimate(final String value) {
@@ -721,30 +608,180 @@ public class GitHubActionCache implements PersistentStateComponent<GitHubActionC
         return result;
     }
 
-    /**
-     * Cache counters displayed in settings and action feedback.
-     *
-     * @param total number of distinct cache entries
-     * @param resolved number of entries with resolved metadata
-     * @param remote number of remote entries
-     * @param expired number of expired entries
-     * @param suppressed number of entries with suppressed warnings
-     */
+    public static class Startup implements ProjectActivity {
+
+        @Nullable
+        @Override
+        public Object execute(@NotNull final Project project, @NotNull final Continuation<? super Unit> continuation) {
+            final Disposable listenerDisposable = Disposer.newDisposable();
+            Disposer.register(project, listenerDisposable);
+
+            PsiManager.getInstance(project).addPsiTreeChangeListener(new ActionMetadataChangeListener(), listenerDisposable);
+
+            final FileEditorManager fileEditorManager = FileEditorManager.getInstance(project);
+            for (final VirtualFile openedFile : fileEditorManager.getOpenFiles()) {
+                asyncInitAllActions(project, openedFile);
+            }
+
+            final MessageBusConnection connection = project.getMessageBus().connect(listenerDisposable);
+            connection.subscribe(FileEditorManagerListener.FILE_EDITOR_MANAGER, new FileEditorManagerListener() {
+                @Override
+                public void fileOpened(@NotNull final FileEditorManager source, @NotNull final VirtualFile file) {
+                    asyncInitAllActions(project, file);
+                }
+            });
+
+            final ScheduledFuture<?> cleanupTask = AppExecutorUtil.getAppScheduledExecutorService()
+                    .scheduleWithFixedDelay(() -> getActionCache().cleanUp(), 0, 30, TimeUnit.MINUTES);
+            Disposer.register(listenerDisposable, () -> cleanupTask.cancel(false));
+            return null;
+        }
+    }
+
+    private static class ActionMetadataChangeListener extends PsiTreeChangeAdapter {
+        @Override
+        public void childReplaced(@NotNull final PsiTreeChangeEvent event) {
+            ofNullable(event.getNewChild())
+                    .filter(psiElement -> WorkflowYaml.getWorkflowFile(psiElement).isPresent())
+                    .flatMap(psiElement -> WorkflowPsi.getParent(psiElement, FIELD_USES))
+                    .map(GitHubActionCache::getAction)
+                    .filter(action -> !action.isResolved())
+                    .map(List::of)
+                    .ifPresent(GitHubActionCache::resolveActionsAsync);
+        }
+
+        @Override
+        public void childrenChanged(@NotNull final PsiTreeChangeEvent event) {
+            ofNullable(event.getParent())
+                    .filter(psiElement -> WorkflowYaml.getWorkflowFile(psiElement).isPresent())
+                    .map(psiElement -> WorkflowPsi.getAllElements(psiElement, FIELD_USES))
+                    .map(usesList -> usesList.stream()
+                            .map(GitHubActionCache::getAction)
+                            .filter(Objects::nonNull)
+                            .filter(action -> !action.isLocal())
+                            .filter(action -> !action.isResolved())
+                            .toList())
+                    .ifPresent(GitHubActionCache::resolveActionsAsync);
+        }
+    }
+
+    private static void asyncInitAllActions(final Project project, final VirtualFile virtualFile) {
+        final Runnable task = () -> {
+            if (virtualFile != null && virtualFile.isValid()
+                    && toPath(virtualFile).map(WorkflowYaml::isWorkflowPath).orElse(false)) {
+                ReadAction.nonBlocking(() -> unresolvedActions(project, virtualFile))
+                        .inSmartMode(project)
+                        .submit(AppExecutorUtil.getAppExecutorService())
+                        .onSuccess(GitHubActionCache::resolveActionsAsync);
+            }
+        };
+        smartExecute(project, task);
+    }
+
+    private static List<GitHubAction> unresolvedActions(final Project project, final VirtualFile virtualFile) {
+        final List<GitHubAction> actions = new ArrayList<>();
+        Optional.of(PsiManager.getInstance(project))
+                .map(psiManager -> psiManager.findFile(virtualFile))
+                .map(psiFile -> WorkflowPsi.getAllElements(psiFile, FIELD_USES))
+                .ifPresent(usesList -> usesList.stream()
+                        .map(GitHubActionCache::getAction)
+                        .filter(Objects::nonNull)
+                        .filter(action -> !action.isSuppressed())
+                        .filter(action -> !action.isResolved())
+                        .forEach(actions::add));
+        return actions;
+    }
+
     public record CacheSummary(long total, long resolved, long remote, long expired, long suppressed) {
     }
 
-    /**
-     * Cache row displayed in the settings cache table.
-     *
-     * @param key persisted cache key
-     * @param name human-readable action name
-     * @param usesValue workflow `uses` value
-     * @param local true when the entry points at a local action
-     * @param resolved true when remote metadata is available
-     * @param expired true when the entry should be refreshed
-     * @param suppressed true when warnings are hidden for this entry
-     * @param expiryTime epoch millis when this cache entry expires
-     */
+    public static class ClearAction extends CacheAction {
+
+        public ClearAction() {
+            super("ClearActionCache");
+        }
+
+        @Override
+        public void actionPerformed(@NotNull final AnActionEvent event) {
+            final CacheSummary before = getActionCache().summary();
+            getActionCache().clear();
+            notify(event, GitHubWorkflowBundle.message("notification.cache.cleared", before.total()));
+        }
+    }
+
+    public static class RefreshAction extends CacheAction {
+
+        public RefreshAction() {
+            super("RefreshActionCache");
+        }
+
+        @Override
+        public void actionPerformed(@NotNull final AnActionEvent event) {
+            final CacheSummary before = getActionCache().summary();
+            getActionCache().refreshResolvedRemoteActions();
+            notify(event, GitHubWorkflowBundle.message("notification.cache.refresh.started", before.remote()));
+        }
+
+        @Override
+        protected boolean enabled(final CacheSummary summary) {
+            return summary.remote() > 0;
+        }
+    }
+
+    public static class RestoreWarningsAction extends CacheAction {
+
+        public RestoreWarningsAction() {
+            super("RestoreActionWarnings");
+        }
+
+        @Override
+        public void actionPerformed(@NotNull final AnActionEvent event) {
+            final long restored = getActionCache().restoreWarnings();
+            notify(event, GitHubWorkflowBundle.message("notification.warnings.restored", restored));
+        }
+
+        @Override
+        protected boolean enabled(final CacheSummary summary) {
+            return summary.suppressed() > 0;
+        }
+    }
+
+    private abstract static class CacheAction extends DumbAwareAction {
+
+        private final String key;
+
+        private CacheAction(final String key) {
+            this.key = key;
+        }
+
+        @Override
+        public void update(@NotNull final AnActionEvent event) {
+            localize(event.getPresentation());
+            event.getPresentation().setEnabled(enabled(getActionCache().summary()));
+        }
+
+        @Override
+        public @NotNull ActionUpdateThread getActionUpdateThread() {
+            return ActionUpdateThread.BGT;
+        }
+
+        protected boolean enabled(final CacheSummary summary) {
+            return true;
+        }
+
+        protected final void notify(final AnActionEvent event, final String content) {
+            NotificationGroupManager.getInstance()
+                    .getNotificationGroup("GitHub Workflow")
+                    .createNotification(content, NotificationType.INFORMATION)
+                    .notify(event.getProject());
+        }
+
+        private void localize(final Presentation presentation) {
+            presentation.setText(GitHubWorkflowBundle.message("action.GitHubWorkflow." + key + ".text"));
+            presentation.setDescription(GitHubWorkflowBundle.message("action.GitHubWorkflow." + key + ".description"));
+        }
+    }
+
     public record CacheEntry(
             String key,
             String name,
