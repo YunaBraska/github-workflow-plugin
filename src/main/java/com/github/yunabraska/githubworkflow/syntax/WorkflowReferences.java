@@ -59,11 +59,11 @@ import static com.github.yunabraska.githubworkflow.syntax.Needs.referenceNeeds;
 import static com.github.yunabraska.githubworkflow.syntax.Steps.listSteps;
 import static java.util.Optional.ofNullable;
 
-public final class WorkflowReferences {
+public class WorkflowReferences {
 
     public static final Key<GitHubAction> ACTION_KEY = new Key<>("ACTION_KEY");
 
-    public static final class Contributor extends PsiReferenceContributor {
+    public static class Contributor extends PsiReferenceContributor {
 
         @Override
         public void registerReferenceProviders(@NotNull final PsiReferenceRegistrar registrar) {

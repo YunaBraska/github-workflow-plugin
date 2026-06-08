@@ -16,7 +16,7 @@ import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-public final class WorkflowLocation {
+public class WorkflowLocation {
 
     private final YAMLKeyValue keyValue;
     private final List<String> path;
@@ -192,7 +192,7 @@ public final class WorkflowLocation {
                 .isPresent();
     }
 
-    public static final class RepositoryResolver {
+    public static class RepositoryResolver {
 
         private static final Pattern HTTPS_REMOTE = Pattern.compile("https?://([^/]+)/([^/]+)/([^/]+?)(?:[.]git)?/?$");
         private static final Pattern SSH_REMOTE = Pattern.compile("(?:git@|ssh://git@)([^:/]+)[:/]([^/]+)/([^/]+?)(?:[.]git)?/?$");

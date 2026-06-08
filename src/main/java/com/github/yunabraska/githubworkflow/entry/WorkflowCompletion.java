@@ -101,7 +101,7 @@ import static com.github.yunabraska.githubworkflow.git.WorkflowLocation.pathMatc
 import static java.util.Collections.singletonList;
 import static java.util.Optional.ofNullable;
 
-public final class WorkflowCompletion extends CompletionContributor {
+public class WorkflowCompletion extends CompletionContributor {
 
     private static final Pattern REMOTE_USES_REF_PATTERN = Pattern.compile(".*\\buses\\s*:\\s*['\"]?([^\\s'\"#]+)@([^\\s'\"]*)$");
     private static final Pattern REMOTE_USES_TARGET_PATTERN = Pattern.compile(".*\\buses\\s*:\\s*['\"]?([^\\s'\"#@]*)$");
@@ -915,7 +915,7 @@ public final class WorkflowCompletion extends CompletionContributor {
     /**
      * Opens workflow completion while the user types YAML structure and expression separators.
      */
-    public static final class TypedAutoPopup extends TypedHandlerDelegate {
+    public static class TypedAutoPopup extends TypedHandlerDelegate {
 
         @Override
         public @NotNull Result checkAutoPopup(
@@ -972,7 +972,7 @@ public final class WorkflowCompletion extends CompletionContributor {
     /**
      * Opens workflow key completion after pressing Enter below YAML mapping keys.
      */
-    public static final class EnterAutoPopup extends EnterHandlerDelegateAdapter {
+    public static class EnterAutoPopup extends EnterHandlerDelegateAdapter {
 
         @Override
         public @NotNull Result postProcessEnter(
@@ -1007,7 +1007,7 @@ public final class WorkflowCompletion extends CompletionContributor {
     /**
      * Keeps workflow auto-popup completion available in sparse YAML positions, such as the line after {@code on:}.
      */
-    public static final class Confidence extends CompletionConfidence {
+    public static class Confidence extends CompletionConfidence {
 
         @Override
         public @NotNull ThreeState shouldSkipAutopopup(

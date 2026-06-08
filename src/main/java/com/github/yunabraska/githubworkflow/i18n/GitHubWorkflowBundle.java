@@ -31,7 +31,7 @@ import java.util.ResourceBundle;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static java.util.Optional.ofNullable;
 
-public final class GitHubWorkflowBundle {
+public class GitHubWorkflowBundle {
 
     @NonNls
     private static final String BUNDLE = "messages.GitHubWorkflowBundle";
@@ -63,11 +63,11 @@ public final class GitHubWorkflowBundle {
      * Persistent user settings for the GitHub Workflow plugin.
      */
     @State(name = "GitHubWorkflowPluginSettings", storages = {@Storage("githubWorkflowPluginSettings.xml")})
-    public static final class Settings implements PersistentStateComponent<Settings.StateData> {
+    public static class Settings implements PersistentStateComponent<Settings.StateData> {
 
         public static final String SYSTEM_LANGUAGE = "";
 
-        public static final class StateData {
+        public static class StateData {
             public String languageTag = SYSTEM_LANGUAGE;
         }
 
@@ -111,7 +111,7 @@ public final class GitHubWorkflowBundle {
         }
     }
 
-    public static final class ErrorReporter extends ErrorReportSubmitter {
+    public static class ErrorReporter extends ErrorReportSubmitter {
 
         @NonNls
         private static final String REPORT_URL = "https://github.com/YunaBraska/github-workflow-plugin/issues/new?labels=bug&template=---bug-report.md";

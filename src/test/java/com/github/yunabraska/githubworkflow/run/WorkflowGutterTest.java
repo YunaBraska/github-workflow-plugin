@@ -239,7 +239,7 @@ public class WorkflowGutterTest extends EditorFeatureTestCase {
         }
     }
 
-    private static final class DummyProcessHandler extends ProcessHandler {
+    private static class DummyProcessHandler extends ProcessHandler {
 
         @Override
         protected void destroyProcessImpl() {

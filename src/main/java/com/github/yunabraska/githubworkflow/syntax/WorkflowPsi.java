@@ -48,7 +48,7 @@ import static com.github.yunabraska.githubworkflow.syntax.WorkflowContextCatalog
 import static java.util.Collections.unmodifiableList;
 import static java.util.Optional.ofNullable;
 
-public final class WorkflowPsi {
+public class WorkflowPsi {
 
     private WorkflowPsi() {
         // static helper class

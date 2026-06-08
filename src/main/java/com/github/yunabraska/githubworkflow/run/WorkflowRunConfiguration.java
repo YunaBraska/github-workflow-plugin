@@ -55,7 +55,7 @@ import java.util.Optional;
 /**
  * Run configuration that dispatches a workflow_dispatch event and follows the resulting run.
  */
-public final class WorkflowRunConfiguration extends RunConfigurationBase<Object> {
+public class WorkflowRunConfiguration extends RunConfigurationBase<Object> {
 
     private String apiUrl = "https://api.github.com";
     private String owner = "";
@@ -208,7 +208,7 @@ public final class WorkflowRunConfiguration extends RunConfigurationBase<Object>
         return value == null || value.isBlank();
     }
 
-    public static final class Editor extends SettingsEditor<WorkflowRunConfiguration> {
+    public static class Editor extends SettingsEditor<WorkflowRunConfiguration> {
 
         private final JPanel panel = new JPanel(new BorderLayout(8, 8));
         private final JTextField apiUrl = new JTextField();
@@ -328,7 +328,7 @@ public final class WorkflowRunConfiguration extends RunConfigurationBase<Object>
         }
     }
 
-    public static final class Producer extends LazyRunConfigurationProducer<WorkflowRunConfiguration> {
+    public static class Producer extends LazyRunConfigurationProducer<WorkflowRunConfiguration> {
 
         private static final WorkflowRun.DispatchInputs DISPATCH_INPUTS = new WorkflowRun.DispatchInputs();
 
@@ -403,7 +403,7 @@ public final class WorkflowRunConfiguration extends RunConfigurationBase<Object>
         }
     }
 
-    public static final class Type implements ConfigurationType {
+    public static class Type implements ConfigurationType {
 
         public static final String ID = "GitHubWorkflow.RunConfiguration";
 
@@ -442,7 +442,7 @@ public final class WorkflowRunConfiguration extends RunConfigurationBase<Object>
             return factory;
         }
 
-        private static final class Factory extends ConfigurationFactory {
+        private static class Factory extends ConfigurationFactory {
             private Factory(final ConfigurationType type) {
                 super(type);
             }

@@ -41,7 +41,7 @@ import java.util.concurrent.ThreadLocalRandom;
 /**
  * IDE process facade that dispatches, polls, logs, and cancels a remote GitHub workflow run.
  */
-public final class WorkflowRunProcessHandler extends ProcessHandler {
+public class WorkflowRunProcessHandler extends ProcessHandler {
 
     private final WorkflowRun.Request request;
     private final WorkflowRun client;
@@ -663,7 +663,7 @@ public final class WorkflowRunProcessHandler extends ProcessHandler {
         return String.format(Locale.ROOT, "%02d:%02d", seconds / 60, seconds % 60);
     }
 
-    private static final class JobLogState {
+    private static class JobLogState {
         private String name = "job";
         private String status = "";
         private String conclusion = "";

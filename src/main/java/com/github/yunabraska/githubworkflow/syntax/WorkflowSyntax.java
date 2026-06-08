@@ -52,7 +52,7 @@ import static com.github.yunabraska.githubworkflow.git.WorkflowLocation.pathMatc
 /**
  * GitHub Actions workflow syntax completion tables from the public workflow syntax reference.
  */
-public final class WorkflowSyntax {
+public class WorkflowSyntax {
 
     private static final String WORKFLOW_SYNTAX_RESOURCE = "/github-docs/workflow-syntax.tsv";
     private static final List<JsonSchemaFileProvider> SCHEMA_FILE_PROVIDERS = Stream.<JsonSchemaFileProvider>of(
@@ -120,7 +120,7 @@ public final class WorkflowSyntax {
     private WorkflowSyntax() {
     }
 
-    public static final class FileIcon extends IconProvider {
+    public static class FileIcon extends IconProvider {
         // IconLoader automatically resolves /icons/gitea_dark.svg in dark themes.
         private static final Icon GITEA_ICON = IconLoader.getIcon("/icons/gitea.svg", FileIcon.class);
         private static final String GITEA_WORKFLOW_HOME = ".gitea";
@@ -159,7 +159,7 @@ public final class WorkflowSyntax {
         }
     }
 
-    public static final class Schema implements JsonSchemaProviderFactory {
+    public static class Schema implements JsonSchemaProviderFactory {
 
         @NotNull
         @Override
@@ -168,7 +168,7 @@ public final class WorkflowSyntax {
         }
     }
 
-    public static final class RunLanguageInjector implements MultiHostInjector {
+    public static class RunLanguageInjector implements MultiHostInjector {
 
         @Override
         public void getLanguagesToInject(@NotNull final MultiHostRegistrar registrar, @NotNull final PsiElement context) {
@@ -565,7 +565,7 @@ public final class WorkflowSyntax {
         return Collections.unmodifiableMap(tables);
     }
 
-    private static final class Tables {
+    private static class Tables {
         private static final Map<String, Map<String, String>> DATA = loadTables();
 
         private Tables() {

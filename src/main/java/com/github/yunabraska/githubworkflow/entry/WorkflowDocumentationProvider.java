@@ -36,7 +36,7 @@ import static com.github.yunabraska.githubworkflow.syntax.WorkflowPsi.getText;
 import static com.github.yunabraska.githubworkflow.syntax.Steps.listStepOutputs;
 import static java.util.Optional.ofNullable;
 
-public final class WorkflowDocumentationProvider extends AbstractDocumentationProvider {
+public class WorkflowDocumentationProvider extends AbstractDocumentationProvider {
 
     @Override
     public @Nullable PsiElement getCustomDocumentationElement(
@@ -497,7 +497,7 @@ public final class WorkflowDocumentationProvider extends AbstractDocumentationPr
         }
     }
 
-    private static final class WorkflowDocumentationElement extends FakePsiElement {
+    private static class WorkflowDocumentationElement extends FakePsiElement {
         private final PsiElement delegate;
         private final DocPayload payload;
 

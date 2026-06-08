@@ -76,7 +76,7 @@ import static com.github.yunabraska.githubworkflow.syntax.WorkflowReferences.toS
 import static com.intellij.lang.annotation.HighlightSeverity.INFORMATION;
 import static java.util.Optional.ofNullable;
 
-public final class WorkflowAnnotator implements Annotator {
+public class WorkflowAnnotator implements Annotator {
 
     public static final TextAttributesKey VARIABLE_REFERENCE = TextAttributesKey.createTextAttributesKey(
             "GITHUB_WORKFLOW_VARIABLE_REFERENCE",

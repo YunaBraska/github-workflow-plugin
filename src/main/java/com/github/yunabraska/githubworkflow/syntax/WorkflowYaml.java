@@ -21,7 +21,7 @@ import java.util.Optional;
 
 import static com.github.yunabraska.githubworkflow.syntax.WorkflowContextCatalog.FIELD_IF;
 
-public final class WorkflowYaml {
+public class WorkflowYaml {
     private static final String COMPLETION_DUMMY = "IntellijIdeaRulezzz";
 
     private WorkflowYaml() {

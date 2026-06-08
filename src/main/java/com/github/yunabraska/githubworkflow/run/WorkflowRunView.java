@@ -65,7 +65,7 @@ import javax.swing.UIManager;
 /**
  * Adds a JUnit-style workflow tree to the Run tool window and routes selected-node output to one detail console.
  */
-final class WorkflowRunView implements WorkflowRunProcessHandler.JobConsole {
+class WorkflowRunView implements WorkflowRunProcessHandler.JobConsole {
 
     private static final int MAX_ATTACH_ATTEMPTS = 20;
     private static final String CONTENT_ID = "github.workflow.jobs";
@@ -616,7 +616,7 @@ final class WorkflowRunView implements WorkflowRunProcessHandler.JobConsole {
         return String.format(Locale.ROOT, "%02d:%02d", seconds / 60, seconds % 60);
     }
 
-    static final class LogRenderer {
+    static class LogRenderer {
 
         private static final Pattern TIMESTAMP = Pattern.compile("^\\x{FEFF}?\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?Z\\s+");
         private static final Pattern GITHUB_COMMAND = Pattern.compile("^##\\[([^]]+)](.*)$");
@@ -949,7 +949,7 @@ final class WorkflowRunView implements WorkflowRunProcessHandler.JobConsole {
         }
     }
 
-    private static final class ToolbarAction extends DumbAwareAction {
+    private static class ToolbarAction extends DumbAwareAction {
         private final String text;
         private final BooleanSupplier visible;
         private final Runnable command;
@@ -991,7 +991,7 @@ final class WorkflowRunView implements WorkflowRunProcessHandler.JobConsole {
         List<PrintedText> snapshot();
     }
 
-    private final class WorkflowNode implements TreeEntry {
+    private class WorkflowNode implements TreeEntry {
         private final Object lock = new Object();
         private final List<PrintedText> output = new ArrayList<>();
         private final long startedMillis = System.currentTimeMillis();
@@ -1052,7 +1052,7 @@ final class WorkflowRunView implements WorkflowRunProcessHandler.JobConsole {
         }
     }
 
-    private final class GroupNode implements TreeEntry {
+    private class GroupNode implements TreeEntry {
         private final String name;
         private @Nullable DefaultMutableTreeNode treeNode;
 
@@ -1110,7 +1110,7 @@ final class WorkflowRunView implements WorkflowRunProcessHandler.JobConsole {
         }
     }
 
-    private final class JobNode implements TreeEntry {
+    private class JobNode implements TreeEntry {
         private final Object lock = new Object();
         private final List<PrintedText> output = new ArrayList<>();
         private final LogRenderer logRenderer = new LogRenderer();
@@ -1264,7 +1264,7 @@ final class WorkflowRunView implements WorkflowRunProcessHandler.JobConsole {
         builder.append(value);
     }
 
-    private static final class JobTreeCellRenderer extends ColoredTreeCellRenderer {
+    private static class JobTreeCellRenderer extends ColoredTreeCellRenderer {
         @Override
         public void customizeCellRenderer(
                 final JTree tree,

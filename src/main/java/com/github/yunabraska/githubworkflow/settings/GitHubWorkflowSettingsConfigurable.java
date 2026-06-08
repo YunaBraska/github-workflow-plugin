@@ -41,7 +41,7 @@ import java.util.concurrent.ThreadLocalRandom;
 /**
  * Settings UI for locale override and GitHub Action cache maintenance.
  */
-public final class GitHubWorkflowSettingsConfigurable implements SearchableConfigurable {
+public class GitHubWorkflowSettingsConfigurable implements SearchableConfigurable {
 
     private static final String SUPPORT_URL = "https://github.com/sponsors/YunaBraska";
     private static final DateTimeFormatter DATE_TIME = DateTimeFormatter.ISO_LOCAL_DATE_TIME.withZone(ZoneId.systemDefault());

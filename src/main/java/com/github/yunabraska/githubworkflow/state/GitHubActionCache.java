@@ -608,7 +608,7 @@ public class GitHubActionCache implements PersistentStateComponent<GitHubActionC
         return result;
     }
 
-    public static final class Startup implements ProjectActivity {
+    public static class Startup implements ProjectActivity {
 
         @Nullable
         @Override
@@ -638,7 +638,7 @@ public class GitHubActionCache implements PersistentStateComponent<GitHubActionC
         }
     }
 
-    private static final class ActionMetadataChangeListener extends PsiTreeChangeAdapter {
+    private static class ActionMetadataChangeListener extends PsiTreeChangeAdapter {
         @Override
         public void childReplaced(@NotNull final PsiTreeChangeEvent event) {
             ofNullable(event.getNewChild())
@@ -695,7 +695,7 @@ public class GitHubActionCache implements PersistentStateComponent<GitHubActionC
     public record CacheSummary(long total, long resolved, long remote, long expired, long suppressed) {
     }
 
-    public static final class ClearAction extends CacheAction {
+    public static class ClearAction extends CacheAction {
 
         public ClearAction() {
             super("ClearActionCache");
@@ -709,7 +709,7 @@ public class GitHubActionCache implements PersistentStateComponent<GitHubActionC
         }
     }
 
-    public static final class RefreshAction extends CacheAction {
+    public static class RefreshAction extends CacheAction {
 
         public RefreshAction() {
             super("RefreshActionCache");
@@ -728,7 +728,7 @@ public class GitHubActionCache implements PersistentStateComponent<GitHubActionC
         }
     }
 
-    public static final class RestoreWarningsAction extends CacheAction {
+    public static class RestoreWarningsAction extends CacheAction {
 
         public RestoreWarningsAction() {
             super("RestoreActionWarnings");

@@ -46,7 +46,7 @@ import static com.github.yunabraska.githubworkflow.model.NodeIcon.SUPPRESS_ON;
 import static com.github.yunabraska.githubworkflow.model.SyntaxAnnotation.createAnnotation;
 import static java.util.Optional.ofNullable;
 
-public final class WorkflowAnnotations {
+public class WorkflowAnnotations {
 
     public static final List<String> VALID_OUTPUT_FIELDS = List.of(FIELD_OUTPUTS);
     public static final List<String> VALID_STEP_FIELDS = List.of(FIELD_OUTPUTS, FIELD_CONCLUSION, FIELD_OUTCOME);

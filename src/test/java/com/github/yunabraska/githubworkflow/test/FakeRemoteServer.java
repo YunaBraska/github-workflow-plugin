@@ -13,7 +13,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-public final class FakeRemoteServer implements AutoCloseable {
+public class FakeRemoteServer implements AutoCloseable {
 
     private final HttpServer server;
     private final Map<String, String> contents = new HashMap<>();

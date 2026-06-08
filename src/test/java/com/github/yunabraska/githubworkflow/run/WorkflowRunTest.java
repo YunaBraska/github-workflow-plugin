@@ -279,7 +279,7 @@ public class WorkflowRunTest extends TestCase {
                 .withMessageNotContaining("base64");
     }
 
-    private static final class FakeWorkflowRunServer implements AutoCloseable {
+    private static class FakeWorkflowRunServer implements AutoCloseable {
         private final HttpServer server;
         private final List<String> requests = new ArrayList<>();
         private final List<String> methods = new ArrayList<>();

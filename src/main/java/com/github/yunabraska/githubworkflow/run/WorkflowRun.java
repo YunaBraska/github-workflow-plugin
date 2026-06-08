@@ -52,7 +52,7 @@ import java.util.stream.Stream;
 /**
  * Small GitHub Actions REST client for workflow dispatch, status polling, cancellation, and logs.
  */
-public final class WorkflowRun {
+public class WorkflowRun {
 
     private static final String API_VERSION = "2026-03-10";
     private static final Duration TIMEOUT = Duration.ofSeconds(20);
@@ -647,7 +647,7 @@ public final class WorkflowRun {
         }
     }
 
-    public static final class DispatchInputs {
+    public static class DispatchInputs {
 
         public List<Input> parse(final String yaml) {
             final List<Line> lines = lines(yaml);
@@ -870,7 +870,7 @@ public final class WorkflowRun {
      * Tracks workflow runs started from one project so editor gutter actions can switch between run and stop.
      */
     @Service(Service.Level.PROJECT)
-    public static final class Tracker {
+    public static class Tracker {
 
         private final Project project;
         private final ConcurrentMap<String, ProcessHandler> runs = new ConcurrentHashMap<>();
@@ -919,7 +919,7 @@ public final class WorkflowRun {
         }
     }
 
-    public static final class LineMarkerContributor extends RunLineMarkerContributor {
+    public static class LineMarkerContributor extends RunLineMarkerContributor {
 
         private static final RepositoryAvailability DEFAULT_REPOSITORY_AVAILABILITY =
                 (project, file) -> new WorkflowLocation.RepositoryResolver().resolve(project, file).isPresent();
@@ -969,7 +969,7 @@ public final class WorkflowRun {
         }
     }
 
-    private static final class StopWorkflowRunAction extends AnAction {
+    private static class StopWorkflowRunAction extends AnAction {
 
         private final String workflowPath;
 
@@ -1014,7 +1014,7 @@ public final class WorkflowRun {
     public record ArtifactStatus(long id, String name, long sizeInBytes, boolean expired, String archiveDownloadUrl) {
     }
 
-    public static final class WorkflowRunHttpException extends IOException {
+    public static class WorkflowRunHttpException extends IOException {
 
         private final int statusCode;
         private final String body;

@@ -35,7 +35,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.Function;
 import java.util.function.Predicate;
 
-public final class RemoteActionProviders {
+public class RemoteActionProviders {
 
     private static final Logger LOG = Logger.getInstance(RemoteActionProviders.class);
     private static final HttpClient CLIENT = HttpClient.newBuilder()
@@ -371,7 +371,7 @@ public final class RemoteActionProviders {
         }
     }
 
-    public static final class Settings {
+    public static class Settings {
 
         public static final String TYPE_GITHUB = "github";
 
@@ -432,7 +432,7 @@ public final class RemoteActionProviders {
         }
     }
 
-    public static final class Server {
+    public static class Server {
         public final String type;
         public final String name;
         public final String webUrl;
@@ -488,7 +488,7 @@ public final class RemoteActionProviders {
         }
     }
 
-    public static final class Authorizations {
+    public static class Authorizations {
 
         private static final List<String> DEFAULT_ENV_TOKENS = List.of("GITHUB_TOKEN", "GH_TOKEN", "GITHUB_PAT");
 

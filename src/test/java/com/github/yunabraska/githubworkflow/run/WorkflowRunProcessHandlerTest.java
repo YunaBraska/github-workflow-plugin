@@ -736,7 +736,7 @@ public class WorkflowRunProcessHandlerTest extends BasePlatformTestCase {
         }
     }
 
-    private static final class CapturingJobConsole implements WorkflowRunProcessHandler.JobConsole {
+    private static class CapturingJobConsole implements WorkflowRunProcessHandler.JobConsole {
         private final Object lock = new Object();
         private final Map<Long, StringBuilder> output = new HashMap<>();
         private final StringBuilder workflowOutput = new StringBuilder();
