@@ -8,7 +8,7 @@ import com.intellij.openapi.util.TextRange;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.psi.PsiElement;
 import com.intellij.psi.impl.source.tree.LeafPsiElement;
-import com.github.yunabraska.githubworkflow.services.GitHubWorkflowBundle;
+import com.github.yunabraska.githubworkflow.i18n.GitHubWorkflowBundle;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.yaml.psi.YAMLAlias;
 import org.jetbrains.yaml.psi.YAMLAnchor;

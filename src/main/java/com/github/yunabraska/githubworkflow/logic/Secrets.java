@@ -2,7 +2,7 @@ package com.github.yunabraska.githubworkflow.logic;
 
 import com.github.yunabraska.githubworkflow.model.SimpleElement;
 import com.github.yunabraska.githubworkflow.model.SyntaxAnnotation;
-import com.github.yunabraska.githubworkflow.services.GitHubWorkflowBundle;
+import com.github.yunabraska.githubworkflow.i18n.GitHubWorkflowBundle;
 import com.intellij.codeInspection.ProblemHighlightType;
 import com.intellij.lang.annotation.AnnotationHolder;
 import com.intellij.lang.annotation.HighlightSeverity;

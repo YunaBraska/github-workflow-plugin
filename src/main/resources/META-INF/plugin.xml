@@ -17,50 +17,50 @@
     <extensions defaultExtensionNs="com.intellij">
         <!-- Auto Completion -->
         <completion.contributor language="yaml"
-                                implementationClass="com.github.yunabraska.githubworkflow.services.CodeCompletion"/>
+                                implementationClass="com.github.yunabraska.githubworkflow.entry.CodeCompletion"/>
         <completion.contributor language="Shell Script"
-                                implementationClass="com.github.yunabraska.githubworkflow.services.CodeCompletion"/>
-        <typedHandler implementation="com.github.yunabraska.githubworkflow.services.WorkflowAutoPopupTypedHandler"
+                                implementationClass="com.github.yunabraska.githubworkflow.entry.CodeCompletion"/>
+        <typedHandler implementation="com.github.yunabraska.githubworkflow.entry.WorkflowAutoPopupTypedHandler"
                       order="first, before completionAutoPopup"/>
-        <enterHandlerDelegate implementation="com.github.yunabraska.githubworkflow.services.WorkflowAutoPopupEnterHandler"
+        <enterHandlerDelegate implementation="com.github.yunabraska.githubworkflow.entry.WorkflowAutoPopupEnterHandler"
                               order="last"/>
-        <completion.confidence implementationClass="com.github.yunabraska.githubworkflow.services.WorkflowCompletionConfidence"
+        <completion.confidence implementationClass="com.github.yunabraska.githubworkflow.entry.WorkflowCompletionConfidence"
                                order="first"/>
         <!-- Syntax Highlighting -->
         <annotator language="yaml"
-                   implementationClass="com.github.yunabraska.githubworkflow.services.HighlightAnnotator"/>
+                   implementationClass="com.github.yunabraska.githubworkflow.entry.HighlightAnnotator"/>
 
         <!-- Jump to position-->
-        <psi.referenceContributor language="yaml" implementation="com.github.yunabraska.githubworkflow.services.ReferenceContributor"/>
+        <psi.referenceContributor language="yaml" implementation="com.github.yunabraska.githubworkflow.entry.ReferenceContributor"/>
         <lang.documentationProvider id="GithubWorkflowDocumentationProvider"
                                     language="yaml"
-                                    implementationClass="com.github.yunabraska.githubworkflow.services.WorkflowDocumentationProvider"
+                                    implementationClass="com.github.yunabraska.githubworkflow.entry.WorkflowDocumentationProvider"
                                     order="before YamlJsonSchemaDocumentationProvider"/>
-        <multiHostInjector implementation="com.github.yunabraska.githubworkflow.services.WorkflowRunLanguageInjector"/>
-        <configurationType implementation="com.github.yunabraska.githubworkflow.services.WorkflowRunConfigurationType"/>
-        <runConfigurationProducer implementation="com.github.yunabraska.githubworkflow.services.WorkflowRunConfigurationProducer"/>
+        <multiHostInjector implementation="com.github.yunabraska.githubworkflow.entry.WorkflowRunLanguageInjector"/>
+        <configurationType implementation="com.github.yunabraska.githubworkflow.entry.WorkflowRunConfigurationType"/>
+        <runConfigurationProducer implementation="com.github.yunabraska.githubworkflow.entry.WorkflowRunConfigurationProducer"/>
         <runLineMarkerContributor language="yaml"
-                                  implementationClass="com.github.yunabraska.githubworkflow.services.WorkflowRunLineMarkerContributor"/>
+                                  implementationClass="com.github.yunabraska.githubworkflow.entry.WorkflowRunLineMarkerContributor"/>
 
         <!-- ProjectStartup -->
-        <postStartupActivity implementation="com.github.yunabraska.githubworkflow.services.ProjectStartup"/>
+        <postStartupActivity implementation="com.github.yunabraska.githubworkflow.entry.ProjectStartup"/>
 
         <!-- Cache [Workflows, Actions, Schemas] -->
-        <applicationService serviceImplementation="com.github.yunabraska.githubworkflow.services.GitHubActionCache"
+        <applicationService serviceImplementation="com.github.yunabraska.githubworkflow.state.GitHubActionCache"
                             configurationSchemaKey="GitHubActionCache"/>
-        <applicationService serviceImplementation="com.github.yunabraska.githubworkflow.services.RemoteServerSettings"/>
-        <applicationService serviceImplementation="com.github.yunabraska.githubworkflow.services.PluginSettings"/>
-        <applicationConfigurable instance="com.github.yunabraska.githubworkflow.services.GitHubWorkflowSettingsConfigurable"
+        <applicationService serviceImplementation="com.github.yunabraska.githubworkflow.state.RemoteServerSettings"/>
+        <applicationService serviceImplementation="com.github.yunabraska.githubworkflow.state.PluginSettings"/>
+        <applicationConfigurable instance="com.github.yunabraska.githubworkflow.settings.GitHubWorkflowSettingsConfigurable"
                                  id="github.workflow.settings"
                                  parentId="tools"
                                  displayName="GitHub Workflow"/>
-        <projectService serviceImplementation="com.github.yunabraska.githubworkflow.services.WorkflowRunTracker"/>
+        <projectService serviceImplementation="com.github.yunabraska.githubworkflow.state.WorkflowRunTracker"/>
 
         <!-- Schema Icon provider -->
-        <iconProvider implementation="com.github.yunabraska.githubworkflow.services.FileIconProvider"/>
+        <iconProvider implementation="com.github.yunabraska.githubworkflow.entry.FileIconProvider"/>
 
         <!-- Crash Reporter -->
-        <errorHandler implementation="com.github.yunabraska.githubworkflow.services.PluginErrorReportSubmitter"/>
+        <errorHandler implementation="com.github.yunabraska.githubworkflow.entry.PluginErrorReportSubmitter"/>
 
         <notificationGroup id="GitHub Workflow"
                            displayType="BALLOON"
@@ -69,18 +69,18 @@
 
     <extensions defaultExtensionNs="JavaScript.JsonSchema">
         <!-- Schema Registry -->
-        <ProviderFactory implementation="com.github.yunabraska.githubworkflow.services.SchemaProvider"/>
+        <ProviderFactory implementation="com.github.yunabraska.githubworkflow.entry.SchemaProvider"/>
     </extensions>
 
     <actions resource-bundle="messages.GitHubWorkflowBundle">
         <group id="GitHubWorkflow.Tools" popup="true">
             <add-to-group group-id="ToolsMenu" anchor="last"/>
             <action id="GitHubWorkflow.RefreshActionCache"
-                    class="com.github.yunabraska.githubworkflow.services.RefreshActionCacheAction"/>
+                    class="com.github.yunabraska.githubworkflow.entry.RefreshActionCacheAction"/>
             <action id="GitHubWorkflow.RestoreActionWarnings"
-                    class="com.github.yunabraska.githubworkflow.services.RestoreActionWarningsAction"/>
+                    class="com.github.yunabraska.githubworkflow.entry.RestoreActionWarningsAction"/>
             <action id="GitHubWorkflow.ClearActionCache"
-                    class="com.github.yunabraska.githubworkflow.services.ClearActionCacheAction"/>
+                    class="com.github.yunabraska.githubworkflow.entry.ClearActionCacheAction"/>
         </group>
     </actions>
 </idea-plugin>

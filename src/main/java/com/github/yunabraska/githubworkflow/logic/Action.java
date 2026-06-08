@@ -5,8 +5,8 @@ import com.github.yunabraska.githubworkflow.model.IconRenderer;
 import com.github.yunabraska.githubworkflow.model.LocalActionReferenceResolver;
 import com.github.yunabraska.githubworkflow.model.SimpleElement;
 import com.github.yunabraska.githubworkflow.model.SyntaxAnnotation;
-import com.github.yunabraska.githubworkflow.services.GitHubActionCache;
-import com.github.yunabraska.githubworkflow.services.GitHubWorkflowBundle;
+import com.github.yunabraska.githubworkflow.state.GitHubActionCache;
+import com.github.yunabraska.githubworkflow.i18n.GitHubWorkflowBundle;
 import com.intellij.codeInspection.ProblemHighlightType;
 import com.intellij.lang.annotation.AnnotationBuilder;
 import com.intellij.lang.annotation.AnnotationHolder;
@@ -51,8 +51,8 @@ import static com.github.yunabraska.githubworkflow.model.NodeIcon.RELOAD;
 import static com.github.yunabraska.githubworkflow.model.NodeIcon.SUPPRESS_ON;
 import static com.github.yunabraska.githubworkflow.model.NodeIcon.SUPPRESS_OFF;
 import static com.github.yunabraska.githubworkflow.model.SimpleElement.completionItemsOf;
-import static com.github.yunabraska.githubworkflow.services.GitHubActionCache.triggerSyntaxHighlightingForActiveFiles;
-import static com.github.yunabraska.githubworkflow.services.ReferenceContributor.ACTION_KEY;
+import static com.github.yunabraska.githubworkflow.state.GitHubActionCache.triggerSyntaxHighlightingForActiveFiles;
+import static com.github.yunabraska.githubworkflow.entry.ReferenceContributor.ACTION_KEY;
 import static java.util.Optional.ofNullable;
 
 public class Action {

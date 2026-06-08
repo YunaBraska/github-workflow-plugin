@@ -2,7 +2,7 @@
 
 *Your Ultimate Wingman for GitHub Workflows and Actions! 🚀*
 
-![Build](https://github.com/YunaBraska/github-workflow-plugin/workflows/Build/badge.svg)
+[![Build](https://github.com/YunaBraska/github-workflow-plugin/actions/workflows/build.yml/badge.svg)](https://github.com/YunaBraska/github-workflow-plugin/actions/workflows/build.yml)
 [![Version](https://img.shields.io/jetbrains/plugin/v/21396-github-workflow.svg)](https://plugins.jetbrains.com/plugin/21396-github-workflow)
 [![Downloads](https://img.shields.io/jetbrains/plugin/d/21396-github-workflow.svg)](https://plugins.jetbrains.com/plugin/21396-github-workflow)
 [![](https://img.shields.io/static/v1?label=Sponsor&message=%E2%9D%A4&logo=GitHub&color=%23fe8e86)](https://github.com/sponsors/YunaBraska)
@@ -79,25 +79,24 @@ Plugin downloads the IDE, bundled plugins, verifier, and test runtime.
 
 ## Release Automation
 
-One GitHub Actions workflow runs for branch pushes, PRs, and manual dispatches. It has one job and one cache. Branch and
-PR runs do the normal test/package pass. A merge to `main`, or a manual workflow run, prepares the date-based version,
-runs the full checks and Plugin Verifier, publishes the plugin ZIP to GitHub Packages, uploads the same ZIP to
-JetBrains Marketplace, pushes the release commit and tag, and creates the GitHub release.
+One workflow handles tagging, packaging, GitHub Packages, Marketplace publishing, changelog notes, and GitHub releases.
+It intentionally uses one job and one cache because the IntelliJ build/test setup can eat roughly 10 GB; repeating that
+across jobs is how CI becomes a very expensive space heater.
 
-The workflow prunes old GitHub Actions caches after a successful non-PR run so only the current pipeline cache remains.
+Flow:
 
-Required repository secrets:
+1. Branch pushes and PRs run tests and build the plugin ZIP.
+2. A merge to `main`, or a manual workflow run, switches the same job into release mode.
+3. The job computes a plain date tag such as `2026.5.29` and updates `pluginVersion`.
+4. It creates the matching `CHANGELOG.md` section from `## [Unreleased]` when needed.
+5. It runs `check`, Plugin Verifier, and `buildPlugin`.
+6. It publishes the ZIP to GitHub Packages, then uploads the same ZIP to JetBrains Marketplace.
+7. Only after publishing succeeds, it pushes the release commit and tag, then creates or updates the GitHub release.
+8. A successful non-PR run saves the current cache and prunes older GitHub Actions caches.
 
-* `PUBLISH_TOKEN`
-
-Optional repository secret:
-
-* `RELEASE_TOKEN` - lets the workflow push the release commit and tag with a dedicated token. Without it, `GITHUB_TOKEN`
-  is used.
-
-Optional repository variable:
-
-* `MARKETPLACE_CHANNEL` - empty means the default stable Marketplace channel.
+`PUBLISH_TOKEN` is required for Marketplace upload. `RELEASE_TOKEN` is optional; without it, the workflow uses
+`GITHUB_TOKEN` for the release commit, tag, and GitHub release. `MARKETPLACE_CHANNEL` is optional and empty means the
+stable channel.
 
 For manual IDE testing, run `./gradlew runIde`. The default target tracks the latest stable IntelliJ IDEA platform that
 the Gradle tooling can resolve (`platformVersion` in `gradle.properties`). The first run downloads IDE artifacts and can

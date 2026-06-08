@@ -1,7 +1,7 @@
 package com.github.yunabraska.githubworkflow.helper;
 
 
-import com.github.yunabraska.githubworkflow.services.GitHubWorkflowBundle;
+import com.github.yunabraska.githubworkflow.i18n.GitHubWorkflowBundle;
 
 import java.io.BufferedReader;
 import java.io.IOException;

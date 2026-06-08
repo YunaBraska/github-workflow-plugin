@@ -1,7 +1,7 @@
 package com.github.yunabraska.githubworkflow.model;
 
 import com.github.yunabraska.githubworkflow.helper.PsiElementHelper;
-import com.github.yunabraska.githubworkflow.services.RemoteActionProviders;
+import com.github.yunabraska.githubworkflow.client.RemoteActionProviders;
 import com.intellij.openapi.application.ReadAction;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.project.Project;

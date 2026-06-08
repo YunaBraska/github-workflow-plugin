@@ -12,7 +12,7 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import static com.github.yunabraska.githubworkflow.helper.PsiElementHelper.getProject;
-import static com.github.yunabraska.githubworkflow.services.ReferenceContributor.ACTION_KEY;
+import static com.github.yunabraska.githubworkflow.entry.ReferenceContributor.ACTION_KEY;
 import static java.util.Optional.ofNullable;
 
 public class LocalActionReferenceResolver extends PsiReferenceBase<PsiElement> implements PsiPolyVariantReference {

@@ -1,0 +1,47 @@
+package com.github.yunabraska.githubworkflow.entry;
+
+import com.github.yunabraska.githubworkflow.state.GitHubActionCache;
+
+import com.github.yunabraska.githubworkflow.i18n.GitHubWorkflowBundle;
+
+import com.intellij.notification.NotificationGroupManager;
+import com.intellij.notification.NotificationType;
+import com.intellij.openapi.actionSystem.AnActionEvent;
+import com.intellij.openapi.actionSystem.ActionUpdateThread;
+import com.intellij.openapi.actionSystem.Presentation;
+import com.intellij.openapi.project.DumbAwareAction;
+import org.jetbrains.annotations.NotNull;
+
+public class RefreshActionCacheAction extends DumbAwareAction {
+
+    @Override
+    public void actionPerformed(@NotNull final AnActionEvent event) {
+        final GitHubActionCache.CacheSummary before = GitHubActionCache.getActionCache().summary();
+        GitHubActionCache.getActionCache().refreshResolvedRemoteActions();
+        notify(event, GitHubWorkflowBundle.message("notification.cache.refresh.started", before.remote()));
+    }
+
+    @Override
+    public void update(@NotNull final AnActionEvent event) {
+        localize(event.getPresentation());
+        final GitHubActionCache.CacheSummary summary = GitHubActionCache.getActionCache().summary();
+        event.getPresentation().setEnabled(summary.remote() > 0);
+    }
+
+    @Override
+    public @NotNull ActionUpdateThread getActionUpdateThread() {
+        return ActionUpdateThread.BGT;
+    }
+
+    private static void notify(final AnActionEvent event, final String content) {
+        NotificationGroupManager.getInstance()
+                .getNotificationGroup("GitHub Workflow")
+                .createNotification(content, NotificationType.INFORMATION)
+                .notify(event.getProject());
+    }
+
+    private static void localize(final Presentation presentation) {
+        presentation.setText(GitHubWorkflowBundle.message("action.GitHubWorkflow.RefreshActionCache.text"));
+        presentation.setDescription(GitHubWorkflowBundle.message("action.GitHubWorkflow.RefreshActionCache.description"));
+    }
+}

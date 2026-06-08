@@ -4,7 +4,7 @@ import com.github.yunabraska.githubworkflow.helper.PsiElementHelper;
 import com.github.yunabraska.githubworkflow.model.LocalReferenceResolver;
 import com.github.yunabraska.githubworkflow.model.SimpleElement;
 import com.github.yunabraska.githubworkflow.model.SyntaxAnnotation;
-import com.github.yunabraska.githubworkflow.services.GitHubWorkflowBundle;
+import com.github.yunabraska.githubworkflow.i18n.GitHubWorkflowBundle;
 import com.intellij.lang.annotation.AnnotationHolder;
 import com.intellij.lang.annotation.HighlightSeverity;
 import com.intellij.openapi.editor.DefaultLanguageHighlighterColors;

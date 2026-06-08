@@ -1,6 +1,6 @@
 package com.github.yunabraska.githubworkflow.helper;
 
-import com.github.yunabraska.githubworkflow.services.GitHubActionCache;
+import com.github.yunabraska.githubworkflow.state.GitHubActionCache;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.psi.PsiTreeChangeAdapter;
 import com.intellij.psi.PsiTreeChangeEvent;

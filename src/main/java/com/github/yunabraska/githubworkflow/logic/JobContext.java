@@ -1,7 +1,7 @@
 package com.github.yunabraska.githubworkflow.logic;
 
 import com.github.yunabraska.githubworkflow.model.SimpleElement;
-import com.github.yunabraska.githubworkflow.services.GitHubWorkflowBundle;
+import com.github.yunabraska.githubworkflow.i18n.GitHubWorkflowBundle;
 import com.intellij.lang.annotation.AnnotationHolder;
 import com.intellij.psi.PsiElement;
 import com.intellij.psi.impl.source.tree.LeafPsiElement;
