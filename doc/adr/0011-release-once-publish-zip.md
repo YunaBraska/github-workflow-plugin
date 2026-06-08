@@ -12,7 +12,8 @@ out.
 
 ## Decision
 
-Use one workflow file with one job and one manually managed cache key.
+Use one workflow file with one job and one manually managed cache key. IntelliJ test and verifier setup is large enough
+that splitting the same release path across jobs duplicates heavyweight downloads and cache state.
 
 The same job handles all modes:
 
@@ -20,9 +21,9 @@ The same job handles all modes:
 - a `main` push that is not the generated release commit executes the release path;
 - a manual dispatch executes the release path, with optional dry-run support.
 
-The release path prepares the version, runs the full checks and Plugin Verifier, publishes the plugin ZIP to GitHub
-Packages, uploads the same ZIP directly to JetBrains Marketplace, pushes the release commit and tag, and creates or
-updates the GitHub release.
+The release path prepares the version and changelog, runs the full checks and Plugin Verifier, publishes the plugin ZIP
+to GitHub Packages, uploads the same ZIP directly to JetBrains Marketplace, then pushes the release commit/tag and
+creates or updates the GitHub release.
 
 After a successful non-PR run, the job prunes every GitHub Actions cache entry except the current pipeline cache key.
 
