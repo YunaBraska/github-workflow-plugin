@@ -4,6 +4,8 @@ import com.github.yunabraska.githubworkflow.entry.WorkflowAnnotator;
 
 import com.github.yunabraska.githubworkflow.entry.WorkflowDocumentationProvider;
 
+import com.github.yunabraska.githubworkflow.i18n.GitHubWorkflowBundle;
+
 import com.github.yunabraska.githubworkflow.test.FakeRemoteServer;
 
 import com.github.yunabraska.githubworkflow.test.EditorFeatureTestCase;
@@ -270,6 +272,65 @@ public class WorkflowPresentationTest extends EditorFeatureTestCase {
                 """);
 
         assertThat(documentationHintAtCaret()).contains("Output values exposed");
+    }
+
+    public void testWorkflowKeyDocumentationUsesConfiguredLanguage() {
+        final GitHubWorkflowBundle.Settings settings = GitHubWorkflowBundle.Settings.getInstance();
+        final String previousLanguage = settings.languageTag();
+        try {
+            settings.languageTag("de");
+            configureWorkflowProjectFile("""
+                    name: Docs
+                    on: workflow_dispatch
+                    jobs:
+                      build:
+                        runs-on: ubuntu-latest
+                        st<caret>eps:
+                          - run: echo ok
+                    """);
+
+            assertThat(documentationHintAtCaret())
+                    .contains("Workflow-Schlüssel steps")
+                    .contains("Schrittliste. Die eigentliche Arbeit.");
+        } finally {
+            settings.languageTag(previousLanguage);
+        }
+    }
+
+    public void testWorkflowTopKeyDocumentationUsesSyntaxTableDescription() {
+        configureWorkflowProjectFile("""
+                name: Docs
+                on: workflow_dispatch
+                en<caret>v:
+                  NODE_ENV: test
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo ok
+                """);
+
+        assertThat(documentationHintAtCaret())
+                .contains("Workflow key env")
+                .contains("Workflow-wide environment variables");
+    }
+
+    public void testWorkflowEventKeyDocumentationUsesSyntaxTableDescription() {
+        configureWorkflowProjectFile("""
+                name: Docs
+                on:
+                  pull_request_tar<caret>get:
+                    types: [opened]
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo ok
+                """);
+
+        assertThat(documentationHintAtCaret())
+                .contains("Workflow key pull_request_target")
+                .contains("PR target context. Sharp knives.");
     }
 
     private String documentationHintAtCaret() {

@@ -56,14 +56,14 @@ public class WorkflowSyntax {
 
     private static final String WORKFLOW_SYNTAX_RESOURCE = "/github-docs/workflow-syntax.tsv";
     private static final List<JsonSchemaFileProvider> SCHEMA_FILE_PROVIDERS = Stream.<JsonSchemaFileProvider>of(
-                    new GitHubSchemaProvider("dependabot-2.0", "Dependabot [Auto]", WorkflowYaml::isDependabotFile),
-                    new GitHubSchemaProvider("github-action", "GitHub Action [Auto]", WorkflowYaml::isActionFile),
-                    new GitHubSchemaProvider("github-funding", "GitHub Funding [Auto]", WorkflowYaml::isFoundingFile),
-                    new GitHubSchemaProvider("github-workflow", "GitHub Workflow [Auto]", WorkflowYaml::isWorkflowFile),
-                    new GitHubSchemaProvider("github-discussion", "GitHub Discussion [Auto]", WorkflowYaml::isDiscussionFile),
-                    new GitHubSchemaProvider("github-issue-forms", "GitHub Issue Forms [Auto]", WorkflowYaml::isIssueForms),
-                    new GitHubSchemaProvider("github-issue-config", "GitHub Workflow Issue Template configuration [Auto]", WorkflowYaml::isIssueConfigFile),
-                    new GitHubSchemaProvider("github-workflow-template-properties", "GitHub Workflow Template Properties [Auto]", WorkflowYaml::isWorkflowTemplatePropertiesFile)
+                    new GitHubSchemaProvider("dependabot-2.0", "Dependabot", WorkflowYaml::isDependabotFile),
+                    new GitHubSchemaProvider("github-action", "GitHub Action", WorkflowYaml::isActionFile),
+                    new GitHubSchemaProvider("github-funding", "GitHub Funding", WorkflowYaml::isFoundingFile),
+                    new GitHubSchemaProvider("github-workflow", "GitHub Workflow", WorkflowYaml::isWorkflowFile),
+                    new GitHubSchemaProvider("github-discussion", "GitHub Discussion", WorkflowYaml::isDiscussionFile),
+                    new GitHubSchemaProvider("github-issue-forms", "GitHub Issue Forms", WorkflowYaml::isIssueForms),
+                    new GitHubSchemaProvider("github-issue-config", "GitHub Workflow Issue Template configuration", WorkflowYaml::isIssueConfigFile),
+                    new GitHubSchemaProvider("github-workflow-template-properties", "GitHub Workflow Template Properties", WorkflowYaml::isWorkflowTemplatePropertiesFile)
             )
             .distinct()
             .toList();
@@ -389,6 +389,15 @@ public class WorkflowSyntax {
         return knownKeysForPath(path, true).map(KnownKeys::values);
     }
 
+    public static Optional<String> descriptionForKey(final YAMLKeyValue keyValue) {
+        return WorkflowLocation.from(keyValue)
+                .filter(WorkflowLocation::workflowFile)
+                .flatMap(location -> knownKeysForPath(location.path(), true)
+                        .map(KnownKeys::values)
+                        .map(values -> values.get(location.keyValue().getKeyText())))
+                .filter(value -> !value.isBlank());
+    }
+
     public static Optional<KnownKeys> validationKeysForPath(final List<String> path) {
         return knownKeysForPath(path, false);
     }
@@ -519,7 +528,13 @@ public class WorkflowSyntax {
     }
 
     private static Map<String, String> table(final String group) {
-        return Tables.DATA.getOrDefault(group, Collections.emptyMap());
+        final Map<String, String> keys = Tables.DATA.getOrDefault(group, Collections.emptyMap());
+        if (keys.isEmpty()) {
+            return Collections.emptyMap();
+        }
+        final Map<String, String> result = new LinkedHashMap<>();
+        keys.forEach((key, bundleKey) -> result.put(key, GitHubWorkflowBundle.message(bundleKey)));
+        return Collections.unmodifiableMap(result);
     }
 
     private static Map<String, Map<String, String>> loadTables() {
@@ -556,7 +571,7 @@ public class WorkflowSyntax {
             throw new IllegalStateException("Invalid " + WORKFLOW_SYNTAX_RESOURCE + " line " + lineNumber);
         }
         result.computeIfAbsent(parts[0], ignored -> new LinkedHashMap<>())
-                .put(parts[1], GitHubWorkflowBundle.message(parts[2]));
+                .put(parts[1], parts[2]);
     }
 
     private static Map<String, Map<String, String>> immutableTables(final Map<String, Map<String, String>> source) {

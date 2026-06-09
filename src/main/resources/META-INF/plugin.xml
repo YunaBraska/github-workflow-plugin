@@ -1,7 +1,7 @@
 <!-- Plugin Configuration File. Read more: https://plugins.jetbrains.com/docs/intellij/plugin-configuration-file.html -->
 <idea-plugin require-restart="false">
     <id>com.github.yunabraska.githubworkflowplugin</id>
-    <name>Github Workflow</name>
+    <name>GitHub Workflow</name>
     <vendor url="https://github.com/YunaBraska/github-workflow-plugin">Yuna Morgenstern</vendor>
     <resource-bundle>messages.GitHubWorkflowBundle</resource-bundle>
 
@@ -53,7 +53,8 @@
         <applicationConfigurable instance="com.github.yunabraska.githubworkflow.settings.GitHubWorkflowSettingsConfigurable"
                                  id="github.workflow.settings"
                                  parentId="tools"
-                                 displayName="GitHub Workflow"/>
+                                 key="settings.displayName"
+                                 bundle="messages.GitHubWorkflowBundle"/>
         <projectService serviceImplementation="com.github.yunabraska.githubworkflow.run.WorkflowRun$Tracker"/>
 
         <!-- Schema Icon provider -->

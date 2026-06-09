@@ -1,7 +1,5 @@
 package com.github.yunabraska.githubworkflow.i18n;
 
-import com.github.yunabraska.githubworkflow.i18n.GitHubWorkflowBundle;
-
 import com.intellij.openapi.diagnostic.IdeaLoggingEvent;
 import com.intellij.openapi.diagnostic.SubmittedReportInfo;
 import org.junit.Test;
@@ -11,6 +9,9 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Properties;
@@ -45,6 +46,8 @@ public class WorkflowMessagesTest {
             "vi",
             "zh_CN"
     );
+    private static final Pattern ACTION_GROUP_ID = Pattern.compile("<(action|group)\\b[^>]*\\bid=\"([^\"]+)\"");
+    private static final Pattern XML_KEY_ATTRIBUTE = Pattern.compile("\\b(?:key|displayNameKey|descriptionKey)=\"([^\"]+)\"");
 
     @Test
     public void testDefaultBundleReturnsActionCacheMessages() {
@@ -98,7 +101,6 @@ public class WorkflowMessagesTest {
         final Set<String> technicalKeysAllowedToMatchEnglish = Set.of(
                 "workflow.run.field.apiUrl",
                 "workflow.run.field.ref",
-                "workflow.run.auth.settings",
                 "workflow.log.error",
                 "workflow.run.status",
                 "workflow.run.job.status",
@@ -133,6 +135,49 @@ public class WorkflowMessagesTest {
                 }
             }
         }
+    }
+
+    @Test
+    public void testLocalizedBundlesDoNotKeepKnownEnglishMergeLeftovers() throws IOException {
+        final List<String> keys = List.of(
+                "notification.cache.refresh.started",
+                "action.GitHubWorkflow.RefreshActionCache.text",
+                "action.GitHubWorkflow.RefreshActionCache.description",
+                "settings.cache.refresh",
+                "workflow.run.auth.settings"
+        );
+        for (final String suffix : LOCALE_SUFFIXES) {
+            final Properties bundle = loadBundle("_" + suffix);
+            for (final String key : keys) {
+                assertThat(bundle.getProperty(key))
+                        .as("Locale suffix [%s] key [%s] has no stale English merge text", suffix, key)
+                        .doesNotContain("Refresh")
+                        .doesNotContain("Refreshing")
+                        .doesNotContain("Settings > Version Control")
+                        .doesNotContain("Refоновлення");
+            }
+        }
+    }
+
+    @Test
+    public void testEveryDefaultBundleKeyHasAProductionConsumer() throws IOException {
+        final Set<String> bundleKeys = loadBundle("").stringPropertyNames();
+        final String productionJava = readTree(Path.of("src", "main", "java"), ".java");
+        final Set<String> usedKeys = new HashSet<>();
+
+        for (final String key : bundleKeys) {
+            if (productionJava.contains("\"" + key + "\"")) {
+                usedKeys.add(key);
+            }
+        }
+
+        collectPluginXmlKeys(bundleKeys, usedKeys);
+        collectResourceTableKeys(bundleKeys, usedKeys);
+        collectDynamicKeyFamilies(productionJava, bundleKeys, usedKeys);
+
+        assertThat(bundleKeys)
+                .as("Every message key must be wired by Java, plugin.xml, resource tables, or an explicit dynamic key family")
+                .containsExactlyInAnyOrderElementsOf(usedKeys);
     }
 
     @Test
@@ -266,10 +311,40 @@ public class WorkflowMessagesTest {
             for (final String key : keys) {
                 assertThat(GitHubWorkflowBundle.messageFor(locale, key))
                         .as("Locale suffix [%s] key [%s]", suffix, key)
-                        .isNotBlank()
-                        .isNotEqualTo(GitHubWorkflowBundle.messageFor(locale, "completion.workflow.syntax"));
+                        .isNotBlank();
             }
         }
+    }
+
+    @Test
+    public void testWorkflowSyntaxTableMessageKeysResolveForEveryLocale() throws IOException {
+        final Set<String> keys = workflowSyntaxMessageKeys();
+        final Properties defaultBundle = loadBundle("");
+
+        assertThat(keys).isNotEmpty();
+        assertThat(defaultBundle.stringPropertyNames()).containsAll(keys);
+        for (final String suffix : LOCALE_SUFFIXES) {
+            final Locale locale = Locale.forLanguageTag(suffix.replace('_', '-'));
+            for (final String key : keys) {
+                assertThat(GitHubWorkflowBundle.messageFor(locale, key))
+                        .as("Locale suffix [%s] syntax key [%s]", suffix, key)
+                        .isNotBlank()
+                        .doesNotContain("!" + key + "!");
+            }
+        }
+    }
+
+    @Test
+    public void testEveryWorkflowCompletionMessageKeyIsBackedBySyntaxTable() throws IOException {
+        final Set<String> keys = workflowSyntaxMessageKeys();
+        final Set<String> bundleKeys = loadBundle("").stringPropertyNames();
+
+        assertThat(bundleKeys.stream()
+                .filter(key -> key.startsWith("completion.workflow."))
+                .toList())
+                .as("Workflow syntax completion messages must be reachable from the syntax table")
+                .isNotEmpty()
+                .allSatisfy(key -> assertThat(keys).contains(key));
     }
 
     @Test
@@ -330,6 +405,22 @@ public class WorkflowMessagesTest {
         }
     }
 
+    private static Set<String> workflowSyntaxMessageKeys() throws IOException {
+        final Set<String> keys = new HashSet<>();
+        for (final String line : Files.readAllLines(Path.of("src", "main", "resources", "github-docs", "workflow-syntax.tsv"), StandardCharsets.UTF_8)) {
+            final String trimmed = line.trim();
+            if (trimmed.isBlank() || trimmed.startsWith("#")) {
+                continue;
+            }
+            final String[] parts = trimmed.split("\t", 3);
+            assertThat(parts)
+                    .as("Workflow syntax table line [%s]", line)
+                    .hasSize(3);
+            keys.add(parts[2]);
+        }
+        return keys;
+    }
+
     private static Properties loadBundle(final String suffix) throws IOException {
         final String path = BUNDLE_PATH + suffix + ".properties";
         try (InputStream stream = WorkflowMessagesTest.class.getClassLoader().getResourceAsStream(path)) {
@@ -337,6 +428,66 @@ public class WorkflowMessagesTest {
             final Properties properties = new Properties();
             properties.load(new InputStreamReader(stream, StandardCharsets.UTF_8));
             return properties;
+        }
+    }
+
+    private static String readTree(final Path root, final String suffix) throws IOException {
+        final StringBuilder builder = new StringBuilder();
+        try (var paths = Files.walk(root)) {
+            for (final Path path : paths.filter(Files::isRegularFile)
+                    .filter(path -> path.getFileName().toString().endsWith(suffix))
+                    .sorted()
+                    .toList()) {
+                builder.append(Files.readString(path, StandardCharsets.UTF_8)).append('\n');
+            }
+        }
+        return builder.toString();
+    }
+
+    private static void collectPluginXmlKeys(final Set<String> bundleKeys, final Set<String> usedKeys) throws IOException {
+        final String pluginXml = Files.readString(Path.of("src", "main", "resources", "META-INF", "plugin.xml"), StandardCharsets.UTF_8);
+        final var actionGroupMatcher = ACTION_GROUP_ID.matcher(pluginXml);
+        while (actionGroupMatcher.find()) {
+            final String prefix = "action".equals(actionGroupMatcher.group(1)) ? "action" : "group";
+            usedKeys.add(prefix + "." + actionGroupMatcher.group(2) + ".text");
+            usedKeys.add(prefix + "." + actionGroupMatcher.group(2) + ".description");
+        }
+
+        final var keyMatcher = XML_KEY_ATTRIBUTE.matcher(pluginXml);
+        while (keyMatcher.find()) {
+            final String key = keyMatcher.group(1);
+            if (bundleKeys.contains(key)) {
+                usedKeys.add(key);
+            }
+        }
+    }
+
+    private static void collectResourceTableKeys(final Set<String> bundleKeys, final Set<String> usedKeys) throws IOException {
+        try (var paths = Files.walk(Path.of("src", "main", "resources"))) {
+            for (final Path path : paths.filter(Files::isRegularFile)
+                    .filter(path -> path.getFileName().toString().endsWith(".tsv"))
+                    .sorted()
+                    .toList()) {
+                for (final String line : Files.readAllLines(path, StandardCharsets.UTF_8)) {
+                    final String[] parts = line.split("\t");
+                    if (parts.length >= 3 && bundleKeys.contains(parts[2])) {
+                        usedKeys.add(parts[2]);
+                    }
+                }
+            }
+        }
+    }
+
+    private static void collectDynamicKeyFamilies(final String productionJava, final Set<String> bundleKeys, final Set<String> usedKeys) {
+        if (productionJava.contains("\"action.GitHubWorkflow.\" + key")) {
+            usedKeys.addAll(bundleKeys.stream()
+                    .filter(key -> key.startsWith("action.GitHubWorkflow."))
+                    .toList());
+        }
+        if (productionJava.contains("\"settings.support.line.\" +")) {
+            usedKeys.addAll(bundleKeys.stream()
+                    .filter(key -> key.startsWith("settings.support.line."))
+                    .toList());
         }
     }
 }

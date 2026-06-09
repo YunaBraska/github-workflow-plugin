@@ -421,7 +421,7 @@ public class WorkflowRun {
                 .orElse("")
                 .toLowerCase();
         if (contentType.contains("text/html") || body.startsWith("<!DOCTYPE") || body.startsWith("<html")) {
-            return "GitHub returned an HTML error page instead of API data.";
+            return GitHubWorkflowBundle.message("workflow.run.error.html");
         }
         final String singleLine = body.replace('\n', ' ').replace('\r', ' ').replaceAll("\\s+", " ");
         return singleLine.length() <= 500 ? singleLine : singleLine.substring(0, 497) + "...";

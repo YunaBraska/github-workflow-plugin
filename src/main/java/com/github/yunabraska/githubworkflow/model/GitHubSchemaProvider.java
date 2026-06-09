@@ -1,5 +1,6 @@
 package com.github.yunabraska.githubworkflow.model;
 
+import com.github.yunabraska.githubworkflow.i18n.GitHubWorkflowBundle;
 import com.github.yunabraska.githubworkflow.syntax.WorkflowPsi;
 import com.intellij.json.JsonFileType;
 import com.intellij.openapi.vfs.VirtualFile;
@@ -32,7 +33,7 @@ public class GitHubSchemaProvider implements JsonSchemaFileProvider {
     @NotNull
     @Override
     public String getName() {
-        return displayName;
+        return GitHubWorkflowBundle.message("schema.auto", displayName);
     }
 
     @Override
@@ -57,12 +58,12 @@ public class GitHubSchemaProvider implements JsonSchemaFileProvider {
         if (this == o) return true;
         if (o == null || getClass() != o.getClass()) return false;
         final GitHubSchemaProvider that = (GitHubSchemaProvider) o;
-        return Objects.equals(getName(), that.getName());
+        return Objects.equals(schemaName, that.schemaName);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(getName());
+        return Objects.hash(schemaName);
     }
 
     private String schemaContent() {

@@ -2,6 +2,8 @@ package com.github.yunabraska.githubworkflow.syntax;
 
 import com.github.yunabraska.githubworkflow.entry.WorkflowCompletion;
 
+import com.github.yunabraska.githubworkflow.i18n.GitHubWorkflowBundle;
+
 import com.github.yunabraska.githubworkflow.test.FakeRemoteServer;
 
 import com.github.yunabraska.githubworkflow.test.EditorFeatureTestCase;
@@ -867,6 +869,32 @@ public class WorkflowSyntaxCompletionTest extends EditorFeatureTestCase {
                   build:
                     <caret>
                 """)).contains("runs-on", "permissions", "environment", "strategy", "container", "services", "uses");
+    }
+
+    public void testWorkflowSyntaxCompletionDescriptionsUseConfiguredLanguageAfterEnglishTableUse() {
+        assertThat(completeWorkflowTypeTexts("""
+                name: Completion
+                on: workflow_dispatch
+                jobs:
+                  build:
+                    <caret>
+                """)).containsEntry("steps", "Step list. The actual work.");
+        final GitHubWorkflowBundle.Settings settings = GitHubWorkflowBundle.Settings.getInstance();
+        final String previousLanguage = settings.languageTag();
+        try {
+            settings.languageTag("de");
+
+            assertThat(completeWorkflowTypeTexts("""
+                    name: Completion
+                    on: workflow_dispatch
+                    jobs:
+                      build:
+                        <caret>
+                    """)).containsEntry("steps", "Schrittliste. Die eigentliche Arbeit.")
+                    .containsEntry("environment", "Bereitstellungsumgebung");
+        } finally {
+            settings.languageTag(previousLanguage);
+        }
     }
 
     public void testDefaultsRunCompletionSuggestsShellAndWorkingDirectory() {

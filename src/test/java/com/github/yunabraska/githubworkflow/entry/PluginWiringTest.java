@@ -2,6 +2,8 @@ package com.github.yunabraska.githubworkflow.entry;
 
 import com.github.yunabraska.githubworkflow.run.WorkflowRunConfiguration;
 
+import com.github.yunabraska.githubworkflow.model.GitHubSchemaProvider;
+
 import com.github.yunabraska.githubworkflow.state.GitHubActionCache;
 
 import com.github.yunabraska.githubworkflow.i18n.GitHubWorkflowBundle;
@@ -95,11 +97,36 @@ public class PluginWiringTest extends BasePlatformTestCase {
         }
     }
 
+    public void testSchemaProviderNameUsesConfiguredPluginLanguageOverride() {
+        final GitHubWorkflowBundle.Settings settings = GitHubWorkflowBundle.Settings.getInstance();
+        final String previousLanguage = settings.languageTag();
+        try {
+            final GitHubSchemaProvider schema = new GitHubSchemaProvider("github-workflow", "GitHub Workflow", path -> true);
+
+            assertThat(schema.getName()).isEqualTo("GitHub Workflow [Auto]");
+
+            settings.languageTag("de");
+
+            assertThat(schema.getName()).isEqualTo("GitHub Workflow [Automatisch]");
+        } finally {
+            settings.languageTag(previousLanguage);
+        }
+    }
+
     public void testWorkflowRunConfigurationIsRegistered() {
         final WorkflowRunConfiguration.Type type = ConfigurationTypeUtil.findConfigurationType(WorkflowRunConfiguration.Type.class);
 
         assertThat(type.getId()).isEqualTo(WorkflowRunConfiguration.Type.ID);
         assertThat(type.getConfigurationFactories()).hasSize(1);
+    }
+
+    public void testSettingsConfigurableUsesLocalizedPluginXmlKey() throws IOException {
+        final String pluginXml = Files.readString(Path.of(System.getProperty("user.dir"), "src", "main", "resources", "META-INF", "plugin.xml"));
+
+        assertThat(pluginXml)
+                .contains("key=\"settings.displayName\"")
+                .contains("bundle=\"messages.GitHubWorkflowBundle\"")
+                .doesNotContain("displayName=\"GitHub Workflow\"");
     }
 
     public void testPackagedSchemasArePresentAndNonEmpty() throws IOException {

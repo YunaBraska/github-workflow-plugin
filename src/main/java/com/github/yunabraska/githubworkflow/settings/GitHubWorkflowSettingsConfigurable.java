@@ -47,13 +47,13 @@ public class GitHubWorkflowSettingsConfigurable implements SearchableConfigurabl
     private static final DateTimeFormatter DATE_TIME = DateTimeFormatter.ISO_LOCAL_DATE_TIME.withZone(ZoneId.systemDefault());
     private static final List<LocaleOption> LOCALES = List.of(
             new LocaleOption(GitHubWorkflowBundle.Settings.SYSTEM_LANGUAGE, "settings.language.system", true),
-            new LocaleOption("ar", "Arabic"),
-            new LocaleOption("cs", "Czech"),
+            new LocaleOption("ar", "العربية"),
+            new LocaleOption("cs", "Čeština"),
             new LocaleOption("de", "Deutsch"),
             new LocaleOption("es", "Español"),
             new LocaleOption("fr", "Français"),
-            new LocaleOption("hi", "Hindi"),
-            new LocaleOption("id", "Indonesia"),
+            new LocaleOption("hi", "हिन्दी"),
+            new LocaleOption("id", "Bahasa Indonesia"),
             new LocaleOption("it", "Italiano"),
             new LocaleOption("ja", "日本語"),
             new LocaleOption("ko", "한국어"),

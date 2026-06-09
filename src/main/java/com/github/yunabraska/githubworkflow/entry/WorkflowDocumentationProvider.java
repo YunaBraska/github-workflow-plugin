@@ -2,6 +2,8 @@ package com.github.yunabraska.githubworkflow.entry;
 
 import com.github.yunabraska.githubworkflow.syntax.WorkflowReferences;
 
+import com.github.yunabraska.githubworkflow.syntax.WorkflowSyntax;
+
 import com.github.yunabraska.githubworkflow.state.GitHubActionCache;
 
 import com.github.yunabraska.githubworkflow.i18n.GitHubWorkflowBundle;
@@ -77,6 +79,7 @@ public class WorkflowDocumentationProvider extends AbstractDocumentationProvider
     static Optional<DocPayload> documentationAt(final PsiElement element, final int absoluteOffset) {
         return declaredOutputDoc(element)
                 .or(() -> actionParameterDoc(element))
+                .or(() -> workflowSyntaxDoc(element, absoluteOffset))
                 .or(() -> textElement(element).flatMap(WorkflowDocumentationProvider::actionUseDoc))
                 .or(() -> textElement(element).flatMap(text -> variableDoc(text, absoluteOffset)));
     }
@@ -171,6 +174,20 @@ public class WorkflowDocumentationProvider extends AbstractDocumentationProvider
                 .filter(WorkflowDocumentationProvider::isDirectOutput)
                 .filter(output -> getParent(output, FIELD_WITH).isEmpty())
                 .map(output -> outputDoc(outputLabel(output), output.getKeyText(), output));
+    }
+
+    private static Optional<DocPayload> workflowSyntaxDoc(final PsiElement element, final int absoluteOffset) {
+        return keyValueAt(element)
+                .filter(keyValue -> isKeyOffset(keyValue, absoluteOffset))
+                .flatMap(keyValue -> WorkflowSyntax.descriptionForKey(keyValue)
+                        .map(description -> simpleDoc(message("documentation.workflowSyntax.label"), keyValue.getKeyText(), description)));
+    }
+
+    private static boolean isKeyOffset(final YAMLKeyValue keyValue, final int absoluteOffset) {
+        return ofNullable(keyValue.getKey())
+                .map(PsiElement::getTextRange)
+                .filter(range -> range.containsOffset(absoluteOffset))
+                .isPresent();
     }
 
     private static boolean isDirectOutput(final YAMLKeyValue output) {
@@ -552,7 +569,7 @@ public class WorkflowDocumentationProvider extends AbstractDocumentationProvider
 
         @Override
         public String toString() {
-            return "GitHub workflow documentation";
+            return message("documentation.provider");
         }
     }
 }

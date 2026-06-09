@@ -1,7 +1,8 @@
 package com.github.yunabraska.githubworkflow.model;
 
-import com.github.yunabraska.githubworkflow.syntax.WorkflowPsi;
 import com.github.yunabraska.githubworkflow.git.RemoteActionProviders;
+import com.github.yunabraska.githubworkflow.i18n.GitHubWorkflowBundle;
+import com.github.yunabraska.githubworkflow.syntax.WorkflowPsi;
 import com.intellij.openapi.application.ReadAction;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.project.Project;
@@ -179,7 +180,7 @@ public class GitHubAction implements Serializable {
         if (isLocal()) {
             extractLocalParameters();
         }
-        return concatMap(inputs, ignoredInputs.stream().filter(WorkflowPsi::hasText).collect(Collectors.toMap(key -> key, value -> "*** manual added input ***")));
+        return concatMap(inputs, ignoredInputs.stream().filter(WorkflowPsi::hasText).collect(Collectors.toMap(key -> key, value -> GitHubWorkflowBundle.message("documentation.manualInput"))));
     }
 
     public Map<String, String> freshOutputs() {
@@ -190,7 +191,7 @@ public class GitHubAction implements Serializable {
         if (isLocal()) {
             extractLocalParameters();
         }
-        return withIgnoredItems ? concatMap(outputs, ignoredOutputs.stream().filter(WorkflowPsi::hasText).collect(Collectors.toMap(key -> key, value -> "*** manual added output ***"))) : unmodifiableMap(outputs);
+        return withIgnoredItems ? concatMap(outputs, ignoredOutputs.stream().filter(WorkflowPsi::hasText).collect(Collectors.toMap(key -> key, value -> GitHubWorkflowBundle.message("documentation.manualOutput")))) : unmodifiableMap(outputs);
     }
 
     public Map<String, String> freshSecrets() {
