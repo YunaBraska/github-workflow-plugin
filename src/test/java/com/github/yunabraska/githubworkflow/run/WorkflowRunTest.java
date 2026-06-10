@@ -106,6 +106,33 @@ public class WorkflowRunTest extends TestCase {
         }
     }
 
+    public void testGiteaDispatchRequestsRunDetailsAndLatestRunUsesRepositoryRunsEndpoint() throws Exception {
+        try (FakeWorkflowRunServer server = new FakeWorkflowRunServer()) {
+            final WorkflowRun client = new WorkflowRun();
+            final WorkflowRun.Request request = new WorkflowRun.Request(
+                    server.apiUrl() + "/api/v1",
+                    "acme",
+                    "tool",
+                    ".gitea/workflows/build-update-chart.yaml",
+                    "main",
+                    Map.of(),
+                    "GITEA_TOKEN"
+            );
+
+            final WorkflowRun.DispatchResult dispatch = client.dispatch(request);
+            final var latest = client.latestRun(request);
+
+            assertThat(dispatch.runId()).isEqualTo(42);
+            assertThat(latest).isPresent();
+            assertThat(latest.get().runId()).isEqualTo(88);
+            assertThat(server.requests()).contains(
+                    "/api/v1/repos/acme/tool/actions/workflows/build-update-chart.yaml/dispatches?return_run_details=true",
+                    "/api/v1/repos/acme/tool/actions/runs?branch=main&event=workflow_dispatch&limit=1"
+            );
+            assertThat(server.requests()).noneMatch(path -> path.contains("/workflows/build-update-chart.yaml/runs"));
+        }
+    }
+
     public void testArtifactsAndZipUseRunArtifactEndpoints() throws Exception {
         try (FakeWorkflowRunServer server = new FakeWorkflowRunServer()) {
             final WorkflowRun client = new WorkflowRun();
@@ -368,6 +395,9 @@ public class WorkflowRunTest extends TestCase {
             }
             if (path.endsWith("/workflows/build.yml/runs")) {
                 return new Response(200, "application/json", "{\"workflow_runs\":[{\"id\":77,\"status\":\"queued\",\"conclusion\":null,\"html_url\":\"html-latest\"}]}");
+            }
+            if (path.endsWith("/actions/runs")) {
+                return new Response(200, "application/json", "{\"workflow_runs\":[{\"id\":88,\"status\":\"queued\",\"conclusion\":null,\"html_url\":\"gitea-latest\"}]}");
             }
             if (path.endsWith("/runs/42/jobs")) {
                 return new Response(200, "application/json", "{\"jobs\":[{\"id\":100,\"name\":\"build\",\"status\":\"completed\",\"conclusion\":\"success\"}]}");

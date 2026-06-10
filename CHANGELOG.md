@@ -16,6 +16,7 @@
 - Updated the IntelliJ test platform, JaCoCo, and GitHub Actions cache action to current stable metadata.
 - Fixed the README build badge link and refreshed navigation/release docs.
 - `.gitea/workflows/*` files now get their own light/dark Gitea-flavored file icon instead of cosplaying GitHub.
+- Gitea workflow runs now use `GITEA_TOKEN`-style auth, clean browser links, and repo-level run discovery for `/api/v1`.
 
 ## [2026.5.29] - 2026-05-29
 

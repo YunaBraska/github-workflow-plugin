@@ -136,7 +136,7 @@ public class RemoteActionProviders {
 
     private static boolean isWorkflowPath(final String path) {
         final String normalized = path.replace('\\', '/');
-        return normalized.contains(".github/workflows/")
+        return (normalized.contains(".github/workflows/") || normalized.contains(".gitea/workflows/"))
                 && (normalized.endsWith(".yml") || normalized.endsWith(".yaml"));
     }
 
@@ -187,7 +187,7 @@ public class RemoteActionProviders {
     }
 
     private static Optional<JsonElement> getJson(final Server server, final String url) {
-        for (final RemoteActionProviders.Authorizations.Authorization authorization : RemoteActionProviders.Authorizations.forApiUrl(server.apiUrl, server.tokenEnvVar, null)) {
+        for (final RemoteActionProviders.Authorizations.Authorization authorization : RemoteActionProviders.Authorizations.forServer(server, null)) {
             try {
                 final HttpRequest.Builder builder = HttpRequest.newBuilder(URI.create(url))
                         .timeout(Duration.ofSeconds(3))
@@ -374,6 +374,7 @@ public class RemoteActionProviders {
     public static class Settings {
 
         public static final String TYPE_GITHUB = "github";
+        public static final String TYPE_GITEA = "gitea";
 
         private final CopyOnWriteArrayList<Server> testServers = new CopyOnWriteArrayList<>();
 
@@ -447,12 +448,66 @@ public class RemoteActionProviders {
                 final String tokenEnvVar,
                 final boolean enabled
         ) {
-            this.type = Settings.TYPE_GITHUB;
+            this(Settings.TYPE_GITHUB, name, webUrl, apiUrl, tokenEnvVar, enabled);
+        }
+
+        public Server(
+                final String type,
+                final String name,
+                final String webUrl,
+                final String apiUrl,
+                final String tokenEnvVar,
+                final boolean enabled
+        ) {
+            this.type = Optional.ofNullable(type).map(String::trim).filter(RemoteActionProviders::hasText).orElse(Settings.TYPE_GITHUB);
             this.name = name;
             this.webUrl = webUrl;
             this.apiUrl = apiUrl;
             this.tokenEnvVar = tokenEnvVar;
             this.enabled = enabled;
+        }
+
+        /**
+         * Creates a configured Gitea remote provider. Gitea uses GitHub-compatible repository endpoints under
+         * {@code /api/v1}, but personal access tokens use {@code Authorization: token ...}.
+         *
+         * @param name readable server name shown in diagnostics
+         * @param webUrl browser URL of the Gitea instance
+         * @param apiUrl REST API URL, usually {@code <webUrl>/api/v1}
+         * @param tokenEnvVar optional environment variable containing a Gitea token
+         * @param enabled whether the provider should be used
+         * @return a Gitea server configuration
+         */
+        public static Server gitea(
+                final String name,
+                final String webUrl,
+                final String apiUrl,
+                final String tokenEnvVar,
+                final boolean enabled
+        ) {
+            return new Server(Settings.TYPE_GITEA, name, webUrl, apiUrl, tokenEnvVar, enabled);
+        }
+
+        /**
+         * Infers the remote provider for a workflow-run request. Gitea is detected from its workflow home,
+         * {@code /api/v1} API base, or a Gitea-named token variable.
+         *
+         * @param apiUrl REST API URL configured for the run
+         * @param workflowPath workflow file path being dispatched
+         * @param tokenEnvVar optional token environment variable configured for the run
+         * @return normalized remote provider configuration
+         */
+        public static Server fromWorkflowRun(
+                final String apiUrl,
+                final String workflowPath,
+                final String tokenEnvVar
+        ) {
+            final String normalizedApiUrl = trimTrailingSlash(apiUrl);
+            final String webUrl = webUrlFromApiUrl(normalizedApiUrl);
+            if (looksLikeGitea(normalizedApiUrl, workflowPath, tokenEnvVar)) {
+                return gitea("Gitea", webUrl, normalizedApiUrl, tokenEnvVar, true).normalized();
+            }
+            return new Server("GitHub", webUrl, normalizedApiUrl, tokenEnvVar, true).normalized();
         }
 
         public boolean isEnabled() {
@@ -463,23 +518,37 @@ public class RemoteActionProviders {
             return isEnabled() && hasText(webUrl) && hasText(apiUrl);
         }
 
+        /**
+         * Reports whether this provider uses Gitea-compatible request behavior.
+         *
+         * @return {@code true} for Gitea providers
+         */
+        public boolean isGitea() {
+            return Settings.TYPE_GITEA.equalsIgnoreCase(type);
+        }
+
         public String authorizationHeader() {
             return Optional.ofNullable(tokenEnvVar)
                     .filter(RemoteActionProviders::hasText)
                     .map(System::getenv)
                     .filter(RemoteActionProviders::hasText)
-                    .map(token -> "Bearer " + token)
+                    .map(token -> authorizationPrefix() + token)
                     .orElse("");
         }
 
         public Server normalized() {
             return new Server(
+                    hasText(type) ? type.trim().toLowerCase() : Settings.TYPE_GITHUB,
                     hasText(name) ? name.trim() : webUrl,
                     trimTrailingSlash(webUrl),
                     trimTrailingSlash(apiUrl),
                     Optional.ofNullable(tokenEnvVar).map(String::trim).orElse(""),
                     enabled
             );
+        }
+
+        private String authorizationPrefix() {
+            return isGitea() ? "token " : "Bearer ";
         }
 
         private String key() {
@@ -490,7 +559,8 @@ public class RemoteActionProviders {
 
     public static class Authorizations {
 
-        private static final List<String> DEFAULT_ENV_TOKENS = List.of("GITHUB_TOKEN", "GH_TOKEN", "GITHUB_PAT");
+        private static final List<String> DEFAULT_GITHUB_ENV_TOKENS = List.of("GITHUB_TOKEN", "GH_TOKEN", "GITHUB_PAT");
+        private static final List<String> DEFAULT_GITEA_ENV_TOKENS = List.of("GITEA_TOKEN", "GITEA_PAT");
 
         public static List<Authorization> forApiUrl(final String apiUrl, final String tokenEnvVar, final Project project) {
             return forApiUrl(apiUrl, tokenEnvVar, project, System.getenv());
@@ -502,12 +572,90 @@ public class RemoteActionProviders {
                 final Project project,
                 final Map<String, String> environment
         ) {
+            return forGithubApiUrl(apiUrl, tokenEnvVar, project, environment);
+        }
+
+        /**
+         * Returns authorizations for a workflow-run request. Gitea run requests use Gitea token variables with
+         * {@code token ...}; GitHub requests keep JetBrains GitHub account and {@code Bearer ...} token priority.
+         *
+         * @param apiUrl REST API URL configured for the run
+         * @param workflowPath workflow file path being dispatched
+         * @param tokenEnvVar optional token environment variable configured for the run
+         * @param project project used when JetBrains GitHub tokens need to be requested
+         * @return ordered authorizations ending with anonymous access
+         */
+        public static List<Authorization> forWorkflowRun(
+                final String apiUrl,
+                final String workflowPath,
+                final String tokenEnvVar,
+                final Project project
+        ) {
+            return forWorkflowRun(apiUrl, workflowPath, tokenEnvVar, project, System.getenv());
+        }
+
+        /**
+         * Returns authorizations for a workflow-run request using the supplied environment map.
+         *
+         * @param apiUrl REST API URL configured for the run
+         * @param workflowPath workflow file path being dispatched
+         * @param tokenEnvVar optional token environment variable configured for the run
+         * @param project project used when JetBrains GitHub tokens need to be requested
+         * @param environment environment variables used for explicit and default tokens
+         * @return ordered authorizations ending with anonymous access
+         */
+        public static List<Authorization> forWorkflowRun(
+                final String apiUrl,
+                final String workflowPath,
+                final String tokenEnvVar,
+                final Project project,
+                final Map<String, String> environment
+        ) {
+            return forServer(Server.fromWorkflowRun(apiUrl, workflowPath, tokenEnvVar), project, environment);
+        }
+
+        public static List<Authorization> forServer(final Server server, final Project project) {
+            return forServer(server, project, System.getenv());
+        }
+
+        /**
+         * Returns authorizations for a configured remote provider. GitHub providers reuse JetBrains GitHub accounts
+         * and GitHub token environment variables. Gitea providers use only configured or Gitea-specific environment
+         * tokens because JetBrains has no compatible Gitea account store here.
+         *
+         * @param server configured remote provider
+         * @param project project used when JetBrains GitHub tokens need to be requested
+         * @param environment environment variables used for explicit and default tokens
+         * @return ordered authorizations ending with anonymous access
+         */
+        public static List<Authorization> forServer(
+                final Server server,
+                final Project project,
+                final Map<String, String> environment
+        ) {
+            final Server normalized = Optional.ofNullable(server).orElseGet(Settings::defaultGitHub).normalized();
+            if (normalized.isGitea()) {
+                final LinkedHashMap<String, Authorization> result = new LinkedHashMap<>();
+                envAuthorizations(normalized.tokenEnvVar, environment, DEFAULT_GITEA_ENV_TOKENS, "token ")
+                        .forEach(authorization -> result.putIfAbsent(authorization.key(), authorization));
+                result.putIfAbsent(Authorization.anonymous().key(), Authorization.anonymous());
+                return List.copyOf(result.values());
+            }
+            return forGithubApiUrl(normalized.apiUrl, normalized.tokenEnvVar, project, environment);
+        }
+
+        private static List<Authorization> forGithubApiUrl(
+                final String apiUrl,
+                final String tokenEnvVar,
+                final Project project,
+                final Map<String, String> environment
+        ) {
             final LinkedHashMap<String, Authorization> result = new LinkedHashMap<>();
             orderedAccountsFor(apiUrl).stream()
                     .map(account -> authorization(account, project))
                     .flatMap(Optional::stream)
                     .forEach(authorization -> result.putIfAbsent(authorization.key(), authorization));
-            envAuthorizations(tokenEnvVar, environment)
+            envAuthorizations(tokenEnvVar, environment, DEFAULT_GITHUB_ENV_TOKENS, "Bearer ")
                     .forEach(authorization -> result.putIfAbsent(authorization.key(), authorization));
             result.putIfAbsent(Authorization.anonymous().key(), Authorization.anonymous());
             return List.copyOf(result.values());
@@ -551,24 +699,34 @@ public class RemoteActionProviders {
             }
         }
 
-        private static List<Authorization> envAuthorizations(final String tokenEnvVar, final Map<String, String> environment) {
+        private static List<Authorization> envAuthorizations(
+                final String tokenEnvVar,
+                final Map<String, String> environment,
+                final List<String> defaultTokenEnvVars,
+                final String authorizationPrefix
+        ) {
             final LinkedHashMap<String, Authorization> result = new LinkedHashMap<>();
-            envAuthorization(tokenEnvVar, environment).ifPresent(authorization -> result.putIfAbsent(authorization.key(), authorization));
-            DEFAULT_ENV_TOKENS.stream()
+            final Map<String, String> values = Optional.ofNullable(environment).orElseGet(Map::of);
+            envAuthorization(tokenEnvVar, values, authorizationPrefix).ifPresent(authorization -> result.putIfAbsent(authorization.key(), authorization));
+            defaultTokenEnvVars.stream()
                     .filter(name -> !name.equals(tokenEnvVar))
-                    .map(name -> envAuthorization(name, environment))
+                    .map(name -> envAuthorization(name, values, authorizationPrefix))
                     .flatMap(Optional::stream)
                     .forEach(authorization -> result.putIfAbsent(authorization.key(), authorization));
             return List.copyOf(result.values());
         }
 
-        private static Optional<Authorization> envAuthorization(final String tokenEnvVar, final Map<String, String> environment) {
+        private static Optional<Authorization> envAuthorization(
+                final String tokenEnvVar,
+                final Map<String, String> environment,
+                final String authorizationPrefix
+        ) {
             return Optional.ofNullable(tokenEnvVar)
                     .map(String::trim)
                     .filter(RemoteActionProviders::hasText)
                     .flatMap(name -> Optional.ofNullable(environment.get(name))
                             .filter(RemoteActionProviders::hasText)
-                            .map(token -> new Authorization(name, "Bearer " + token)));
+                            .map(token -> new Authorization(name, authorizationPrefix + token)));
         }
 
         private static Project project(final Project project) {
@@ -615,6 +773,26 @@ public class RemoteActionProviders {
     private static String trimTrailingSlash(final String value) {
         final String trimmed = Optional.ofNullable(value).map(String::trim).orElse("");
         return trimmed.endsWith("/") ? trimmed.substring(0, trimmed.length() - 1) : trimmed;
+    }
+
+    private static String webUrlFromApiUrl(final String apiUrl) {
+        final String trimmed = trimTrailingSlash(apiUrl);
+        if (trimmed.equals("https://api.github.com")) {
+            return "https://github.com";
+        }
+        return trimmed.replaceFirst("/api/v(?:1|3)$", "");
+    }
+
+    private static boolean looksLikeGitea(
+            final String apiUrl,
+            final String workflowPath,
+            final String tokenEnvVar
+    ) {
+        final String normalizedWorkflowPath = Optional.ofNullable(workflowPath).orElse("").replace('\\', '/');
+        final String normalizedTokenEnvVar = Optional.ofNullable(tokenEnvVar).orElse("").toUpperCase();
+        return normalizedWorkflowPath.startsWith(".gitea/workflows/")
+                || trimTrailingSlash(apiUrl).endsWith("/api/v1")
+                || normalizedTokenEnvVar.contains("GITEA");
     }
 
     private static boolean hasText(final String value) {

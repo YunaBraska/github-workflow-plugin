@@ -341,9 +341,9 @@ public class WorkflowRunProcessHandler extends ProcessHandler {
     }
 
     private String workflowUrl() {
-        final String webUrl = request.apiUrl().equals("https://api.github.com")
-                ? "https://github.com"
-                : request.apiUrl().replaceFirst("/api/v3/?$", "");
+        final String webUrl = RemoteActionProviders.Server
+                .fromWorkflowRun(request.apiUrl(), request.workflowPath(), request.tokenEnvVar())
+                .webUrl;
         return " (" + webUrl + "/" + request.owner() + "/" + request.repo() + "/blob/" + request.ref() + "/" + request.workflowPath() + ")";
     }
 

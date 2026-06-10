@@ -69,11 +69,21 @@ public class WorkflowRun {
         this(new JdkHttpTransport(HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(5))
                 .followRedirects(HttpClient.Redirect.NORMAL)
-                .build()), request -> RemoteActionProviders.Authorizations.forApiUrl(request.apiUrl(), request.tokenEnvVar(), project));
+                .build()), request -> RemoteActionProviders.Authorizations.forWorkflowRun(
+                request.apiUrl(),
+                request.workflowPath(),
+                request.tokenEnvVar(),
+                project
+        ));
     }
 
     WorkflowRun(final HttpTransport transport) {
-        this(transport, request -> RemoteActionProviders.Authorizations.forApiUrl(request.apiUrl(), request.tokenEnvVar(), null));
+        this(transport, request -> RemoteActionProviders.Authorizations.forWorkflowRun(
+                request.apiUrl(),
+                request.workflowPath(),
+                request.tokenEnvVar(),
+                null
+        ));
     }
 
     WorkflowRun(final HttpTransport transport, final AuthorizationProvider authorizationProvider) {
@@ -85,7 +95,7 @@ public class WorkflowRun {
         final HttpResponse<String> response = send(
                 request,
                 "POST",
-                workflowUrl(request) + "/dispatches",
+                dispatchUrl(request),
                 dispatchBody(request),
                 "GitHub workflow dispatch"
         );
@@ -169,7 +179,7 @@ public class WorkflowRun {
         final HttpResponse<String> response = send(
                 request,
                 "GET",
-                workflowUrl(request) + "/runs?branch=" + encode(request.ref()) + "&event=workflow_dispatch&per_page=1",
+                latestRunsUrl(request),
                 "",
                 "GitHub workflow run discovery"
         );
@@ -363,9 +373,13 @@ public class WorkflowRun {
     ) {
         final HttpRequest.Builder builder = HttpRequest.newBuilder(URI.create(url))
                 .timeout(TIMEOUT)
-                .header("Accept", "application/vnd.github+json")
-                .header("X-GitHub-Api-Version", API_VERSION)
                 .header("User-Agent", "GitHub-Workflow-Plugin");
+        if (server(workflow).isGitea()) {
+            builder.header("Accept", "application/json");
+        } else {
+            builder.header("Accept", "application/vnd.github+json");
+            builder.header("X-GitHub-Api-Version", API_VERSION);
+        }
         if (authorization.authenticated()) {
             builder.header("Authorization", authorization.authorizationHeader());
         }
@@ -473,6 +487,20 @@ public class WorkflowRun {
         return request.apiUrl() + "/repos/" + encode(request.owner()) + "/" + encode(request.repo()) + "/actions/workflows/" + encode(workflowId(request.workflowPath()));
     }
 
+    private static String dispatchUrl(final Request request) {
+        final String url = workflowUrl(request) + "/dispatches";
+        return server(request).isGitea() ? url + "?return_run_details=true" : url;
+    }
+
+    private static String latestRunsUrl(final Request request) {
+        final RemoteActionProviders.Server server = server(request);
+        final String baseUrl = server.isGitea()
+                ? request.apiUrl() + "/repos/" + encode(request.owner()) + "/" + encode(request.repo()) + "/actions/runs"
+                : workflowUrl(request) + "/runs";
+        final String pageLimit = server.isGitea() ? "limit=1" : "per_page=1";
+        return baseUrl + "?branch=" + encode(request.ref()) + "&event=workflow_dispatch&" + pageLimit;
+    }
+
     private static String authorizationCacheKey(final Request request) {
         return Optional.ofNullable(request.apiUrl()).orElse("") + "|" + Optional.ofNullable(request.tokenEnvVar()).orElse("");
     }
@@ -485,6 +513,10 @@ public class WorkflowRun {
         final String normalized = Optional.ofNullable(workflowPath).orElse("").replace('\\', '/');
         final int slash = normalized.lastIndexOf('/');
         return slash < 0 ? normalized : normalized.substring(slash + 1);
+    }
+
+    private static RemoteActionProviders.Server server(final Request request) {
+        return RemoteActionProviders.Server.fromWorkflowRun(request.apiUrl(), request.workflowPath(), request.tokenEnvVar());
     }
 
     private static String dispatchBody(final Request request) {

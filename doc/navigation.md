@@ -38,6 +38,7 @@ Editor behavior should be tested through IntelliJ fixture entrypoints. See:
 
 - `doc/adr/0008-test-through-editor-and-runtime-boundaries.md`
 - `doc/spec/editor-test-matrix.md`
+- `doc/spec/gitea-github-actions-compatibility.md`
 
 Remote GitHub behavior should use fake HTTP servers or explicit client boundaries. Network access in tests is guilty
 until proven innocent.

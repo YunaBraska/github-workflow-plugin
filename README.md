@@ -74,8 +74,19 @@ The project uses the Gradle wrapper and Java 25. No manual JetBrains JDK path is
 Plugin downloads the IDE, bundled plugins, verifier, and test runtime.
 
 1. Install Java 25 and make it available as `java`.
-2. Run `./gradlew test` for the fast regression suite.
+2. Run `./gradlew test` for the regression suite, including the Docker-backed Gitea smoke test.
 3. Run `./gradlew check verifyPlugin buildPlugin` before publishing or opening a release PR.
+
+Gitea smoke test controls:
+
+```sh
+./gradlew test --tests com.github.yunabraska.githubworkflow.git.GiteaDockerIntegrationTest --rerun-tasks
+GITEA_DOCKER_TEST=false ./gradlew test
+```
+
+That starts the official rootless Gitea Docker image, seeds a tiny repository, and checks action plus `.gitea/workflows`
+metadata through the same remote resolver. Set `GITEA_DOCKER_TEST=false` to skip it locally, or override the image with
+`GITEA_IMAGE` when testing another Gitea release.
 
 ## Release Automation
 

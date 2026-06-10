@@ -21,6 +21,8 @@ Official syntax references:
 - Resolved actions with cached major-version refs show an update quick-fix for older `v?\d+` refs.
 - Remote `uses` ref completion for tags/branches resolved from public GitHub and GitHub Enterprise-shaped servers
   through fake HTTP servers.
+- Gitea-compatible `/api/v1` remote metadata resolution is covered through fake HTTP tests and a default-on Docker smoke
+  test against the official rootless Gitea image on Unix-like hosts. Set `GITEA_DOCKER_TEST=false` to skip it.
 - GitHub Enterprise servers registered in JetBrains GitHub settings are used as remote metadata sources; the plugin does
   not add a parallel server settings UI.
 - Cache actions and settings are registered through `plugin.xml`, localized through resource bundles, and covered by

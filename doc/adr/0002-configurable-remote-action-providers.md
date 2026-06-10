@@ -24,10 +24,17 @@ tokens.
 Use a JDK fake HTTP server in tests for GitHub Enterprise-shaped API behavior. Tests may inject temporary server
 definitions directly into the service; that is not a user-facing settings surface.
 
+Reuse the same provider boundary for Gitea-compatible API behavior where possible. Gitea differs by using `/api/v1` and
+`Authorization: token ...`, so tests cover that provider type explicitly. Do not add a Gitea account UI unless real
+user-facing configuration becomes necessary.
+
 ## Consequences
 
 Self-hosted GitHub action metadata can be resolved, linked, highlighted, styled, documented, and completed without
 contacting public GitHub in tests.
+
+Gitea action and `.gitea/workflows` metadata can be tested through fake `/api/v1` responses and a default-on Docker
+smoke test without duplicating the GitHub resolver. `GITEA_DOCKER_TEST=false` keeps local escape hatches explicit.
 
 The plugin stays boring: no duplicate account UI, no token storage, and fewer settings to test.
 
