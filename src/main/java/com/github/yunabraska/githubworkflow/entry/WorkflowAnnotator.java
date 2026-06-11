@@ -196,7 +196,12 @@ public class WorkflowAnnotator implements Annotator {
         }
         WorkflowLocation.from(psiElement)
                 .filter(WorkflowAnnotator::shouldValidateWorkflowSyntax)
-                .ifPresent(location -> validateWorkflowKeyValue(holder, location.keyValue(), location.path()));
+                .ifPresent(location -> validateWorkflowKeyValue(
+                        holder,
+                        location.keyValue(),
+                        location.path(),
+                        WorkflowSyntax.providerFor(location.keyValue())
+                ));
     }
 
     private static boolean shouldValidateWorkflowSyntax(final WorkflowLocation location) {
@@ -208,17 +213,23 @@ public class WorkflowAnnotator implements Annotator {
                 && WorkflowPsi.getChild(element.getContainingFile(), "runs").isEmpty();
     }
 
-    private static void validateWorkflowKeyValue(final AnnotationHolder holder, final YAMLKeyValue element, final List<String> path) {
-        WorkflowSyntax.validationKeysForPath(path).ifPresent(keys -> {
+    private static void validateWorkflowKeyValue(
+            final AnnotationHolder holder,
+            final YAMLKeyValue element,
+            final List<String> path,
+            final WorkflowSyntax.Provider provider
+    ) {
+        WorkflowSyntax.validationKeysForPath(path, provider).ifPresent(keys -> {
             validateKnownKey(holder, element, keys.values(), keys.messageKey());
-            validateWorkflowPropertyValue(holder, element, path);
+            validateWorkflowPropertyValue(holder, element, path, provider);
         });
     }
 
     private static void validateWorkflowPropertyValue(
             final AnnotationHolder holder,
             final YAMLKeyValue element,
-            final List<String> path
+            final List<String> path,
+            final WorkflowSyntax.Provider provider
     ) {
         final String key = element.getKeyText();
         if (isChildOf(path, FIELD_ON, "workflow_dispatch", FIELD_INPUTS)
@@ -229,10 +240,10 @@ public class WorkflowAnnotator implements Annotator {
             validateKnownValue(holder, element, WorkflowSyntax.booleanValues(), "inspection.workflow.syntax.unknownTriggerValue");
         }
         if (pathMatches(path, FIELD_ON, "*") && "types".equals(key)) {
-            validateKnownValue(holder, element, WorkflowSyntax.eventActivityTypesFor(path.get(1)), "inspection.workflow.syntax.unknownTriggerValue");
+            validateKnownValue(holder, element, WorkflowSyntax.eventActivityTypesFor(path.get(1), provider), "inspection.workflow.syntax.unknownTriggerValue");
         }
         if (pathEndsWith(path, "permissions")) {
-            validateKnownValue(holder, element, WorkflowSyntax.permissionValuesFor(key), "inspection.workflow.syntax.unknownPermissionValue");
+            validateKnownValue(holder, element, WorkflowSyntax.permissionValuesFor(key, provider), "inspection.workflow.syntax.unknownPermissionValue");
         }
     }
 

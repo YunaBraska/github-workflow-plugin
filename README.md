@@ -66,7 +66,7 @@ _[See Screenshots](https://plugins.jetbrains.com/plugin/21396-github-workflow)_
   matching IDE accounts first, then other IDE GitHub accounts, then `GITHUB_TOKEN`, `GH_TOKEN`, `GITHUB_PAT`, then
   anonymous access. An optional token environment variable can still be set explicitly for custom setups. GitHub log
   timestamps, groups, command markers, and ANSI color codes are compacted before display.
-* **Usage**: Enjoy autocomplete, syntax highlighting, and much more as you code your GitHub Workflows and Actions.
+* **Usage**: Enjoy autocomplete, syntax highlighting, and much more as you code GitHub or Gitea Workflows and Actions.
 
 ## Local Development
 

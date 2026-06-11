@@ -806,6 +806,37 @@ public class WorkflowSyntaxCompletionTest extends EditorFeatureTestCase {
                 .containsEntry("models", "GitHub Models");
     }
 
+    public void testGiteaPermissionScopeCompletionUsesGiteaTokenScopes() {
+        assertThat(completeGiteaWorkflow("""
+                name: Completion
+                on: workflow_dispatch
+                permissions:
+                  <caret>
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo ok
+                """)).contains("actions", "contents", "code", "releases", "wiki", "projects", "packages")
+                .doesNotContain("id-token", "statuses", "checks", "deployments", "pages", "security-events");
+    }
+
+    public void testGiteaPermissionScopeCompletionKeepsDescriptionsTranslated() {
+        assertThat(completeGiteaWorkflowTypeTexts("""
+                name: Completion
+                on: workflow_dispatch
+                permissions:
+                  <caret>
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo ok
+                """)).containsEntry("contents", "Repository contents")
+                .containsEntry("wiki", "Wiki page changed")
+                .containsEntry("projects", "Classic project changed");
+    }
+
     public void testPermissionValueCompletionSuggestsReadWriteNone() {
         assertThat(completeWorkflow("""
                 name: Completion
@@ -831,6 +862,34 @@ public class WorkflowSyntaxCompletionTest extends EditorFeatureTestCase {
                     steps:
                       - run: echo ok
                 """)).contains("read-all", "write-all", "{}");
+    }
+
+    public void testGiteaPermissionShorthandCompletionUsesDocumentedValues() {
+        assertThat(completeGiteaWorkflow("""
+                name: Completion
+                on: workflow_dispatch
+                permissions: <caret>
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo ok
+                """)).contains("read-all", "write-all")
+                .doesNotContain("{}");
+    }
+
+    public void testGiteaScheduleCompletionSuggestsCronAliases() {
+        assertThat(completeGiteaWorkflow("""
+                name: Completion
+                on:
+                  schedule:
+                    - cron: <caret>
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo ok
+                """)).contains("@yearly", "@monthly", "@weekly", "@daily", "@hourly");
     }
 
     public void testIdTokenPermissionCompletionSuggestsOnlyWriteOrNone() {
@@ -2002,6 +2061,18 @@ public class WorkflowSyntaxCompletionTest extends EditorFeatureTestCase {
 
     private Map<String, String> completeWorkflowTypeTexts(final String text) {
         configureWorkflow(text);
+        final LookupElement[] elements = myFixture.completeBasic();
+        assertThat(elements).isNotNull();
+        return java.util.Arrays.stream(elements)
+                .collect(Collectors.toMap(
+                        LookupElement::getLookupString,
+                        WorkflowSyntaxCompletionTest::typeText,
+                        (left, right) -> left
+                ));
+    }
+
+    private Map<String, String> completeGiteaWorkflowTypeTexts(final String text) {
+        configureGiteaWorkflowProjectFile(text);
         final LookupElement[] elements = myFixture.completeBasic();
         assertThat(elements).isNotNull();
         return java.util.Arrays.stream(elements)

@@ -58,6 +58,8 @@ Official syntax references:
   `runner.*`, including `runner.debug`, `job.*`, nested `job.container.*`, strict local `job.services.*`, `strategy.*`,
   `matrix.*`, and unknown external `vars.*` contexts.
 - `gitea.*` context highlighting and completion uses the same key map as `github.*`.
+- `.gitea/workflows/*` syntax uses Gitea token permission scopes, Gitea permission shorthand values, and Gitea cron
+  alias completion without leaking GitHub-only permission scopes from the bundled GitHub schema.
 - `job.services.<service_id>` validation/completion/reference/styling from local job service definitions, including `id`, `network`, `ports`, and mapped port keys.
 - Matrix keys from direct `strategy.matrix` entries and `strategy.matrix.include`.
 - `steps.<id>.outputs.<name>` validation and completion for previous run outputs, multiline `$GITHUB_OUTPUT`, `tee -a $GITHUB_OUTPUT`, and resolved action outputs.

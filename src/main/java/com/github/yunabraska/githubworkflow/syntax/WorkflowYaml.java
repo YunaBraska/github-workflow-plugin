@@ -287,6 +287,28 @@ public class WorkflowYaml {
                 || path.getName(path.getNameCount() - 3).toString().equalsIgnoreCase(".gitea"));
     }
 
+    /**
+     * Checks whether a path is a Gitea Actions workflow file.
+     *
+     * @param path file path to inspect
+     * @return true for YAML files under {@code .gitea/workflows}
+     */
+    public static boolean isGiteaWorkflowFile(final Path path) {
+        return isWorkflowFile(path)
+                && path.getName(path.getNameCount() - 3).toString().equalsIgnoreCase(".gitea");
+    }
+
+    /**
+     * Checks whether a path is a GitHub Actions workflow file.
+     *
+     * @param path file path to inspect
+     * @return true for YAML files under {@code .github/workflows}
+     */
+    public static boolean isGithubWorkflowFile(final Path path) {
+        return isWorkflowFile(path)
+                && path.getName(path.getNameCount() - 3).toString().equalsIgnoreCase(".github");
+    }
+
     public static boolean isWorkflowTemplatePropertiesFile(final Path path) {
         return path.getNameCount() > 2
                 && path.getName(path.getNameCount() - 3).toString().equalsIgnoreCase(".github")

@@ -32,16 +32,17 @@ shared behavior first and branch only where Gitea really differs. Tiny forks, no
 | Artifacts | Run artifact list plus artifact ZIP | Same core paths in Gitea OpenAPI | Existing artifact list/download path is shared. |
 | Context root | `github.*` | `gitea.*`, with `github.*` as alias | Completion/highlighting covers `gitea.*` using the GitHub-compatible key map. |
 | Absolute action URLs | GitHub syntax is usually `owner/repo[/path]@ref` | Absolute URLs are supported | Remote resolver supports absolute URLs for configured servers. |
+| Cron aliases | GitHub uses POSIX cron expressions | Gitea also accepts `@yearly`, `@monthly`, `@weekly`, `@daily`, `@hourly` | `.gitea/workflows` cron completion suggests the Gitea aliases. |
+| Permission scopes | GitHub has GitHub-only scopes such as `id-token`, `statuses`, `pages` | Gitea has `code`, `releases`, `wiki`, `projects`, and a smaller shared scope set | `.gitea/workflows` completion and validation use the Gitea scope set. |
+| Permission shorthand | GitHub completion includes `read-all`, `write-all`, and `{}` | Gitea documents `read-all` and `write-all` scalar values | `.gitea/workflows` shorthand completion stays on documented Gitea values. |
 
 ## Differences To Keep Watching
 
 | Area | Gitea behavior | Plugin risk | Suggested handling |
 | --- | --- | --- | --- |
-| Non-standard cron aliases | Gitea supports `@yearly`, `@monthly`, `@weekly`, `@daily`, `@hourly`; GitHub does not. | GitHub-style validation may mark valid Gitea schedules as odd. | Add Gitea-aware completion/validation once workflow provider detection is available in syntax checks. |
 | Ignored job keys | Gitea currently ignores `jobs.<job_id>.timeout-minutes`, `continue-on-error`, and `environment`. | Warnings should not imply Gitea will enforce these keys. | Keep syntax valid, optionally show Gitea-specific weak info later. |
 | Complex `runs-on` | Gitea supports scalar or single-item array forms, not GitHub's richer runner targeting. | Completion may suggest shapes Gitea does not execute. | Keep GitHub completion by default; add Gitea-aware validation only for `.gitea/workflows`. |
 | Expressions | Gitea comparison says only `always()` is supported from expression functions. | GitHub-rich expression completion can overpromise in Gitea files. | Treat as future Gitea-specific inspection, not a parser fork. |
-| Permission scopes | Gitea supports a subset plus `code`, `releases`, `wiki`, `projects`; GitHub supports scopes such as `statuses`, `checks`, `deployments`, `id-token`, `security-events`, and `pages`. | Current permission completion is GitHub-shaped. | Add provider-aware permission scopes for `.gitea/workflows`. |
 | Problem matchers and annotations | Gitea ignores problem matchers and workflow command annotations. | Log rendering can still color warnings/errors locally; remote UI may not. | No code change needed unless we add Gitea-specific docs. |
 | Default action source | Gitea may resolve unqualified `uses:` through instance config (`github` or `self`). | Plugin cannot know server admin config. | Keep configured-server absolute URL support; do not guess admin config. |
 | Secret and variable names | Gitea disallows user-created names starting with `GITHUB_` or `GITEA_`; variables are uppercased. | Future settings/UI for external variables must enforce Gitea naming rules. | Documented only; no external variable CRUD exists. |

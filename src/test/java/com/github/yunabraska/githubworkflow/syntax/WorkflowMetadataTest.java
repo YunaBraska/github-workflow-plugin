@@ -162,6 +162,10 @@ public class WorkflowMetadataTest {
         assertThat(WorkflowYaml.isWorkflowFile(Path.of("repo", ".github", "workflows", "build.yml"))).isTrue();
         assertThat(WorkflowYaml.isWorkflowFile(Path.of("repo", ".github", "workflows", "build.yaml"))).isTrue();
         assertThat(WorkflowYaml.isWorkflowFile(Path.of("repo", ".gitea", "workflows", "build.yml"))).isTrue();
+        assertThat(WorkflowYaml.isGithubWorkflowFile(Path.of("repo", ".github", "workflows", "build.yml"))).isTrue();
+        assertThat(WorkflowYaml.isGithubWorkflowFile(Path.of("repo", ".gitea", "workflows", "build.yml"))).isFalse();
+        assertThat(WorkflowYaml.isGiteaWorkflowFile(Path.of("repo", ".gitea", "workflows", "build.yml"))).isTrue();
+        assertThat(WorkflowYaml.isGiteaWorkflowFile(Path.of("repo", ".github", "workflows", "build.yml"))).isFalse();
         assertThat(WorkflowYaml.isWorkflowFile(Path.of("repo", ".github", "not-workflows", "build.yml"))).isFalse();
         assertThat(WorkflowYaml.isWorkflowFile(Path.of("repo", "workflows", "build.yml"))).isFalse();
     }
