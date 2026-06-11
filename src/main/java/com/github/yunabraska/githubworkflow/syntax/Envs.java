@@ -15,9 +15,9 @@ import java.util.Map;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
-import static com.github.yunabraska.githubworkflow.syntax.WorkflowContextCatalog.DEFAULT_VALUE_MAP;
 import static com.github.yunabraska.githubworkflow.syntax.WorkflowContextCatalog.FIELD_ENVS;
 import static com.github.yunabraska.githubworkflow.syntax.WorkflowContextCatalog.FIELD_RUN;
+import static com.github.yunabraska.githubworkflow.syntax.WorkflowContextCatalog.defaultEnvs;
 import static com.github.yunabraska.githubworkflow.syntax.WorkflowAnnotations.ifEnoughItems;
 import static com.github.yunabraska.githubworkflow.syntax.WorkflowAnnotations.isDefinedItem0;
 import static com.github.yunabraska.githubworkflow.syntax.WorkflowPsi.getAllElements;
@@ -54,7 +54,7 @@ public class Envs {
         addWorkflowEnvs(psiElement, result);
 
         //DEFAULT ENVS
-        addDefaultEnvs(result);
+        addDefaultEnvs(psiElement, result);
 
         return result;
     }
@@ -103,8 +103,8 @@ public class Envs {
                 .collect(Collectors.toMap(YAMLKeyValue::getKeyText, keyValue -> getText(keyValue).orElse(""), (existing, replacement) -> existing));
     }
 
-    private static void addDefaultEnvs(final List<SimpleElement> result) {
-        result.addAll(completionItemsOf(DEFAULT_VALUE_MAP.get(FIELD_ENVS).get(), ICON_ENV));
+    private static void addDefaultEnvs(final PsiElement psiElement, final List<SimpleElement> result) {
+        result.addAll(completionItemsOf(defaultEnvs(WorkflowSyntax.providerFor(psiElement)), ICON_ENV));
     }
 
     private Envs() {

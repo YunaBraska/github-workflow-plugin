@@ -55,7 +55,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.nio.file.Path;
-import java.util.function.Supplier;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
@@ -185,12 +184,9 @@ public class WorkflowCompletion extends CompletionContributor {
         if (!isCompletingRunEnvironmentVariable(trigger.completionPsi())) {
             return false;
         }
-        final Map<String, String> defaults = ofNullable(DEFAULT_VALUE_MAP.get(FIELD_ENVS))
-                .map(Supplier::get)
-                .orElseGet(Collections::emptyMap);
         addLookupElements(
                 trigger.resultSet().withPrefixMatcher(trigger.prefix()),
-                defaults,
+                defaultEnvs(WorkflowSyntax.providerFor(trigger.position())),
                 NodeIcon.ICON_ENV,
                 Character.MIN_VALUE
         );
@@ -863,8 +859,7 @@ public class WorkflowCompletion extends CompletionContributor {
     }
 
     private static void addDefaultWorkflowCompletionItems(final int i, final PsiElement position, final Map<Integer, List<SimpleElement>> completionItemMap) {
-        ofNullable(DEFAULT_VALUE_MAP.getOrDefault(FIELD_DEFAULT, null))
-                .map(Supplier::get)
+        ofNullable(expressionRoots(WorkflowSyntax.providerFor(position)))
                 .map(map -> {
                     final Map<String, String> copyMap = new HashMap<>(map);
                     Optional.of(listInputs(position)).filter(List::isEmpty).ifPresent(empty -> copyMap.remove(FIELD_INPUTS));

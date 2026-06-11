@@ -1,6 +1,6 @@
 # Gitea And GitHub Actions Compatibility
 
-Last checked: 2026-06-10.
+Last checked: 2026-06-11.
 
 This note tracks behavior where Gitea Actions is close to GitHub Actions, but not identical. The plugin should prefer
 shared behavior first and branch only where Gitea really differs. Tiny forks, not a hydra.
@@ -35,17 +35,18 @@ shared behavior first and branch only where Gitea really differs. Tiny forks, no
 | Cron aliases | GitHub uses POSIX cron expressions | Gitea also accepts `@yearly`, `@monthly`, `@weekly`, `@daily`, `@hourly` | `.gitea/workflows` cron completion suggests the Gitea aliases. |
 | Permission scopes | GitHub has GitHub-only scopes such as `id-token`, `statuses`, `pages` | Gitea has `code`, `releases`, `wiki`, `projects`, and a smaller shared scope set | `.gitea/workflows` completion and validation use the Gitea scope set. |
 | Permission shorthand | GitHub completion includes `read-all`, `write-all`, and `{}` | Gitea documents `read-all` and `write-all` scalar values | `.gitea/workflows` shorthand completion stays on documented Gitea values. |
+| Complex `runs-on` | GitHub accepts richer runner targeting | Gitea supports scalar or single-item array forms | `.gitea/workflows` warns on multi-label arrays without affecting GitHub files. |
+| Expression functions | GitHub has a wider function set | Gitea documents `always()` only | `.gitea/workflows` completion offers `always()` and warns on known GitHub-only functions. |
+| Ignored job keys | GitHub executes `timeout-minutes`, `continue-on-error`, and `environment` | Gitea accepts but ignores them | `.gitea/workflows` keeps the keys valid and labels them as accepted runtime no-ops. |
+| Runtime names | GitHub exposes `GITHUB_TOKEN` and `GITHUB_*` names | Gitea exposes `GITEA_TOKEN` and `GITEA_*` names too | `.gitea/workflows` completion prefers `secrets.GITEA_TOKEN` and includes Gitea runner env variables. |
 
-## Differences To Keep Watching
+## Known Limitations / Do Not Guess
 
 | Area | Gitea behavior | Plugin risk | Suggested handling |
 | --- | --- | --- | --- |
-| Ignored job keys | Gitea currently ignores `jobs.<job_id>.timeout-minutes`, `continue-on-error`, and `environment`. | Warnings should not imply Gitea will enforce these keys. | Keep syntax valid, optionally show Gitea-specific weak info later. |
-| Complex `runs-on` | Gitea supports scalar or single-item array forms, not GitHub's richer runner targeting. | Completion may suggest shapes Gitea does not execute. | Keep GitHub completion by default; add Gitea-aware validation only for `.gitea/workflows`. |
-| Expressions | Gitea comparison says only `always()` is supported from expression functions. | GitHub-rich expression completion can overpromise in Gitea files. | Treat as future Gitea-specific inspection, not a parser fork. |
 | Problem matchers and annotations | Gitea ignores problem matchers and workflow command annotations. | Log rendering can still color warnings/errors locally; remote UI may not. | No code change needed unless we add Gitea-specific docs. |
 | Default action source | Gitea may resolve unqualified `uses:` through instance config (`github` or `self`). | Plugin cannot know server admin config. | Keep configured-server absolute URL support; do not guess admin config. |
-| Secret and variable names | Gitea disallows user-created names starting with `GITHUB_` or `GITEA_`; variables are uppercased. | Future settings/UI for external variables must enforce Gitea naming rules. | Documented only; no external variable CRUD exists. |
+| Secret and variable names | Gitea disallows user-created names starting with `GITHUB_` or `GITEA_`; variables are uppercased. | Future settings/UI for external variables must enforce Gitea naming rules. | Built-in names are completed; external variable CRUD does not exist yet. |
 
 ## Test Shape
 

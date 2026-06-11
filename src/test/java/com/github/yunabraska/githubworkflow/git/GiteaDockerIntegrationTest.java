@@ -11,6 +11,8 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.util.Base64;
 import java.util.List;
@@ -196,17 +198,27 @@ public class GiteaDockerIntegrationTest extends BasePlatformTestCase {
     }
 
     private static String run(final String... command) throws IOException, InterruptedException {
-        final Process process = new ProcessBuilder(command)
-                .redirectErrorStream(true)
-                .start();
-        final String output = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-        if (!process.waitFor(60, java.util.concurrent.TimeUnit.SECONDS)) {
-            process.destroyForcibly();
-            throw new IOException("Command timed out: " + String.join(" ", command));
+        final Path errorLog = Files.createTempFile("gitea-docker-", ".err");
+        try {
+            final Process process = new ProcessBuilder(command)
+                    .redirectError(errorLog.toFile())
+                    .start();
+            final String output = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+            if (!process.waitFor(60, java.util.concurrent.TimeUnit.SECONDS)) {
+                process.destroyForcibly();
+                throw new IOException("Command timed out [" + String.join(" ", command) + "]: " + commandOutput(output, errorLog));
+            }
+            if (process.exitValue() != 0) {
+                throw new IOException("Command failed [" + String.join(" ", command) + "]: " + commandOutput(output, errorLog));
+            }
+            return output;
+        } finally {
+            Files.deleteIfExists(errorLog);
         }
-        if (process.exitValue() != 0) {
-            throw new IOException("Command failed [" + String.join(" ", command) + "]: " + output);
-        }
-        return output;
+    }
+
+    private static String commandOutput(final String output, final Path errorLog) throws IOException {
+        final String error = Files.readString(errorLog, StandardCharsets.UTF_8);
+        return (output + System.lineSeparator() + error).trim();
     }
 }

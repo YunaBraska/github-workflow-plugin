@@ -392,6 +392,18 @@ public class WorkflowSyntaxCompletionTest extends EditorFeatureTestCase {
                 """)).contains("WORKFLOW_LEVEL", "JOB_LEVEL", "STEP_LEVEL", "RUN_LEVEL");
     }
 
+    public void testGiteaRunEnvironmentCompletionIncludesGiteaRunnerVariables() {
+        assertThat(completeGiteaWorkflow("""
+                name: Completion
+                on: workflow_dispatch
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo "$GITEA<caret>"
+                """)).contains("GITEA_OUTPUT", "GITEA_ENV", "GITEA_STEP_SUMMARY");
+    }
+
     public void testEnvCompletionIncludesJobEnvMapAliasValues() {
         assertThat(completeWorkflow("""
                 name: Completion
@@ -744,6 +756,19 @@ public class WorkflowSyntaxCompletionTest extends EditorFeatureTestCase {
                 """)).contains("description", "required");
     }
 
+    public void testGiteaSecretCompletionSuggestsGiteaToken() {
+        assertThat(completeGiteaWorkflow("""
+                name: Completion
+                on: workflow_dispatch
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo "${{ secrets.<caret> }}"
+                """)).contains("GITEA_TOKEN")
+                .doesNotContain("GITHUB_TOKEN");
+    }
+
     public void testWorkflowDispatchInputTypeCompletionSuggestsDispatchTypes() {
         assertThat(completeWorkflow("""
                 name: Completion
@@ -892,6 +917,19 @@ public class WorkflowSyntaxCompletionTest extends EditorFeatureTestCase {
                 """)).contains("@yearly", "@monthly", "@weekly", "@daily", "@hourly");
     }
 
+    public void testGiteaRootExpressionCompletionKeepsDocumentedFunctionSetSmall() {
+        assertThat(completeGiteaWorkflow("""
+                name: Completion
+                on: workflow_dispatch
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo "${{ <caret> }}"
+                """)).contains("always()")
+                .doesNotContain("success()", "failure()", "cancelled()", "hashFiles()", "startsWith()");
+    }
+
     public void testIdTokenPermissionCompletionSuggestsOnlyWriteOrNone() {
         assertThat(completeWorkflow("""
                 name: Completion
@@ -928,6 +966,18 @@ public class WorkflowSyntaxCompletionTest extends EditorFeatureTestCase {
                   build:
                     <caret>
                 """)).contains("runs-on", "permissions", "environment", "strategy", "container", "services", "uses");
+    }
+
+    public void testGiteaIgnoredJobKeysExplainRuntimeNoop() {
+        assertThat(completeGiteaWorkflowTypeTexts("""
+                name: Completion
+                on: workflow_dispatch
+                jobs:
+                  build:
+                    <caret>
+                """)).containsEntry("timeout-minutes", "Accepted by Gitea, ignored at runtime.")
+                .containsEntry("continue-on-error", "Accepted by Gitea, ignored at runtime.")
+                .containsEntry("environment", "Accepted by Gitea, ignored at runtime.");
     }
 
     public void testWorkflowSyntaxCompletionDescriptionsUseConfiguredLanguageAfterEnglishTableUse() {

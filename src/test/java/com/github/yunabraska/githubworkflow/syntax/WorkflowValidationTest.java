@@ -344,6 +344,43 @@ public class WorkflowValidationTest extends EditorFeatureTestCase {
                 """);
     }
 
+    public void testGiteaWarnsAboutMultipleRunsOnLabels() {
+        assertGiteaWorkflowHighlights("""
+                name: Syntax
+                on: workflow_dispatch
+                jobs:
+                  build:
+                    runs-on: <weak_warning descr="Gitea supports one runner label here">[self-hosted, linux]</weak_warning>
+                    steps:
+                      - run: echo ok
+                """);
+    }
+
+    public void testGiteaAcceptsSingleRunsOnLabelArray() {
+        assertGiteaWorkflowHighlights("""
+                name: Syntax
+                on: workflow_dispatch
+                jobs:
+                  build:
+                    runs-on: [ubuntu-latest]
+                    steps:
+                      - run: echo ok
+                """);
+    }
+
+    public void testGiteaWarnsAboutUnsupportedExpressionFunctions() {
+        assertGiteaWorkflowHighlights("""
+                name: Syntax
+                on: workflow_dispatch
+                jobs:
+                  build:
+                    if: always() && <weak_warning descr="Gitea only documents always() here: [startsWith()]">startsWith</weak_warning>(gitea.ref, 'refs/tags/')
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo "${{ <weak_warning descr="Gitea only documents always() here: [hashFiles()]">hashFiles</weak_warning>('package.json') }}"
+                """);
+    }
+
     public void testResolvedActionInputIsAccepted() {
         seedRemoteAction("owner/tool@v1", Map.of("known-input", "Known input"), Map.of());
 

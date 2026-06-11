@@ -250,6 +250,9 @@ job	services	completion.workflow.job.services
 job	uses	completion.workflow.job.uses
 job	with	completion.workflow.job.with
 job	secrets	completion.workflow.job.secrets
+job.gitea	environment	completion.workflow.job.gitea.ignored
+job.gitea	timeout-minutes	completion.workflow.job.gitea.ignored
+job.gitea	continue-on-error	completion.workflow.job.gitea.ignored
 defaultsRun	shell	completion.workflow.defaultsRun.shell
 defaultsRun	working-directory	completion.workflow.defaultsRun.working-directory
 concurrency	group	completion.workflow.concurrency.group

@@ -289,6 +289,7 @@ public class WorkflowMessagesTest {
                 "completion.workflow.permission.shorthand.empty",
                 "completion.workflow.job.runs-on",
                 "completion.workflow.job.steps",
+                "completion.workflow.job.gitea.ignored",
                 "completion.workflow.step.uses",
                 "completion.workflow.step.run",
                 "completion.workflow.defaultsRun.shell",
@@ -304,7 +305,12 @@ public class WorkflowMessagesTest {
                 "completion.workflow.credentials.password",
                 "completion.workflow.inputType.choice",
                 "completion.workflow.boolean.true",
-                "completion.workflow.runner.ubuntu-latest"
+                "completion.workflow.runner.ubuntu-latest",
+                "completion.secret.giteaToken",
+                "completion.env.gitea",
+                "completion.expressionFunction",
+                "inspection.workflow.syntax.giteaRunsOnSingleLabel",
+                "inspection.workflow.syntax.giteaExpressionFunction"
         );
         for (final String suffix : LOCALE_SUFFIXES) {
             final Locale locale = Locale.forLanguageTag(suffix.replace('_', '-'));

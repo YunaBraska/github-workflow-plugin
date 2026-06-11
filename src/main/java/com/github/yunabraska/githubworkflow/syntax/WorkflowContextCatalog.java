@@ -11,6 +11,7 @@ import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.function.Supplier;
 import java.util.regex.Pattern;
@@ -54,6 +55,29 @@ public class WorkflowContextCatalog {
     public static final String FIELD_OUTCOME = "outcome";
     public static final Map<String, Supplier<Map<String, String>>> DEFAULT_VALUE_MAP = initProcessorMap();
     public static final Map<String, String> SHELLS = initShells();
+    private static final List<String> GITEA_ENV_NAMES = List.of(
+            "GITEA_ACTIONS",
+            "GITEA_ACTIONS_RUNNER_VERSION",
+            "GITEA_ENV",
+            "GITEA_OUTPUT",
+            "GITEA_PATH",
+            "GITEA_STATE",
+            "GITEA_STEP_SUMMARY"
+    );
+    private static final List<String> GITHUB_EXPRESSION_FUNCTIONS = List.of(
+            "contains()",
+            "startsWith()",
+            "endsWith()",
+            "format()",
+            "join()",
+            "toJSON()",
+            "fromJSON()",
+            "hashFiles()",
+            "success()",
+            "always()",
+            "cancelled()",
+            "failure()"
+    );
 
     private static Map<String, Supplier<Map<String, String>>> initProcessorMap() {
         final Map<String, Supplier<Map<String, String>>> result = new LinkedHashMap<>();
@@ -65,6 +89,44 @@ public class WorkflowContextCatalog {
         result.put(FIELD_STRATEGY, WorkflowContextCatalog::getStrategyItems);
         result.put(FIELD_DEFAULT, WorkflowContextCatalog::getCaretBracketItems);
         return result;
+    }
+
+    /**
+     * Returns built-in runner environment variables for the selected workflow provider.
+     *
+     * @param provider workflow provider inferred from the edited file
+     * @return immutable map keyed by environment variable name with localized descriptions
+     */
+    public static Map<String, String> defaultEnvs(final WorkflowSyntax.Provider provider) {
+        final Map<String, String> result = new LinkedHashMap<>(getGitHubEnvs());
+        if (provider == WorkflowSyntax.Provider.GITEA) {
+            GITEA_ENV_NAMES.forEach(name -> result.putIfAbsent(name, message("completion.env.gitea")));
+        }
+        return Collections.unmodifiableMap(result);
+    }
+
+    /**
+     * Returns root expression contexts and functions for the selected workflow provider.
+     *
+     * @param provider workflow provider inferred from the edited file
+     * @return immutable map keyed by expression token with localized descriptions
+     */
+    public static Map<String, String> expressionRoots(final WorkflowSyntax.Provider provider) {
+        final Map<String, String> result = new LinkedHashMap<>(getCaretBracketItems());
+        final List<String> functions = provider == WorkflowSyntax.Provider.GITEA ? List.of("always()") : GITHUB_EXPRESSION_FUNCTIONS;
+        functions.forEach(function -> result.put(function, message("completion.expressionFunction")));
+        return Collections.unmodifiableMap(result);
+    }
+
+    /**
+     * Returns GitHub expression function names without parentheses.
+     *
+     * @return immutable list of known GitHub expression function names
+     */
+    public static List<String> githubExpressionFunctionNames() {
+        return GITHUB_EXPRESSION_FUNCTIONS.stream()
+                .map(function -> function.substring(0, function.indexOf('(')))
+                .toList();
     }
 
     private static Map<String, String> initShells() {
