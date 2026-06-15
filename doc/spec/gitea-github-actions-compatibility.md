@@ -51,6 +51,6 @@ shared behavior first and branch only where Gitea really differs. Tiny forks, no
 ## Test Shape
 
 - Fake HTTP tests cover provider inference, auth header scheme, dispatch URL, and run discovery URL.
-- The Docker-backed Gitea integration test runs by default and seeds a tiny repository to verify `/api/v1` metadata
-  resolution for actions and `.gitea/workflows`.
+- The Docker-backed Gitea integration test runs by default and seeds tiny repositories to verify `/api/v1` metadata
+  resolution plus a real `act_runner` workflow dispatch, run completion, job listing, and log download.
 - Keep Docker test opt-out explicit with `GITEA_DOCKER_TEST=false` for machines where Docker is unavailable.

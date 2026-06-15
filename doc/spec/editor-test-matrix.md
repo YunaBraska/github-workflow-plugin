@@ -22,7 +22,9 @@ Official syntax references:
 - Remote `uses` ref completion for tags/branches resolved from public GitHub and GitHub Enterprise-shaped servers
   through fake HTTP servers.
 - Gitea-compatible `/api/v1` remote metadata resolution is covered through fake HTTP tests and a default-on Docker smoke
-  test against the official rootless Gitea image on Unix-like hosts. Set `GITEA_DOCKER_TEST=false` to skip it.
+  test against the official rootless Gitea image. The same Docker suite also registers `act_runner`, dispatches a real
+  `.gitea/workflows` run through the plugin client, waits for completion, lists jobs, and downloads logs. Set
+  `GITEA_DOCKER_TEST=false` to skip it.
 - GitHub Enterprise servers registered in JetBrains GitHub settings are used as remote metadata sources; the plugin does
   not add a parallel server settings UI.
 - Cache actions and settings are registered through `plugin.xml`, localized through resource bundles, and covered by
