@@ -478,6 +478,9 @@ public class WorkflowAnnotator implements Annotator {
         final String body = element.getText().substring(relativeRange.getStartOffset(), relativeRange.getEndOffset());
         final Matcher matcher = EXPRESSION_FUNCTION.matcher(body);
         while (matcher.find()) {
+            if (insideQuotedString(body, matcher.start(1))) {
+                continue;
+            }
             final String name = matcher.group(1);
             if (!GITHUB_EXPRESSION_FUNCTIONS.contains(name) || GITEA_EXPRESSION_FUNCTIONS.contains(name)) {
                 continue;
@@ -492,6 +495,29 @@ public class WorkflowAnnotator implements Annotator {
                     null
             ).createAnnotation(element, new TextRange(start, end), holder);
         }
+    }
+
+    private static boolean insideQuotedString(final String text, final int offset) {
+        char quote = 0;
+        for (int index = 0; index < text.length() && index < offset; index++) {
+            final char current = text.charAt(index);
+            if (quote == '\'') {
+                if (current == '\'' && index + 1 < text.length() && text.charAt(index + 1) == '\'') {
+                    index++;
+                } else if (current == '\'') {
+                    quote = 0;
+                }
+            } else if (quote == '"') {
+                if (current == '\\' && index + 1 < text.length()) {
+                    index++;
+                } else if (current == '"') {
+                    quote = 0;
+                }
+            } else if (current == '\'' || current == '"') {
+                quote = current;
+            }
+        }
+        return quote != 0;
     }
 
     private static void highlightContext(

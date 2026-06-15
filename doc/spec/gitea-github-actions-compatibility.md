@@ -26,7 +26,7 @@ shared behavior first and branch only where Gitea really differs. Tiny forks, no
 | API auth header | `Authorization: Bearer ...` | `Authorization: token ...` | Gitea providers and runs use `token ...`; GitHub keeps IDE account plus bearer token priority. |
 | Token env fallback | `GITHUB_TOKEN`, `GH_TOKEN`, `GITHUB_PAT` | `GITEA_TOKEN`, `GITEA_PAT` | Gitea runs and metadata use Gitea token env names before anonymous access. |
 | Workflow dispatch result | GitHub returns run details on current API version | Gitea returns run details when `return_run_details=true` | Gitea dispatch adds `return_run_details=true`; both parse `workflow_run_id`, `run_url`, and `html_url`. |
-| Run discovery | Workflow-scoped or repository-scoped run listing | Repository-scoped `actions/runs` with `limit` | GitHub keeps workflow-scoped discovery; Gitea uses repo-level discovery with `limit=1`. |
+| Run discovery | Workflow-scoped or repository-scoped run listing | Repository-scoped `actions/runs` with `limit` and run `path` | GitHub keeps workflow-scoped discovery; Gitea reads a small repo-level window and picks the same workflow closest to dispatch time. |
 | Job logs | `/actions/jobs/{job_id}/logs` | Same path in Gitea OpenAPI | Existing job log download path is shared. |
 | Run jobs | `/actions/runs/{run}/jobs` | Same path in Gitea OpenAPI | Existing job tree polling path is shared. |
 | Artifacts | Run artifact list plus artifact ZIP | Same core paths in Gitea OpenAPI | Existing artifact list/download path is shared. |

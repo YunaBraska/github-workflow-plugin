@@ -6,11 +6,20 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import com.intellij.credentialStore.CredentialAttributes;
+import com.intellij.credentialStore.Credentials;
+import com.intellij.ide.passwordSafe.PasswordSafe;
 import com.intellij.ide.impl.ProjectUtil;
 import com.intellij.openapi.application.ApplicationManager;
+import com.intellij.openapi.components.PersistentStateComponent;
+import com.intellij.openapi.components.State;
+import com.intellij.openapi.components.Storage;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.project.ProjectManager;
+import com.intellij.util.xmlb.XmlSerializerUtil;
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 import org.jetbrains.plugins.github.authentication.GHAccountsUtil;
 import org.jetbrains.plugins.github.authentication.accounts.GithubAccount;
 import org.jetbrains.plugins.github.util.GHCompatibilityUtil;
@@ -31,7 +40,6 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.Function;
 import java.util.function.Predicate;
 
@@ -371,20 +379,142 @@ public class RemoteActionProviders {
         }
     }
 
-    public static class Settings {
+    @State(name = "GitHubWorkflowRemoteSettings", storages = {@Storage("githubWorkflowRemoteSettings.xml")})
+    public static class Settings implements PersistentStateComponent<Settings.StateData> {
 
         public static final String TYPE_GITHUB = "github";
         public static final String TYPE_GITEA = "gitea";
 
-        private final CopyOnWriteArrayList<Server> testServers = new CopyOnWriteArrayList<>();
+        public static class StateData {
+            public List<ServerState> servers = new ArrayList<>();
+        }
+
+        public static class ServerState {
+            public String type = TYPE_GITHUB;
+            public String name = "";
+            public String webUrl = "";
+            public String apiUrl = "";
+            public String tokenEnvVar = "";
+            public boolean enabled = true;
+
+            public ServerState() {
+                // XML serializer
+            }
+
+            ServerState(final Server server) {
+                final Server normalized = server.normalized();
+                type = normalized.type;
+                name = normalized.name;
+                webUrl = normalized.webUrl;
+                apiUrl = normalized.apiUrl;
+                tokenEnvVar = normalized.tokenEnvVar;
+                enabled = normalized.enabled;
+            }
+
+            Server server() {
+                return new Server(type, name, webUrl, apiUrl, tokenEnvVar, enabled).normalized();
+            }
+        }
+
+        private final StateData state = new StateData();
 
         public static Settings getInstance() {
             return ApplicationManager.getApplication().getService(Settings.class);
         }
 
+        @Override
+        public @Nullable StateData getState() {
+            return state;
+        }
+
+        @Override
+        public void loadState(@NotNull final StateData state) {
+            XmlSerializerUtil.copyBean(state, this.state);
+            if (this.state.servers == null) {
+                this.state.servers = new ArrayList<>();
+            }
+        }
+
+        /**
+         * Returns user-configured remote providers stored by this plugin.
+         *
+         * @return normalized configured providers, excluding invalid rows
+         */
+        public List<Server> customServers() {
+            return Optional.ofNullable(state.servers).orElseGet(List::of).stream()
+                    .map(ServerState::server)
+                    .filter(Server::isValid)
+                    .toList();
+        }
+
+        /**
+         * Replaces the user-configured remote providers stored by this plugin.
+         *
+         * @param servers provider metadata to persist; invalid rows are ignored
+         * @return this settings service
+         */
+        public Settings setCustomServers(final List<Server> servers) {
+            state.servers = Optional.ofNullable(servers).orElseGet(List::of).stream()
+                    .map(Server::normalized)
+                    .filter(Server::isValid)
+                    .map(ServerState::new)
+                    .collect(ArrayList::new, ArrayList::add, ArrayList::addAll);
+            return this;
+        }
+
+        /**
+         * Stores or replaces the Gitea token for the supplied provider in the IDE password safe.
+         *
+         * @param server provider whose normalized API URL identifies the token
+         * @param token personal access token
+         * @return this settings service
+         */
+        public Settings setGiteaToken(final Server server, final String token) {
+            final Server normalized = Optional.ofNullable(server).orElseGet(Settings::defaultGitHub).normalized();
+            if (normalized.isGitea() && hasText(token)) {
+                PasswordTokens.set(normalized, token);
+            }
+            return this;
+        }
+
+        /**
+         * Deletes the Gitea token for the supplied provider from the IDE password safe.
+         *
+         * @param server provider whose normalized API URL identifies the token
+         * @return this settings service
+         */
+        public Settings clearGiteaToken(final Server server) {
+            final Server normalized = Optional.ofNullable(server).orElseGet(Settings::defaultGitHub).normalized();
+            if (normalized.isGitea()) {
+                PasswordTokens.clear(normalized);
+            }
+            return this;
+        }
+
+        /**
+         * Reads the Gitea token for the supplied provider from the IDE password safe.
+         *
+         * @param server provider whose normalized API URL identifies the token
+         * @return token when one is stored and readable
+         */
+        public Optional<String> giteaToken(final Server server) {
+            final Server normalized = Optional.ofNullable(server).orElseGet(Settings::defaultGitHub).normalized();
+            return normalized.isGitea() ? PasswordTokens.get(normalized) : Optional.empty();
+        }
+
+        /**
+         * Reports whether the supplied Gitea provider has an IDE-stored token.
+         *
+         * @param server provider whose normalized API URL identifies the token
+         * @return true when a token is stored
+         */
+        public boolean hasGiteaToken(final Server server) {
+            return giteaToken(server).isPresent();
+        }
+
         public List<Server> enabledServers() {
             final Map<String, Server> result = new LinkedHashMap<>();
-            testServers.stream()
+            customServers().stream()
                     .map(Server::normalized)
                     .filter(Server::isValid)
                     .forEach(server -> result.put(server.key(), server));
@@ -392,14 +522,6 @@ public class RemoteActionProviders {
             final Server defaultGitHub = defaultGitHub();
             result.putIfAbsent(defaultGitHub.key(), defaultGitHub);
             return List.copyOf(result.values());
-        }
-
-        public void setCustomServers(final List<Server> servers) {
-            testServers.clear();
-            Optional.ofNullable(servers).orElseGet(List::of).stream()
-                    .map(Server::normalized)
-                    .filter(Server::isValid)
-                    .forEach(testServers::add);
         }
 
         public static Server defaultGitHub() {
@@ -430,6 +552,41 @@ public class RemoteActionProviders {
 
         private static int accountOrder(final GithubAccount account) {
             return account.getServer().isGithubDotCom() ? 0 : 1;
+        }
+
+        private static class PasswordTokens {
+
+            private static final String SERVICE_PREFIX = "GitHub Workflow Gitea ";
+
+            private static Optional<String> get(final Server server) {
+                try {
+                    return Optional.ofNullable(PasswordSafe.getInstance().get(attributes(server)))
+                            .map(Credentials::getPasswordAsString)
+                            .filter(RemoteActionProviders::hasText);
+                } catch (final RuntimeException ignored) {
+                    return Optional.empty();
+                }
+            }
+
+            private static void set(final Server server, final String token) {
+                try {
+                    PasswordSafe.getInstance().set(attributes(server), new Credentials(server.name, token));
+                } catch (final RuntimeException exception) {
+                    LOG.warn("Gitea token storage failed for [" + server.apiUrl + "]", exception);
+                }
+            }
+
+            private static void clear(final Server server) {
+                try {
+                    PasswordSafe.getInstance().set(attributes(server), null);
+                } catch (final RuntimeException exception) {
+                    LOG.warn("Gitea token deletion failed for [" + server.apiUrl + "]", exception);
+                }
+            }
+
+            private static CredentialAttributes attributes(final Server server) {
+                return new CredentialAttributes(SERVICE_PREFIX + server.normalized().apiUrl);
+            }
         }
     }
 
@@ -528,10 +685,11 @@ public class RemoteActionProviders {
         }
 
         public String authorizationHeader() {
-            return Optional.ofNullable(tokenEnvVar)
-                    .filter(RemoteActionProviders::hasText)
-                    .map(System::getenv)
-                    .filter(RemoteActionProviders::hasText)
+            return Settings.getInstance().giteaToken(this)
+                    .or(() -> Optional.ofNullable(tokenEnvVar)
+                            .filter(RemoteActionProviders::hasText)
+                            .map(System::getenv)
+                            .filter(RemoteActionProviders::hasText))
                     .map(token -> authorizationPrefix() + token)
                     .orElse("");
         }
@@ -636,6 +794,8 @@ public class RemoteActionProviders {
             final Server normalized = Optional.ofNullable(server).orElseGet(Settings::defaultGitHub).normalized();
             if (normalized.isGitea()) {
                 final LinkedHashMap<String, Authorization> result = new LinkedHashMap<>();
+                giteaAccountAuthorizations(normalized)
+                        .forEach(authorization -> result.putIfAbsent(authorization.key(), authorization));
                 envAuthorizations(normalized.tokenEnvVar, environment, DEFAULT_GITEA_ENV_TOKENS, "token ")
                         .forEach(authorization -> result.putIfAbsent(authorization.key(), authorization));
                 result.putIfAbsent(Authorization.anonymous().key(), Authorization.anonymous());
@@ -661,8 +821,36 @@ public class RemoteActionProviders {
             return List.copyOf(result.values());
         }
 
+        public static String settingsHint(final Server server) {
+            final Server normalized = Optional.ofNullable(server).orElseGet(Settings::defaultGitHub).normalized();
+            return normalized.isGitea()
+                    ? GitHubWorkflowBundle.message("workflow.run.auth.settings.gitea")
+                    : GitHubWorkflowBundle.message("workflow.run.auth.settings.github");
+        }
+
         public static String settingsHint() {
-            return GitHubWorkflowBundle.message("workflow.run.auth.settings");
+            return GitHubWorkflowBundle.message("workflow.run.auth.settings.github");
+        }
+
+        private static List<Authorization> giteaAccountAuthorizations(final Server server) {
+            final Settings settings = Settings.getInstance();
+            return settings.enabledServers().stream()
+                    .filter(Server::isGitea)
+                    .sorted(Comparator
+                            .comparingInt((Server candidate) -> giteaAccountPriority(candidate, server))
+                            .thenComparing(candidate -> candidate.apiUrl)
+                            .thenComparing(candidate -> candidate.name))
+                    .map(candidate -> settings.giteaToken(candidate)
+                            .map(token -> new Authorization(candidate.name, "token " + token)))
+                    .flatMap(Optional::stream)
+                    .toList();
+        }
+
+        private static int giteaAccountPriority(final Server candidate, final Server server) {
+            if (candidate.normalized().apiUrl.equals(server.normalized().apiUrl)) {
+                return 0;
+            }
+            return sameHost(candidate.apiUrl, server.apiUrl) ? 1 : 2;
         }
 
         private static List<GithubAccount> orderedAccountsFor(final String apiUrl) {

@@ -315,11 +315,11 @@ jobs:
           fi
           curl "$@" https://plugins.jetbrains.com/api/updates/upload
 
-      - name: 📤 Push release commit and tag
+      - name: 📤 Push release commit
+        id: release_source
         if: steps.plan.outputs.release == 'true' && steps.plan.outputs.dry_run != 'true'
         shell: sh
         env:
-          RELEASE_TAG: ${{ steps.plan.outputs.tag }}
           RELEASE_TOKEN: ${{ secrets.RELEASE_TOKEN }}
         run: |
           git config user.name "Kira"
@@ -330,9 +330,9 @@ jobs:
           fi
 
           target_branch="${GITHUB_REF_NAME:-main}"
+          release_target="$(git rev-parse HEAD)"
           git push origin "HEAD:$target_branch"
-          git tag -a "$RELEASE_TAG" -m "$RELEASE_TAG [skip ci]"
-          git push origin "refs/tags/$RELEASE_TAG"
+          echo "target=$release_target" >> "$GITHUB_OUTPUT"
 
       - name: 🚀 Create GitHub release
         if: steps.plan.outputs.release == 'true' && steps.plan.outputs.dry_run != 'true'
@@ -341,12 +341,16 @@ jobs:
           ARCHIVE_PATH: ${{ steps.archive.outputs.path }}
           GH_TOKEN: ${{ secrets.RELEASE_TOKEN || github.token }}
           RELEASE_TAG: ${{ steps.plan.outputs.tag }}
+          RELEASE_TARGET: ${{ steps.release_source.outputs.target }}
         run: |
           if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
             gh release upload "$RELEASE_TAG" "$ARCHIVE_PATH" --clobber
             gh release edit "$RELEASE_TAG" --title "$RELEASE_TAG" --notes-file release-notes.md
           else
-            gh release create "$RELEASE_TAG" "$ARCHIVE_PATH" --title "$RELEASE_TAG" --notes-file release-notes.md --verify-tag
+            if ! gh release create "$RELEASE_TAG" "$ARCHIVE_PATH" --title "$RELEASE_TAG" --notes-file release-notes.md --target "$RELEASE_TARGET"; then
+              gh release delete "$RELEASE_TAG" --yes --cleanup-tag >/dev/null 2>&1 || true
+              exit 1
+            fi
           fi
 
       - name: 💾 Save cache

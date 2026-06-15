@@ -2,6 +2,7 @@ package com.github.yunabraska.githubworkflow.settings;
 
 import com.github.yunabraska.githubworkflow.state.GitHubActionCache;
 
+import com.github.yunabraska.githubworkflow.git.RemoteActionProviders;
 import com.github.yunabraska.githubworkflow.i18n.GitHubWorkflowBundle;
 
 import com.intellij.ide.BrowserUtil;
@@ -33,9 +34,14 @@ import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.Arrays;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.ThreadLocalRandom;
 
 /**
@@ -44,6 +50,14 @@ import java.util.concurrent.ThreadLocalRandom;
 public class GitHubWorkflowSettingsConfigurable implements SearchableConfigurable {
 
     private static final String SUPPORT_URL = "https://github.com/sponsors/YunaBraska";
+    private static final String STORED_TOKEN = "********";
+    private static final int GITEA_ENABLED = 0;
+    private static final int GITEA_NAME = 1;
+    private static final int GITEA_WEB_URL = 2;
+    private static final int GITEA_API_URL = 3;
+    private static final int GITEA_TOKEN_ENV = 4;
+    private static final int GITEA_TOKEN = 5;
+    private static final int GITEA_ROW_ID = 6;
     private static final DateTimeFormatter DATE_TIME = DateTimeFormatter.ISO_LOCAL_DATE_TIME.withZone(ZoneId.systemDefault());
     private static final List<LocaleOption> LOCALES = List.of(
             new LocaleOption(GitHubWorkflowBundle.Settings.SYSTEM_LANGUAGE, "settings.language.system", true),
@@ -70,8 +84,24 @@ public class GitHubWorkflowSettingsConfigurable implements SearchableConfigurabl
     );
 
     private final GitHubWorkflowBundle.Settings settings = GitHubWorkflowBundle.Settings.getInstance();
+    private final RemoteActionProviders.Settings remoteSettings = RemoteActionProviders.Settings.getInstance();
     private final GitHubActionCache cache = GitHubActionCache.getActionCache();
     private final JComboBox<LocaleOption> language = new JComboBox<>(LOCALES.toArray(LocaleOption[]::new));
+    private final DefaultTableModel giteaModel = new DefaultTableModel() {
+        @Override
+        public Class<?> getColumnClass(final int columnIndex) {
+            return columnIndex == GITEA_ENABLED ? Boolean.class : String.class;
+        }
+
+        @Override
+        public boolean isCellEditable(final int row, final int column) {
+            return column != GITEA_TOKEN && column != GITEA_ROW_ID;
+        }
+    };
+    private final JTable giteaTable = new JBTable(giteaModel);
+    private final Map<Integer, String> pendingGiteaTokens = new HashMap<>();
+    private final Set<Integer> clearedGiteaTokens = new HashSet<>();
+    private int nextGiteaRowSequence = 1;
     private final DefaultTableModel tableModel = new DefaultTableModel();
     private final JTable table = new JBTable(tableModel);
     private final JLabel summary = new JLabel();
@@ -92,7 +122,10 @@ public class GitHubWorkflowSettingsConfigurable implements SearchableConfigurabl
         panel = new JPanel(new BorderLayout(8, 8));
         panel.setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
         panel.add(topPanel(), BorderLayout.NORTH);
-        panel.add(cachePanel(), BorderLayout.CENTER);
+        final JPanel center = new JPanel(new BorderLayout(8, 8));
+        center.add(giteaPanel(), BorderLayout.NORTH);
+        center.add(cachePanel(), BorderLayout.CENTER);
+        panel.add(center, BorderLayout.CENTER);
         reset();
         return panel;
     }
@@ -100,13 +133,18 @@ public class GitHubWorkflowSettingsConfigurable implements SearchableConfigurabl
     @Override
     public boolean isModified() {
         final LocaleOption option = (LocaleOption) language.getSelectedItem();
-        return option != null && !Objects.equals(option.tag(), settings.languageTag());
+        return option != null && !Objects.equals(option.tag(), settings.languageTag())
+                || !Objects.equals(giteaServersFromTable(), remoteSettings.customServers().stream()
+                .filter(RemoteActionProviders.Server::isGitea)
+                .toList())
+                || giteaTokenModified();
     }
 
     @Override
     public void apply() throws ConfigurationException {
         final LocaleOption option = (LocaleOption) language.getSelectedItem();
         settings.languageTag(option == null ? GitHubWorkflowBundle.Settings.SYSTEM_LANGUAGE : option.tag());
+        saveGiteaRows();
         reloadTable();
         GitHubActionCache.triggerSyntaxHighlightingForActiveFiles();
     }
@@ -114,6 +152,7 @@ public class GitHubWorkflowSettingsConfigurable implements SearchableConfigurabl
     @Override
     public void reset() {
         selectLanguage(settings.languageTag());
+        reloadGiteaTable();
         reloadTable();
     }
 
@@ -149,6 +188,37 @@ public class GitHubWorkflowSettingsConfigurable implements SearchableConfigurabl
         return result;
     }
 
+    private JPanel giteaPanel() {
+        giteaModel.setColumnIdentifiers(new Object[]{
+                GitHubWorkflowBundle.message("settings.gitea.column.enabled"),
+                GitHubWorkflowBundle.message("settings.gitea.column.name"),
+                GitHubWorkflowBundle.message("settings.gitea.column.webUrl"),
+                GitHubWorkflowBundle.message("settings.gitea.column.apiUrl"),
+                GitHubWorkflowBundle.message("settings.gitea.column.tokenEnv"),
+                GitHubWorkflowBundle.message("settings.gitea.column.token"),
+                ""
+        });
+        if (giteaTable.getColumnModel().getColumnCount() > GITEA_ROW_ID) {
+            giteaTable.removeColumn(giteaTable.getColumnModel().getColumn(GITEA_ROW_ID));
+        }
+        giteaTable.setSelectionMode(javax.swing.ListSelectionModel.MULTIPLE_INTERVAL_SELECTION);
+
+        final JPanel result = new JPanel(new BorderLayout(4, 4));
+        result.setBorder(BorderFactory.createTitledBorder(GitHubWorkflowBundle.message("settings.gitea.title")));
+        result.add(new JScrollPane(giteaTable), BorderLayout.CENTER);
+        result.add(giteaButtons(), BorderLayout.SOUTH);
+        return result;
+    }
+
+    private JPanel giteaButtons() {
+        final JPanel result = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
+        addButton(result, "settings.gitea.add", this::addGiteaRow);
+        addButton(result, "settings.gitea.remove", this::removeSelectedGiteaRows);
+        addButton(result, "settings.gitea.setToken", this::setSelectedGiteaToken);
+        addButton(result, "settings.gitea.clearToken", this::clearSelectedGiteaToken);
+        return result;
+    }
+
     private JPanel cachePanel() {
         tableModel.setColumnIdentifiers(new Object[]{
                 GitHubWorkflowBundle.message("settings.cache.column.key"),
@@ -181,6 +251,153 @@ public class GitHubWorkflowSettingsConfigurable implements SearchableConfigurabl
         final JButton button = new JButton(GitHubWorkflowBundle.message(key));
         button.addActionListener(event -> action.run());
         panel.add(button);
+    }
+
+    private void reloadGiteaTable() {
+        pendingGiteaTokens.clear();
+        clearedGiteaTokens.clear();
+        giteaModel.setRowCount(0);
+        remoteSettings.customServers().stream()
+                .filter(RemoteActionProviders.Server::isGitea)
+                .forEach(server -> giteaModel.addRow(new Object[]{
+                        server.enabled,
+                        server.name,
+                        server.webUrl,
+                        server.apiUrl,
+                        server.tokenEnvVar,
+                        remoteSettings.hasGiteaToken(server) ? STORED_TOKEN : "",
+                        nextGiteaRowId()
+                }));
+    }
+
+    private void addGiteaRow() {
+        giteaModel.addRow(new Object[]{
+                true,
+                "Gitea",
+                "https://gitea.com",
+                "https://gitea.com/api/v1",
+                "GITEA_TOKEN",
+                "",
+                nextGiteaRowId()
+        });
+    }
+
+    private void removeSelectedGiteaRows() {
+        final int[] rows = giteaTable.getSelectedRows();
+        for (int index = rows.length - 1; index >= 0; index--) {
+            giteaModel.removeRow(giteaTable.convertRowIndexToModel(rows[index]));
+        }
+    }
+
+    private void setSelectedGiteaToken() {
+        final int row = selectedGiteaRow();
+        if (row < 0) {
+            Messages.showInfoMessage(panel, GitHubWorkflowBundle.message("settings.gitea.noneSelected"), getDisplayName());
+            return;
+        }
+        final String token = Messages.showPasswordDialog(GitHubWorkflowBundle.message("settings.gitea.token.prompt"), getDisplayName());
+        if (token != null && !token.isBlank()) {
+            final int rowId = rowId(row);
+            pendingGiteaTokens.put(rowId, token);
+            clearedGiteaTokens.remove(rowId);
+            giteaModel.setValueAt(STORED_TOKEN, row, GITEA_TOKEN);
+        }
+    }
+
+    private void clearSelectedGiteaToken() {
+        final int row = selectedGiteaRow();
+        if (row < 0) {
+            Messages.showInfoMessage(panel, GitHubWorkflowBundle.message("settings.gitea.noneSelected"), getDisplayName());
+            return;
+        }
+        final int rowId = rowId(row);
+        pendingGiteaTokens.remove(rowId);
+        clearedGiteaTokens.add(rowId);
+        giteaModel.setValueAt("", row, GITEA_TOKEN);
+    }
+
+    private int selectedGiteaRow() {
+        final int viewRow = giteaTable.getSelectedRow();
+        return viewRow < 0 ? -1 : giteaTable.convertRowIndexToModel(viewRow);
+    }
+
+    private void saveGiteaRows() {
+        final List<RemoteActionProviders.Server> previous = remoteSettings.customServers();
+        final List<RemoteActionProviders.Server> servers = giteaServersFromTable();
+        final List<String> nextKeys = servers.stream().map(server -> server.apiUrl).toList();
+        final List<RemoteActionProviders.Server> persisted = new ArrayList<>(previous.stream()
+                .filter(server -> !server.isGitea())
+                .toList());
+        persisted.addAll(servers);
+
+        previous.stream()
+                .filter(RemoteActionProviders.Server::isGitea)
+                .filter(server -> !nextKeys.contains(server.apiUrl))
+                .forEach(remoteSettings::clearGiteaToken);
+
+        for (int row = 0; row < giteaModel.getRowCount(); row++) {
+            final RemoteActionProviders.Server server = giteaServerFromRow(row);
+            if (!server.isValid()) {
+                continue;
+            }
+            final int rowId = rowId(row);
+            if (pendingGiteaTokens.containsKey(rowId)) {
+                remoteSettings.setGiteaToken(server, pendingGiteaTokens.get(rowId));
+            } else if (clearedGiteaTokens.contains(rowId)) {
+                remoteSettings.clearGiteaToken(server);
+            }
+        }
+        remoteSettings.setCustomServers(persisted);
+        reloadGiteaTable();
+    }
+
+    private boolean giteaTokenModified() {
+        if (!pendingGiteaTokens.isEmpty()) {
+            return true;
+        }
+        for (int row = 0; row < giteaModel.getRowCount(); row++) {
+            final RemoteActionProviders.Server server = giteaServerFromRow(row);
+            if (clearedGiteaTokens.contains(rowId(row)) && remoteSettings.hasGiteaToken(server)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private List<RemoteActionProviders.Server> giteaServersFromTable() {
+        final List<RemoteActionProviders.Server> result = new ArrayList<>();
+        for (int row = 0; row < giteaModel.getRowCount(); row++) {
+            final RemoteActionProviders.Server server = giteaServerFromRow(row);
+            if (server.isValid()) {
+                result.add(server);
+            }
+        }
+        return result;
+    }
+
+    private RemoteActionProviders.Server giteaServerFromRow(final int row) {
+        return RemoteActionProviders.Server.gitea(
+                text(row, GITEA_NAME),
+                text(row, GITEA_WEB_URL),
+                text(row, GITEA_API_URL),
+                text(row, GITEA_TOKEN_ENV),
+                Boolean.TRUE.equals(giteaModel.getValueAt(row, GITEA_ENABLED))
+        ).normalized();
+    }
+
+    private String text(final int row, final int column) {
+        return Objects.toString(giteaModel.getValueAt(row, column), "").trim();
+    }
+
+    private int rowId(final int row) {
+        final Object value = giteaModel.getValueAt(row, GITEA_ROW_ID);
+        return value instanceof Integer id ? id : -1;
+    }
+
+    private int nextGiteaRowId() {
+        final int next = nextGiteaRowSequence;
+        nextGiteaRowSequence++;
+        return next;
     }
 
     private void reloadTable() {

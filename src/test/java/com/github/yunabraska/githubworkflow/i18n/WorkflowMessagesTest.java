@@ -144,7 +144,8 @@ public class WorkflowMessagesTest {
                 "action.GitHubWorkflow.RefreshActionCache.text",
                 "action.GitHubWorkflow.RefreshActionCache.description",
                 "settings.cache.refresh",
-                "workflow.run.auth.settings"
+                "workflow.run.auth.settings.github",
+                "workflow.run.auth.settings.gitea"
         );
         for (final String suffix : LOCALE_SUFFIXES) {
             final Properties bundle = loadBundle("_" + suffix);

@@ -381,6 +381,18 @@ public class WorkflowValidationTest extends EditorFeatureTestCase {
                 """);
     }
 
+    public void testGiteaIgnoresExpressionFunctionNamesInsideStrings() {
+        assertGiteaWorkflowHighlights("""
+                name: Syntax
+                on: workflow_dispatch
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo "${{ always() && 'startsWith(' != '' }}"
+                """);
+    }
+
     public void testResolvedActionInputIsAccepted() {
         seedRemoteAction("owner/tool@v1", Map.of("known-input", "Known input"), Map.of());
 

@@ -16,6 +16,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.net.http.HttpClient.Version;
 import java.nio.charset.StandardCharsets;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -102,13 +103,17 @@ public class WorkflowRunTest extends TestCase {
             assertThat(result.get().runId()).isEqualTo(77);
             assertThat(result.get().status()).isEqualTo("queued");
             assertThat(result.get().htmlUrl()).isEqualTo("html-latest");
-            assertThat(server.requests()).contains("/repos/acme/tool/actions/workflows/build.yml/runs?branch=feature%2Fone&event=workflow_dispatch&per_page=1");
+            assertThat(server.requests()).contains("/repos/acme/tool/actions/workflows/build.yml/runs?branch=feature%2Fone&event=workflow_dispatch&per_page=20");
         }
     }
 
     public void testGiteaDispatchRequestsRunDetailsAndLatestRunUsesRepositoryRunsEndpoint() throws Exception {
         try (FakeWorkflowRunServer server = new FakeWorkflowRunServer()) {
-            final WorkflowRun client = new WorkflowRun();
+            final HttpClient httpClient = HttpClient.newHttpClient();
+            final WorkflowRun client = new WorkflowRun(
+                    request -> httpClient.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8)),
+                    request -> List.of(RemoteActionProviders.Authorizations.Authorization.anonymous())
+            );
             final WorkflowRun.Request request = new WorkflowRun.Request(
                     server.apiUrl() + "/api/v1",
                     "acme",
@@ -127,10 +132,68 @@ public class WorkflowRunTest extends TestCase {
             assertThat(latest.get().runId()).isEqualTo(88);
             assertThat(server.requests()).contains(
                     "/api/v1/repos/acme/tool/actions/workflows/build-update-chart.yaml/dispatches?return_run_details=true",
-                    "/api/v1/repos/acme/tool/actions/runs?branch=main&event=workflow_dispatch&limit=1"
+                    "/api/v1/repos/acme/tool/actions/runs?branch=main&event=workflow_dispatch&limit=20"
             );
             assertThat(server.requests()).noneMatch(path -> path.contains("/workflows/build-update-chart.yaml/runs"));
         }
+    }
+
+    public void testLatestRunPrefersSameGiteaWorkflowClosestToDispatchTime() throws Exception {
+        final List<URI> requests = new ArrayList<>();
+        final WorkflowRun client = new WorkflowRun(
+                request -> {
+                    requests.add(request.uri());
+                    return new ClientResponse(request, 200, "application/json", """
+                            {"workflow_runs":[
+                              {"id":99,"status":"queued","conclusion":null,"html_url":"wrong-newer","path":".gitea/workflows/other.yaml","created_at":"2026-06-15T10:00:03Z"},
+                              {"id":88,"status":"queued","conclusion":null,"html_url":"right","path":".gitea/workflows/build-update-chart.yaml","created_at":"2026-06-15T10:00:02Z"},
+                              {"id":77,"status":"queued","conclusion":null,"html_url":"right-old","path":".gitea/workflows/build-update-chart.yaml","created_at":"2026-06-15T09:00:00Z"}
+                            ]}
+                            """);
+                },
+                request -> List.of(RemoteActionProviders.Authorizations.Authorization.anonymous())
+        );
+        final WorkflowRun.Request request = new WorkflowRun.Request(
+                "https://gitea.local/api/v1",
+                "acme",
+                "tool",
+                ".gitea/workflows/build-update-chart.yaml",
+                "main",
+                Map.of(),
+                "GITEA_TOKEN"
+        );
+
+        final Optional<WorkflowRun.RunStatus> result = client.latestRun(request, Instant.parse("2026-06-15T10:00:00Z"));
+
+        assertThat(result).isPresent();
+        assertThat(result.get().runId()).isEqualTo(88);
+        assertThat(result.get().htmlUrl()).isEqualTo("right");
+        assertThat(requests.get(0).getRawPath()).isEqualTo("/api/v1/repos/acme/tool/actions/runs");
+        assertThat(requests.get(0).getRawQuery()).isEqualTo("branch=main&event=workflow_dispatch&limit=20");
+    }
+
+    public void testLatestRunReturnsEmptyWhenGiteaWorkflowPathDoesNotMatch() throws Exception {
+        final WorkflowRun client = new WorkflowRun(
+                request -> new ClientResponse(request, 200, "application/json", """
+                        {"workflow_runs":[
+                          {"id":99,"status":"queued","conclusion":null,"html_url":"wrong","path":".gitea/workflows/other.yaml","created_at":"2026-06-15T10:00:03Z"}
+                        ]}
+                        """),
+                request -> List.of(RemoteActionProviders.Authorizations.Authorization.anonymous())
+        );
+        final WorkflowRun.Request request = new WorkflowRun.Request(
+                "https://gitea.local/api/v1",
+                "acme",
+                "tool",
+                ".gitea/workflows/build-update-chart.yaml",
+                "main",
+                Map.of(),
+                "GITEA_TOKEN"
+        );
+
+        final Optional<WorkflowRun.RunStatus> result = client.latestRun(request, Instant.parse("2026-06-15T10:00:00Z"));
+
+        assertThat(result).isEmpty();
     }
 
     public void testArtifactsAndZipUseRunArtifactEndpoints() throws Exception {
@@ -283,6 +346,23 @@ public class WorkflowRunTest extends TestCase {
                     .isThrownBy(() -> client.dispatch(request))
                     .withMessageContaining("GitHub workflow dispatch failed with HTTP 401")
                     .withMessageContaining("Settings > Version Control > GitHub");
+        }
+    }
+
+    public void testGiteaDispatchAuthenticationFailureMentionsWorkflowSettings() throws Exception {
+        try (FakeWorkflowRunServer server = new FakeWorkflowRunServer(false, 1)) {
+            final HttpClient httpClient = HttpClient.newHttpClient();
+            final WorkflowRun client = new WorkflowRun(
+                    request -> httpClient.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8)),
+                    request -> List.of(RemoteActionProviders.Authorizations.Authorization.anonymous())
+            );
+            final WorkflowRun.Request request = new WorkflowRun.Request(server.apiUrl().replace("/api", "/api/v1"), "acme", "tool", ".gitea/workflows/build.yml", "main", Map.of(), "");
+
+            assertThatExceptionOfType(WorkflowRun.WorkflowRunHttpException.class)
+                    .isThrownBy(() -> client.dispatch(request))
+                    .withMessageContaining("GitHub workflow dispatch failed with HTTP 401")
+                    .withMessageContaining("Settings > Tools > GitHub Workflow")
+                    .withMessageNotContaining("Settings > Version Control > GitHub");
         }
     }
 
