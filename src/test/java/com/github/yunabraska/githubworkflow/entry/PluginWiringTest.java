@@ -2,6 +2,8 @@ package com.github.yunabraska.githubworkflow.entry;
 
 import com.github.yunabraska.githubworkflow.run.WorkflowRunConfiguration;
 
+import com.github.yunabraska.githubworkflow.git.RemoteActionProviders;
+
 import com.github.yunabraska.githubworkflow.settings.GitHubWorkflowSettingsConfigurable;
 import com.github.yunabraska.githubworkflow.settings.GiteaSettingsConfigurable;
 
@@ -25,6 +27,7 @@ import javax.swing.AbstractButton;
 import javax.swing.JComboBox;
 import javax.swing.JComponent;
 import javax.swing.JLabel;
+import javax.swing.JTable;
 import javax.swing.border.TitledBorder;
 import java.awt.Component;
 import java.awt.Container;
@@ -188,6 +191,25 @@ public class PluginWiringTest extends BasePlatformTestCase {
         }
     }
 
+    public void testGiteaSettingsInvalidRowsKeepApplyAvailable() {
+        final RemoteActionProviders.Settings remoteSettings = RemoteActionProviders.Settings.getInstance();
+        final List<RemoteActionProviders.Server> previousServers = remoteSettings.customServers();
+        final GiteaSettingsConfigurable configurable = new GiteaSettingsConfigurable();
+        try {
+            remoteSettings.setCustomServers(List.of());
+            final JComponent component = configurable.createComponent();
+            findButton(component, GitHubWorkflowBundle.message("settings.gitea.add")).doClick();
+            final JTable table = findTable(component);
+
+            table.setValueAt("", 0, 3);
+
+            assertThat(configurable.isModified()).isTrue();
+        } finally {
+            configurable.disposeUIResources();
+            remoteSettings.setCustomServers(previousServers);
+        }
+    }
+
     public void testPackagedSchemasArePresentAndNonEmpty() throws IOException {
         final Path directory = Path.of(System.getProperty("user.dir"), "src", "main", "resources", "schemas");
 
@@ -213,6 +235,24 @@ public class PluginWiringTest extends BasePlatformTestCase {
             }
         }
         throw new AssertionError("Combo item not found: " + text);
+    }
+
+    private static AbstractButton findButton(final Component root, final String text) {
+        for (final Component component : components(root)) {
+            if (component instanceof AbstractButton button && text.equals(button.getText())) {
+                return button;
+            }
+        }
+        throw new AssertionError("Button not found: " + text);
+    }
+
+    private static JTable findTable(final Component root) {
+        for (final Component component : components(root)) {
+            if (component instanceof JTable table) {
+                return table;
+            }
+        }
+        throw new AssertionError("Table not found");
     }
 
     private static List<String> visibleTexts(final Component root) {

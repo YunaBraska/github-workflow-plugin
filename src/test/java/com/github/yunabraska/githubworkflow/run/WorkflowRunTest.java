@@ -342,10 +342,15 @@ public class WorkflowRunTest extends TestCase {
             );
             final WorkflowRun.Request request = new WorkflowRun.Request(server.apiUrl(), "acme", "tool", "build.yml", "main", Map.of(), "");
 
-            assertThatExceptionOfType(WorkflowRun.WorkflowRunHttpException.class)
-                    .isThrownBy(() -> client.dispatch(request))
-                    .withMessageContaining("GitHub workflow dispatch failed with HTTP 401")
-                    .withMessageContaining("Settings > Version Control > GitHub");
+            try {
+                client.dispatch(request);
+                fail("Expected workflow dispatch to require authentication");
+            } catch (final WorkflowRun.WorkflowRunHttpException exception) {
+                assertThat(exception.getMessage())
+                        .contains("GitHub workflow dispatch failed with HTTP 401")
+                        .contains("Settings > Version Control > GitHub");
+                assertThat(exception.settingsId()).isEqualTo("GitHub");
+            }
         }
     }
 
@@ -358,11 +363,16 @@ public class WorkflowRunTest extends TestCase {
             );
             final WorkflowRun.Request request = new WorkflowRun.Request(server.apiUrl().replace("/api", "/api/v1"), "acme", "tool", ".gitea/workflows/build.yml", "main", Map.of(), "");
 
-            assertThatExceptionOfType(WorkflowRun.WorkflowRunHttpException.class)
-                    .isThrownBy(() -> client.dispatch(request))
-                    .withMessageContaining("GitHub workflow dispatch failed with HTTP 401")
-                    .withMessageContaining("Settings > Version Control > Gitea")
-                    .withMessageNotContaining("Settings > Version Control > GitHub");
+            try {
+                client.dispatch(request);
+                fail("Expected Gitea workflow dispatch to require authentication");
+            } catch (final WorkflowRun.WorkflowRunHttpException exception) {
+                assertThat(exception.getMessage())
+                        .contains("GitHub workflow dispatch failed with HTTP 401")
+                        .contains("Settings > Version Control > Gitea")
+                        .doesNotContain("Settings > Version Control > GitHub");
+                assertThat(exception.settingsId()).isEqualTo("github.workflow.gitea.settings");
+            }
         }
     }
 

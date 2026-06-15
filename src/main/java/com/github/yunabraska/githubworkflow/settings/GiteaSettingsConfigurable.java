@@ -106,9 +106,10 @@ public class GiteaSettingsConfigurable implements SearchableConfigurable {
      */
     @Override
     public boolean isModified() {
-        return !Objects.equals(serversFromTable(), settings.customServers().stream()
-                .filter(RemoteActionProviders.Server::isGitea)
-                .toList())
+        return invalidRowCount() > 0
+                || !Objects.equals(serversFromTable(), settings.customServers().stream()
+                        .filter(RemoteActionProviders.Server::isGitea)
+                        .toList())
                 || tokenModified();
     }
 
@@ -117,6 +118,10 @@ public class GiteaSettingsConfigurable implements SearchableConfigurable {
      */
     @Override
     public void apply() {
+        if (invalidRowCount() > 0) {
+            Messages.showErrorDialog(panel, GitHubWorkflowBundle.message("settings.gitea.invalidRows"), getDisplayName());
+            return;
+        }
         saveRows();
         refreshTexts();
         GitHubActionCache.triggerSyntaxHighlightingForActiveFiles();
@@ -278,7 +283,17 @@ public class GiteaSettingsConfigurable implements SearchableConfigurable {
     }
 
     private boolean tokenModified() {
-        return !pendingTokens.isEmpty();
+        return !pendingTokens.isEmpty() || !clearedTokens.isEmpty();
+    }
+
+    private int invalidRowCount() {
+        int result = 0;
+        for (int row = 0; row < model.getRowCount(); row++) {
+            if (!serverFromRow(row).isValid()) {
+                result++;
+            }
+        }
+        return result;
     }
 
     private List<RemoteActionProviders.Server> serversFromTable() {

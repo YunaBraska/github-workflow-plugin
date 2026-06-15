@@ -452,7 +452,7 @@ public class WorkflowRun {
                 statusCode,
                 body,
                 accountActionRecommended,
-                server.isGitea() ? "github.workflow.settings" : "GitHub"
+                server.isGitea() ? "github.workflow.gitea.settings" : "GitHub"
         );
     }
 

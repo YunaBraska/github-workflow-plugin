@@ -538,7 +538,7 @@ public class WorkflowRunProcessHandler extends ProcessHandler {
                 .createNotification(
                         GitHubWorkflowBundle.message(
                                 "workflow.run.notification.auth",
-                                "github.workflow.settings".equals(settingsId)
+                                "github.workflow.gitea.settings".equals(settingsId)
                                         ? GitHubWorkflowBundle.message("workflow.run.auth.settings.gitea")
                                         : GitHubWorkflowBundle.message("workflow.run.auth.settings.github")
                         ),

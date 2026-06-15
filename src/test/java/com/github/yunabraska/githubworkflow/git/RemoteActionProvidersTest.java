@@ -410,6 +410,22 @@ public class RemoteActionProvidersTest extends BasePlatformTestCase {
         assertThat(settings.customServers().getFirst().tokenStored).isFalse();
     }
 
+    public void testDisabledGiteaServerIsStoredButNotUsed() {
+        final RemoteActionProviders.Server server = RemoteActionProviders.Server.gitea(
+                "Quiet Gitea",
+                "http://gitea.local",
+                "http://gitea.local/api/v1",
+                "LOCAL_GITEA_TOKEN",
+                false
+        );
+        final RemoteActionProviders.Settings settings = RemoteActionProviders.Settings.getInstance()
+                .setCustomServers(List.of(server));
+
+        assertThat(settings.customServers()).containsExactly(server.normalized());
+        assertThat(settings.enabledServers())
+                .noneMatch(candidate -> "http://gitea.local/api/v1".equals(candidate.apiUrl));
+    }
+
     public void testGithubEnvironmentTokensStillUseBearerAuthorizationScheme() {
         final RemoteActionProviders.Server server = new RemoteActionProviders.Server(
                 "GitHub",

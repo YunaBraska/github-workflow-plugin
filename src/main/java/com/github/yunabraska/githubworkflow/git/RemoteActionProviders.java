@@ -536,6 +536,7 @@ public class RemoteActionProviders {
             final Map<String, Server> result = new LinkedHashMap<>();
             customServers().stream()
                     .map(Server::normalized)
+                    .filter(Server::isEnabled)
                     .filter(Server::isValid)
                     .forEach(server -> result.put(server.key(), server));
             jetBrainsGithubServers().forEach(server -> result.putIfAbsent(server.key(), server));
@@ -741,7 +742,7 @@ public class RemoteActionProviders {
         }
 
         public boolean isValid() {
-            return isEnabled() && hasText(webUrl) && hasText(apiUrl);
+            return hasText(webUrl) && hasText(apiUrl);
         }
 
         /**
