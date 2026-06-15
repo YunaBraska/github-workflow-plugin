@@ -242,7 +242,7 @@ public class WorkflowCompletion extends CompletionContributor {
         }
         addLookupElements(
                 trigger.resultSet().withPrefixMatcher(getDefaultPrefix(trigger.parameters())),
-                SHELLS,
+                shells(),
                 NodeIcon.ICON_NODE,
                 Character.MIN_VALUE
         );

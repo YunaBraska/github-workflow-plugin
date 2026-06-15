@@ -321,6 +321,7 @@ public class RemoteActionProvidersTest extends BasePlatformTestCase {
         );
 
         assertThat(settings.hasGiteaToken(server)).isTrue();
+        assertThat(settings.customServers().getFirst().tokenStored).isTrue();
         assertThat(authorizations)
                 .extracting(RemoteActionProviders.Authorizations.Authorization::source)
                 .containsExactly("Local Gitea", "LOCAL_GITEA_TOKEN", "GITEA_TOKEN", "anonymous");
@@ -388,6 +389,25 @@ public class RemoteActionProvidersTest extends BasePlatformTestCase {
                         state.tokenEnvVar
                 )).doesNotContain("stored-token"));
         assertThat(settings.getState().servers.getFirst().tokenEnvVar).isEqualTo("LOCAL_GITEA_TOKEN");
+        assertThat(settings.getState().servers.getFirst().tokenStored).isTrue();
+    }
+
+    public void testGiteaStoredTokenMarkerIsClearedWithToken() {
+        final RemoteActionProviders.Server server = RemoteActionProviders.Server.gitea(
+                "Local Gitea",
+                "http://gitea.local",
+                "http://gitea.local/api/v1",
+                "LOCAL_GITEA_TOKEN",
+                true
+        );
+        final RemoteActionProviders.Settings settings = RemoteActionProviders.Settings.getInstance()
+                .setCustomServers(List.of(server))
+                .setGiteaToken(server, "stored-token");
+
+        settings.clearGiteaToken(server);
+
+        assertThat(settings.hasGiteaToken(server)).isFalse();
+        assertThat(settings.customServers().getFirst().tokenStored).isFalse();
     }
 
     public void testGithubEnvironmentTokensStillUseBearerAuthorizationScheme() {

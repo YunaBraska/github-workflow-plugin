@@ -109,6 +109,7 @@ public class WorkflowMessagesTest {
                 "error.report.ide",
                 "error.report.os",
                 "error.report.stacktrace",
+                "settings.gitea.displayName",
                 "completion.shell.powershell"
         );
         final Pattern placeholder = Pattern.compile("\\{\\d+\\}");
@@ -186,6 +187,7 @@ public class WorkflowMessagesTest {
         for (final String suffix : LOCALE_SUFFIXES) {
             final Locale locale = Locale.forLanguageTag(suffix.replace('_', '-'));
             assertThat(GitHubWorkflowBundle.messageFor(locale, "settings.displayName")).isNotBlank();
+            assertThat(GitHubWorkflowBundle.messageFor(locale, "settings.gitea.displayName")).isEqualTo("Gitea");
             assertThat(GitHubWorkflowBundle.messageFor(locale, "inspection.action.delete.invalid", "input", "bad"))
                     .contains("bad");
             assertThat(GitHubWorkflowBundle.messageFor(locale, "inspection.output.unused", "artifact"))

@@ -2,6 +2,9 @@ package com.github.yunabraska.githubworkflow.entry;
 
 import com.github.yunabraska.githubworkflow.run.WorkflowRunConfiguration;
 
+import com.github.yunabraska.githubworkflow.settings.GitHubWorkflowSettingsConfigurable;
+import com.github.yunabraska.githubworkflow.settings.GiteaSettingsConfigurable;
+
 import com.github.yunabraska.githubworkflow.model.GitHubSchemaProvider;
 
 import com.github.yunabraska.githubworkflow.state.GitHubActionCache;
@@ -18,9 +21,17 @@ import com.intellij.openapi.actionSystem.Presentation;
 import com.intellij.execution.configurations.ConfigurationTypeUtil;
 import com.intellij.testFramework.fixtures.BasePlatformTestCase;
 
+import javax.swing.AbstractButton;
+import javax.swing.JComboBox;
+import javax.swing.JComponent;
+import javax.swing.JLabel;
+import javax.swing.border.TitledBorder;
+import java.awt.Component;
+import java.awt.Container;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -125,8 +136,56 @@ public class PluginWiringTest extends BasePlatformTestCase {
 
         assertThat(pluginXml)
                 .contains("key=\"settings.displayName\"")
+                .contains("key=\"settings.gitea.displayName\"")
+                .contains("id=\"github.workflow.gitea.settings\"")
+                .contains("<projectConfigurable instance=\"com.github.yunabraska.githubworkflow.settings.GiteaSettingsConfigurable\"")
+                .contains("parentId=\"project.propVCSSupport.Mappings\"")
                 .contains("bundle=\"messages.GitHubWorkflowBundle\"")
                 .doesNotContain("displayName=\"GitHub Workflow\"");
+    }
+
+    public void testSettingsConfigurableRefreshesVisibleTextsAfterLanguageApply() {
+        final GitHubWorkflowBundle.Settings settings = GitHubWorkflowBundle.Settings.getInstance();
+        final String previousLanguage = settings.languageTag();
+        final GitHubWorkflowSettingsConfigurable configurable = new GitHubWorkflowSettingsConfigurable();
+        try {
+            settings.languageTag(GitHubWorkflowBundle.Settings.SYSTEM_LANGUAGE);
+            final JComponent component = configurable.createComponent();
+
+            assertThat(visibleTexts(component)).contains("Language:");
+
+            selectComboItem(component, "Deutsch");
+            configurable.apply();
+
+            assertThat(visibleTexts(component))
+                    .contains(GitHubWorkflowBundle.message("settings.language.label"))
+                    .contains(GitHubWorkflowBundle.message("settings.cache.refresh"))
+                    .contains(GitHubWorkflowBundle.message("settings.cache.title"));
+        } finally {
+            configurable.disposeUIResources();
+            settings.languageTag(previousLanguage);
+        }
+    }
+
+    public void testGiteaSettingsConfigurableIsLocalizedUnderVersionControl() {
+        final GitHubWorkflowBundle.Settings settings = GitHubWorkflowBundle.Settings.getInstance();
+        final String previousLanguage = settings.languageTag();
+        final GiteaSettingsConfigurable configurable = new GiteaSettingsConfigurable();
+        try {
+            settings.languageTag("de");
+            final JComponent component = configurable.createComponent();
+
+            assertThat(configurable.getDisplayName()).isEqualTo("Gitea");
+            assertThat(visibleTexts(component))
+                    .contains(GitHubWorkflowBundle.message("settings.gitea.title"))
+                    .contains(GitHubWorkflowBundle.message("settings.gitea.add"))
+                    .contains(GitHubWorkflowBundle.message("settings.gitea.remove"))
+                    .contains(GitHubWorkflowBundle.message("settings.gitea.setToken"))
+                    .contains(GitHubWorkflowBundle.message("settings.gitea.clearToken"));
+        } finally {
+            configurable.disposeUIResources();
+            settings.languageTag(previousLanguage);
+        }
     }
 
     public void testPackagedSchemasArePresentAndNonEmpty() throws IOException {
@@ -139,6 +198,51 @@ public class PluginWiringTest extends BasePlatformTestCase {
                     .startsWith("{")
                     .contains("\"$schema\"")
                     .contains("\"$id\"");
+        }
+    }
+
+    private static void selectComboItem(final Component root, final String text) {
+        for (final Component component : components(root)) {
+            if (component instanceof JComboBox<?> comboBox) {
+                for (int index = 0; index < comboBox.getItemCount(); index++) {
+                    if (text.equals(String.valueOf(comboBox.getItemAt(index)))) {
+                        comboBox.setSelectedIndex(index);
+                        return;
+                    }
+                }
+            }
+        }
+        throw new AssertionError("Combo item not found: " + text);
+    }
+
+    private static List<String> visibleTexts(final Component root) {
+        final List<String> result = new ArrayList<>();
+        for (final Component component : components(root)) {
+            if (component instanceof JLabel label && label.getText() != null && !label.getText().isBlank()) {
+                result.add(label.getText());
+            }
+            if (component instanceof AbstractButton button && button.getText() != null && !button.getText().isBlank()) {
+                result.add(button.getText());
+            }
+            if (component instanceof JComponent swing && swing.getBorder() instanceof TitledBorder border && border.getTitle() != null) {
+                result.add(border.getTitle());
+            }
+        }
+        return result;
+    }
+
+    private static List<Component> components(final Component root) {
+        final List<Component> result = new ArrayList<>();
+        collectComponents(root, result);
+        return result;
+    }
+
+    private static void collectComponents(final Component component, final List<Component> result) {
+        result.add(component);
+        if (component instanceof Container container) {
+            for (final Component child : container.getComponents()) {
+                collectComponents(child, result);
+            }
         }
     }
 }

@@ -10,6 +10,7 @@ import com.intellij.credentialStore.CredentialAttributes;
 import com.intellij.credentialStore.Credentials;
 import com.intellij.ide.passwordSafe.PasswordSafe;
 import com.intellij.ide.impl.ProjectUtil;
+import com.intellij.openapi.application.Application;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.components.PersistentStateComponent;
 import com.intellij.openapi.components.State;
@@ -39,7 +40,9 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
+import java.util.concurrent.ExecutionException;
 import java.util.function.Function;
 import java.util.function.Predicate;
 
@@ -396,6 +399,7 @@ public class RemoteActionProviders {
             public String apiUrl = "";
             public String tokenEnvVar = "";
             public boolean enabled = true;
+            public boolean tokenStored;
 
             public ServerState() {
                 // XML serializer
@@ -409,10 +413,11 @@ public class RemoteActionProviders {
                 apiUrl = normalized.apiUrl;
                 tokenEnvVar = normalized.tokenEnvVar;
                 enabled = normalized.enabled;
+                tokenStored = normalized.tokenStored;
             }
 
             Server server() {
-                return new Server(type, name, webUrl, apiUrl, tokenEnvVar, enabled).normalized();
+                return new Server(type, name, webUrl, apiUrl, tokenEnvVar, enabled, tokenStored).normalized();
             }
         }
 
@@ -473,6 +478,7 @@ public class RemoteActionProviders {
             final Server normalized = Optional.ofNullable(server).orElseGet(Settings::defaultGitHub).normalized();
             if (normalized.isGitea() && hasText(token)) {
                 PasswordTokens.set(normalized, token);
+                markGiteaTokenStored(normalized, true);
             }
             return this;
         }
@@ -487,6 +493,7 @@ public class RemoteActionProviders {
             final Server normalized = Optional.ofNullable(server).orElseGet(Settings::defaultGitHub).normalized();
             if (normalized.isGitea()) {
                 PasswordTokens.clear(normalized);
+                markGiteaTokenStored(normalized, false);
             }
             return this;
         }
@@ -509,7 +516,20 @@ public class RemoteActionProviders {
          * @return true when a token is stored
          */
         public boolean hasGiteaToken(final Server server) {
-            return giteaToken(server).isPresent();
+            final Server normalized = Optional.ofNullable(server).orElseGet(Settings::defaultGitHub).normalized();
+            if (!normalized.isGitea()) {
+                return false;
+            }
+            return normalized.tokenStored || customServers().stream()
+                    .map(Server::normalized)
+                    .anyMatch(candidate -> candidate.key().equals(normalized.key()) && candidate.tokenStored);
+        }
+
+        private Settings markGiteaTokenStored(final Server server, final boolean stored) {
+            state.servers.stream()
+                    .filter(state -> state.server().key().equals(server.key()))
+                    .forEach(state -> state.tokenStored = stored);
+            return this;
         }
 
         public List<Server> enabledServers() {
@@ -569,6 +589,30 @@ public class RemoteActionProviders {
             }
 
             private static void set(final Server server, final String token) {
+                write(() -> setNow(server, token));
+            }
+
+            private static void clear(final Server server) {
+                write(() -> clearNow(server));
+            }
+
+            private static void write(final Runnable operation) {
+                final Application application = ApplicationManager.getApplication();
+                if (application != null && application.isDispatchThread()) {
+                    try {
+                        application.executeOnPooledThread(operation).get();
+                    } catch (final InterruptedException exception) {
+                        Thread.currentThread().interrupt();
+                        LOG.warn("Gitea token write interrupted", exception);
+                    } catch (final ExecutionException exception) {
+                        LOG.warn("Gitea token write failed", exception);
+                    }
+                    return;
+                }
+                operation.run();
+            }
+
+            private static void setNow(final Server server, final String token) {
                 try {
                     PasswordSafe.getInstance().set(attributes(server), new Credentials(server.name, token));
                 } catch (final RuntimeException exception) {
@@ -576,7 +620,7 @@ public class RemoteActionProviders {
                 }
             }
 
-            private static void clear(final Server server) {
+            private static void clearNow(final Server server) {
                 try {
                     PasswordSafe.getInstance().set(attributes(server), null);
                 } catch (final RuntimeException exception) {
@@ -597,6 +641,7 @@ public class RemoteActionProviders {
         public final String apiUrl;
         public final String tokenEnvVar;
         public final boolean enabled;
+        public final boolean tokenStored;
 
         public Server(
                 final String name,
@@ -616,12 +661,25 @@ public class RemoteActionProviders {
                 final String tokenEnvVar,
                 final boolean enabled
         ) {
+            this(type, name, webUrl, apiUrl, tokenEnvVar, enabled, false);
+        }
+
+        public Server(
+                final String type,
+                final String name,
+                final String webUrl,
+                final String apiUrl,
+                final String tokenEnvVar,
+                final boolean enabled,
+                final boolean tokenStored
+        ) {
             this.type = Optional.ofNullable(type).map(String::trim).filter(RemoteActionProviders::hasText).orElse(Settings.TYPE_GITHUB);
             this.name = name;
             this.webUrl = webUrl;
             this.apiUrl = apiUrl;
             this.tokenEnvVar = tokenEnvVar;
             this.enabled = enabled;
+            this.tokenStored = tokenStored;
         }
 
         /**
@@ -642,7 +700,18 @@ public class RemoteActionProviders {
                 final String tokenEnvVar,
                 final boolean enabled
         ) {
-            return new Server(Settings.TYPE_GITEA, name, webUrl, apiUrl, tokenEnvVar, enabled);
+            return gitea(name, webUrl, apiUrl, tokenEnvVar, enabled, false);
+        }
+
+        public static Server gitea(
+                final String name,
+                final String webUrl,
+                final String apiUrl,
+                final String tokenEnvVar,
+                final boolean enabled,
+                final boolean tokenStored
+        ) {
+            return new Server(Settings.TYPE_GITEA, name, webUrl, apiUrl, tokenEnvVar, enabled, tokenStored);
         }
 
         /**
@@ -701,8 +770,34 @@ public class RemoteActionProviders {
                     trimTrailingSlash(webUrl),
                     trimTrailingSlash(apiUrl),
                     Optional.ofNullable(tokenEnvVar).map(String::trim).orElse(""),
-                    enabled
+                    enabled,
+                    tokenStored
             );
+        }
+
+        @Override
+        public boolean equals(final Object object) {
+            if (this == object) {
+                return true;
+            }
+            if (!(object instanceof Server server)) {
+                return false;
+            }
+            final Server left = normalized();
+            final Server right = server.normalized();
+            return left.enabled == right.enabled
+                    && left.tokenStored == right.tokenStored
+                    && Objects.equals(left.type, right.type)
+                    && Objects.equals(left.name, right.name)
+                    && Objects.equals(left.webUrl, right.webUrl)
+                    && Objects.equals(left.apiUrl, right.apiUrl)
+                    && Objects.equals(left.tokenEnvVar, right.tokenEnvVar);
+        }
+
+        @Override
+        public int hashCode() {
+            final Server normalized = normalized();
+            return Objects.hash(normalized.type, normalized.name, normalized.webUrl, normalized.apiUrl, normalized.tokenEnvVar, normalized.enabled, normalized.tokenStored);
         }
 
         private String authorizationPrefix() {

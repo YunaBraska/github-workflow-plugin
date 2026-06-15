@@ -54,7 +54,6 @@ public class WorkflowContextCatalog {
     public static final String FIELD_CONCLUSION = "conclusion";
     public static final String FIELD_OUTCOME = "outcome";
     public static final Map<String, Supplier<Map<String, String>>> DEFAULT_VALUE_MAP = initProcessorMap();
-    public static final Map<String, String> SHELLS = initShells();
     private static final List<String> GITEA_ENV_NAMES = List.of(
             "GITEA_ACTIONS",
             "GITEA_ACTIONS_RUNNER_VERSION",
@@ -127,6 +126,15 @@ public class WorkflowContextCatalog {
         return GITHUB_EXPRESSION_FUNCTIONS.stream()
                 .map(function -> function.substring(0, function.indexOf('(')))
                 .toList();
+    }
+
+    /**
+     * Returns supported shell completion values with localized descriptions.
+     *
+     * @return immutable map keyed by shell name
+     */
+    public static Map<String, String> shells() {
+        return initShells();
     }
 
     private static Map<String, String> initShells() {

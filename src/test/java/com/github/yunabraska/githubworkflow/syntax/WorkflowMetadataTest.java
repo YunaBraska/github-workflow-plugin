@@ -5,8 +5,9 @@ import org.junit.Test;
 import java.io.BufferedReader;
 import java.io.InputStream;
 import java.io.InputStreamReader;
-import java.nio.file.Path;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -144,6 +145,17 @@ public class WorkflowMetadataTest {
                 .contains("debug logging")
                 .contains("1")
                 .doesNotContain("preinstalled tools");
+    }
+
+    @Test
+    public void shellDescriptionsAreLoadedLazily() throws Exception {
+        final String source = Files.readString(Path.of(
+                "src/main/java/com/github/yunabraska/githubworkflow/syntax/WorkflowContextCatalog.java"
+        ));
+
+        assertThat(source).doesNotContain("static final Map<String, String> SHELLS = initShells()");
+        assertThat(WorkflowContextCatalog.shells())
+                .containsKeys("bash", "sh", "pwsh", "powershell", "cmd", "python");
     }
 
     private static List<String> resourceKeys(final String path) throws Exception {

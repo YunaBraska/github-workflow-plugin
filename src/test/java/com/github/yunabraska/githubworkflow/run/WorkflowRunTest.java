@@ -349,7 +349,7 @@ public class WorkflowRunTest extends TestCase {
         }
     }
 
-    public void testGiteaDispatchAuthenticationFailureMentionsWorkflowSettings() throws Exception {
+    public void testGiteaDispatchAuthenticationFailureMentionsGiteaSettings() throws Exception {
         try (FakeWorkflowRunServer server = new FakeWorkflowRunServer(false, 1)) {
             final HttpClient httpClient = HttpClient.newHttpClient();
             final WorkflowRun client = new WorkflowRun(
@@ -361,7 +361,7 @@ public class WorkflowRunTest extends TestCase {
             assertThatExceptionOfType(WorkflowRun.WorkflowRunHttpException.class)
                     .isThrownBy(() -> client.dispatch(request))
                     .withMessageContaining("GitHub workflow dispatch failed with HTTP 401")
-                    .withMessageContaining("Settings > Tools > GitHub Workflow")
+                    .withMessageContaining("Settings > Version Control > Gitea")
                     .withMessageNotContaining("Settings > Version Control > GitHub");
         }
     }
