@@ -13,8 +13,10 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
 import java.util.Map;
@@ -33,6 +35,7 @@ public class GiteaDockerIntegrationTest extends BasePlatformTestCase {
     private static final String RUNNER_IMAGE = Optional.ofNullable(System.getenv("GITEA_RUNNER_IMAGE"))
             .filter(value -> !value.isBlank())
             .orElse("docker.io/gitea/act_runner:0.6.1");
+    private static final List<String> DOCKER_ENV_NAMES = List.of("GITEA_DOCKER_BIN", "DOCKER_BIN", "DOCKER_CLI");
     private static final HttpClient CLIENT = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(3))
             .build();
@@ -180,7 +183,7 @@ public class GiteaDockerIntegrationTest extends BasePlatformTestCase {
 
         @Override
         public void close() throws Exception {
-            run("docker", "rm", "-f", id);
+            run(docker(), "rm", "-f", id);
         }
     }
 
@@ -190,8 +193,8 @@ public class GiteaDockerIntegrationTest extends BasePlatformTestCase {
             final String suffix = UUID.randomUUID().toString().replace("-", "").substring(0, 12);
             final String network = "gwplugin-" + suffix;
             final String name = "gwplugin-gitea-" + suffix;
-            run("docker", "network", "create", network);
-            final String id = run("docker", "run", "--rm", "-d",
+            run(docker(), "network", "create", network);
+            final String id = run(docker(), "run", "--rm", "-d",
                     "--name", name,
                     "--network", network,
                     "-p", "127.0.0.1::3000",
@@ -204,7 +207,7 @@ public class GiteaDockerIntegrationTest extends BasePlatformTestCase {
                     "-e", "GITEA__actions__ENABLED=true",
                     IMAGE
             ).trim();
-            final String port = run("docker", "port", id, "3000/tcp").trim().replaceFirst(".*:", "");
+            final String port = run(docker(), "port", id, "3000/tcp").trim().replaceFirst(".*:", "");
             final GiteaContainer container = new GiteaContainer(id, "http://127.0.0.1:" + port);
             container.waitUntilReady();
             return container;
@@ -216,7 +219,7 @@ public class GiteaDockerIntegrationTest extends BasePlatformTestCase {
 
         RunnerContainer startRunner() throws Exception {
             final String runnerName = "gwplugin-runner-" + UUID.randomUUID().toString().replace("-", "").substring(0, 12);
-            final String runnerToken = run("docker", "exec", id, "gitea", "actions", "generate-runner-token")
+            final String runnerToken = run(docker(), "exec", id, "gitea", "actions", "generate-runner-token")
                     .lines()
                     .reduce((first, second) -> second)
                     .orElse("")
@@ -224,8 +227,8 @@ public class GiteaDockerIntegrationTest extends BasePlatformTestCase {
             if (runnerToken.isBlank()) {
                 throw new IllegalStateException("Gitea runner token was not printed");
             }
-            final String network = run("docker", "inspect", "-f", "{{range $name, $_ := .NetworkSettings.Networks}}{{$name}}{{end}}", id).trim();
-            run("docker", "run", "-d",
+            final String network = run(docker(), "inspect", "-f", "{{range $name, $_ := .NetworkSettings.Networks}}{{$name}}{{end}}", id).trim();
+            run(docker(), "run", "-d",
                     "--name", runnerName,
                     "--network", network,
                     "-e", "GITEA_INSTANCE_URL=http://" + containerName() + ":3000",
@@ -240,18 +243,18 @@ public class GiteaDockerIntegrationTest extends BasePlatformTestCase {
         }
 
         private String containerName() throws Exception {
-            return run("docker", "inspect", "-f", "{{.Name}}", id).trim().replaceFirst("^/", "");
+            return run(docker(), "inspect", "-f", "{{.Name}}", id).trim().replaceFirst("^/", "");
         }
 
         String createAdminToken() throws Exception {
-            run("docker", "exec", id, "gitea", "admin", "user", "create",
+            run(docker(), "exec", id, "gitea", "admin", "user", "create",
                     "--username", "test",
                     "--password", "test-password",
                     "--email", "test@example.com",
                     "--admin",
                     "--must-change-password=false"
             );
-            final String output = run("docker", "exec", id, "gitea", "admin", "user", "generate-access-token",
+            final String output = run(docker(), "exec", id, "gitea", "admin", "user", "generate-access-token",
                     "--username", "test",
                     "--token-name", "plugin-test",
                     "--scopes", "all"
@@ -313,23 +316,23 @@ public class GiteaDockerIntegrationTest extends BasePlatformTestCase {
         private static void waitUntilRunnerReady(final String runnerName) throws Exception {
             final Pattern ready = Pattern.compile("(?i)(runner registered successfully|declare successfully)");
             for (int attempt = 0; attempt < 45; attempt++) {
-                final String logs = runCombined("docker", "logs", runnerName);
+                final String logs = runCombined(docker(), "logs", runnerName);
                 if (ready.matcher(logs).find()) {
                     return;
                 }
                 Thread.sleep(1_000);
             }
-            throw new IllegalStateException("Gitea runner did not become ready: " + runCombined("docker", "logs", runnerName));
+            throw new IllegalStateException("Gitea runner did not become ready: " + runCombined(docker(), "logs", runnerName));
         }
 
         @Override
         public void close() throws Exception {
-            final String network = run("docker", "inspect", "-f", "{{range $name, $_ := .NetworkSettings.Networks}}{{$name}}{{end}}", id).trim();
+            final String network = run(docker(), "inspect", "-f", "{{range $name, $_ := .NetworkSettings.Networks}}{{$name}}{{end}}", id).trim();
             try {
-                run("docker", "stop", id);
+                run(docker(), "stop", id);
             } finally {
                 if (!network.isBlank()) {
-                    run("docker", "network", "rm", network);
+                    run(docker(), "network", "rm", network);
                 }
             }
         }
@@ -337,6 +340,96 @@ public class GiteaDockerIntegrationTest extends BasePlatformTestCase {
 
     private static String encode(final String value) {
         return URLEncoder.encode(value, StandardCharsets.UTF_8).replace("+", "%20");
+    }
+
+    private static String docker() throws IOException, InterruptedException {
+        final List<String> candidates = new ArrayList<>();
+        DOCKER_ENV_NAMES.stream()
+                .map(System::getenv)
+                .filter(value -> value != null && !value.isBlank())
+                .forEach(candidates::add);
+        probe("sh", "-lc", "command -v docker").ifPresent(candidates::add);
+        probe("sh", "-lc", "which docker").ifPresent(candidates::add);
+        probe("cmd", "/c", "where docker").ifPresent(candidates::add);
+        commonDockerPaths().forEach(candidates::add);
+
+        return candidates.stream()
+                .map(String::trim)
+                .filter(value -> !value.isBlank())
+                .flatMap(value -> value.lines().map(String::trim))
+                .filter(value -> !value.isBlank())
+                .distinct()
+                .filter(GiteaDockerIntegrationTest::canRunDocker)
+                .findFirst()
+                .orElseThrow(() -> new IOException("""
+                        Docker CLI was not found for the Gitea integration test.
+                        Set GITEA_DOCKER_BIN, DOCKER_BIN, or DOCKER_CLI to the docker executable,
+                        or make `docker` visible to command -v / which / where.
+                        """.strip()));
+    }
+
+    private static List<String> commonDockerPaths() {
+        final String home = System.getProperty("user.home", "");
+        return List.of(
+                "/opt/homebrew/opt/docker/bin/docker",
+                "/opt/homebrew/bin/docker",
+                "/usr/local/bin/docker",
+                "/Applications/Docker.app/Contents/Resources/bin/docker",
+                "/Applications/OrbStack.app/Contents/MacOS/docker",
+                "/Applications/Rancher Desktop.app/Contents/Resources/resources/darwin/bin/docker",
+                home + "/.docker/bin/docker",
+                home + "/.rd/bin/docker",
+                home + "/.orbstack/bin/docker",
+                home + "/Applications/Docker.app/Contents/Resources/bin/docker",
+                home + "/Applications/OrbStack.app/Contents/MacOS/docker"
+        );
+    }
+
+    private static Optional<String> probe(final String... command) {
+        try {
+            final Process process = new ProcessBuilder(command)
+                    .redirectError(ProcessBuilder.Redirect.DISCARD)
+                    .start();
+            final String output = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8).trim();
+            if (process.waitFor(10, java.util.concurrent.TimeUnit.SECONDS) && process.exitValue() == 0 && !output.isBlank()) {
+                return output.lines().map(String::trim).filter(value -> !value.isBlank()).findFirst();
+            }
+            process.destroyForcibly();
+        } catch (final IOException ignored) {
+            // Candidate discovery is best effort.
+        } catch (final InterruptedException ignored) {
+            Thread.currentThread().interrupt();
+        }
+        return Optional.empty();
+    }
+
+    private static boolean canRunDocker(final String command) {
+        if (!isExecutable(command)) {
+            return false;
+        }
+        try {
+            final Process process = new ProcessBuilder(command, "version")
+                    .redirectOutput(ProcessBuilder.Redirect.DISCARD)
+                    .redirectError(ProcessBuilder.Redirect.DISCARD)
+                    .start();
+            if (process.waitFor(10, java.util.concurrent.TimeUnit.SECONDS)) {
+                return process.exitValue() == 0;
+            }
+            process.destroyForcibly();
+        } catch (final IOException ignored) {
+            // Candidate validation is best effort.
+        } catch (final InterruptedException ignored) {
+            Thread.currentThread().interrupt();
+        }
+        return false;
+    }
+
+    private static boolean isExecutable(final String command) {
+        try {
+            return Files.isExecutable(Path.of(command));
+        } catch (final InvalidPathException ignored) {
+            return false;
+        }
     }
 
     private static String run(final String... command) throws IOException, InterruptedException {

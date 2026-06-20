@@ -86,7 +86,9 @@ GITEA_DOCKER_TEST=false ./gradlew test
 
 That starts the official rootless Gitea Docker image, seeds a tiny repository, and checks action plus `.gitea/workflows`
 metadata through the same remote resolver. Set `GITEA_DOCKER_TEST=false` to skip it locally, or override the image with
-`GITEA_IMAGE` when testing another Gitea release.
+`GITEA_IMAGE` when testing another Gitea release. If `docker` is not on the Gradle process `PATH`, set
+`GITEA_DOCKER_BIN`, `DOCKER_BIN`, or `DOCKER_CLI` to the Docker executable; the test also tries `command -v docker`,
+`which docker`, `where docker`, and common Docker Desktop/Homebrew locations.
 
 ## Release Automation
 
