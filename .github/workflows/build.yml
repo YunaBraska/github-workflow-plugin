@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Release tag. Empty means today's vYYYY.M.D.
+        description: Release tag. Empty means today's YYYY.M.D.
         required: false
         type: string
       dry_run:
@@ -81,20 +81,25 @@ jobs:
           release_tag=""
           target_version="$plugin_version"
           if [ "$release" = "true" ]; then
-            if [ -n "$INPUT_TAG" ]; then
-              release_tag="$INPUT_TAG"
+            input_tag="$INPUT_TAG"
+            case "$input_tag" in
+              v*) input_tag="${input_tag#v}" ;;
+            esac
+
+            if [ -n "$input_tag" ]; then
+              release_tag="$input_tag"
             else
               year="$(date -u +%Y)"
               month="$(date -u +%m | sed 's/^0//')"
               day="$(date -u +%d | sed 's/^0//')"
-              release_tag="v$year.$month.$day"
+              release_tag="$year.$month.$day"
             fi
 
-            if ! printf '%s\n' "$release_tag" | grep -Eq '^v[0-9]{4}[.][1-9][0-9]?[.][1-9][0-9]?$'; then
-              echo "Tag must look like v2026.5.20: $release_tag" >&2
+            if ! printf '%s\n' "$release_tag" | grep -Eq '^[0-9]{4}[.][1-9][0-9]?[.][1-9][0-9]?$'; then
+              echo "Tag must look like 2026.5.20: $release_tag" >&2
               exit 1
             fi
-            target_version="${release_tag#v}"
+            target_version="$release_tag"
           fi
 
           echo "event=$GITHUB_EVENT_NAME"
@@ -124,7 +129,7 @@ jobs:
 
       - name: ♻️ Restore cache
         id: cache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           path: |
             ~/.gradle/caches/transforms-*
@@ -139,6 +144,12 @@ jobs:
         with:
           distribution: temurin
           java-version: 25
+
+      - name: 🐳 Check Docker
+        shell: sh
+        run: |
+          docker version
+          docker info
 
       - name: 🏷️ Prepare release metadata
         if: steps.plan.outputs.release == 'true'
@@ -254,7 +265,10 @@ jobs:
         env:
           RELEASE_TAG: ${{ steps.plan.outputs.tag }}
         run: |
-          version="${RELEASE_TAG#v}"
+          version="$RELEASE_TAG"
+          case "$version" in
+            v*) version="${version#v}" ;;
+          esac
           awk -v version="$version" '
             $0 ~ "^## \\[" version "\\]" { found = 1; next }
             found && $0 ~ /^## / { exit }
@@ -301,11 +315,11 @@ jobs:
           fi
           curl "$@" https://plugins.jetbrains.com/api/updates/upload
 
-      - name: 📤 Push release commit and tag
+      - name: 📤 Push release commit
+        id: release_source
         if: steps.plan.outputs.release == 'true' && steps.plan.outputs.dry_run != 'true'
         shell: sh
         env:
-          RELEASE_TAG: ${{ steps.plan.outputs.tag }}
           RELEASE_TOKEN: ${{ secrets.RELEASE_TOKEN }}
         run: |
           git config user.name "Kira"
@@ -316,9 +330,9 @@ jobs:
           fi
 
           target_branch="${GITHUB_REF_NAME:-main}"
+          release_target="$(git rev-parse HEAD)"
           git push origin "HEAD:$target_branch"
-          git tag -a "$RELEASE_TAG" -m "$RELEASE_TAG [skip ci]"
-          git push origin "refs/tags/$RELEASE_TAG"
+          echo "target=$release_target" >> "$GITHUB_OUTPUT"
 
       - name: 🚀 Create GitHub release
         if: steps.plan.outputs.release == 'true' && steps.plan.outputs.dry_run != 'true'
@@ -327,18 +341,22 @@ jobs:
           ARCHIVE_PATH: ${{ steps.archive.outputs.path }}
           GH_TOKEN: ${{ secrets.RELEASE_TOKEN || github.token }}
           RELEASE_TAG: ${{ steps.plan.outputs.tag }}
+          RELEASE_TARGET: ${{ steps.release_source.outputs.target }}
         run: |
           if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
             gh release upload "$RELEASE_TAG" "$ARCHIVE_PATH" --clobber
             gh release edit "$RELEASE_TAG" --title "$RELEASE_TAG" --notes-file release-notes.md
           else
-            gh release create "$RELEASE_TAG" "$ARCHIVE_PATH" --title "$RELEASE_TAG" --notes-file release-notes.md --verify-tag
+            if ! gh release create "$RELEASE_TAG" "$ARCHIVE_PATH" --title "$RELEASE_TAG" --notes-file release-notes.md --target "$RELEASE_TARGET"; then
+              gh release delete "$RELEASE_TAG" --yes --cleanup-tag >/dev/null 2>&1 || true
+              exit 1
+            fi
           fi
 
       - name: 💾 Save cache
         if: success() && github.event_name != 'pull_request' && steps.cache.outputs.cache-hit != 'true'
         continue-on-error: true
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v5
         with:
           path: |
             ~/.gradle/caches/transforms-*

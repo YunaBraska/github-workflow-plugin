@@ -1,0 +1,2147 @@
+package com.github.yunabraska.githubworkflow.syntax;
+
+import com.github.yunabraska.githubworkflow.entry.WorkflowCompletion;
+
+import com.github.yunabraska.githubworkflow.i18n.GitHubWorkflowBundle;
+
+import com.github.yunabraska.githubworkflow.test.FakeRemoteServer;
+
+import com.github.yunabraska.githubworkflow.test.EditorFeatureTestCase;
+
+import com.github.yunabraska.githubworkflow.git.RemoteActionProviders;
+
+import com.github.yunabraska.githubworkflow.state.GitHubActionCache;
+
+import com.github.yunabraska.githubworkflow.model.GitHubAction;
+import com.intellij.codeInsight.editorActions.TypedHandlerDelegate;
+import com.intellij.codeInsight.lookup.LookupElement;
+import com.intellij.codeInsight.lookup.LookupElementPresentation;
+import com.intellij.util.ThreeState;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
+
+import static com.github.yunabraska.githubworkflow.state.GitHubActionCache.getActionCache;
+import static org.assertj.core.api.Assertions.assertThat;
+
+public class WorkflowSyntaxCompletionTest extends EditorFeatureTestCase {
+
+    public void testAutoPopupTriggersAfterYamlNewLine() {
+        configureWorkflow("""
+                name: Completion
+                on:
+                  <caret>
+                """);
+
+        assertThat(invokeAutoPopup('\n')).isTrue();
+    }
+
+    public void testLineBeforeCaretHandlesInjectedZeroOffset() {
+        assertThat(WorkflowCompletion.lineBeforeCaret("""
+
+                name: Completion
+                on: workflow_dispatch
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: <caret>
+                """, 0)).isEmpty();
+    }
+
+    public void testRunFieldCompletionDoesNotCrash() {
+        assertThat(completeWorkflow("""
+
+                name: Completion
+                on: workflow_dispatch
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: <caret>
+                """)).isNotNull();
+    }
+
+    public void testAutoPopupTypedHandlerSchedulesYamlNewLine() {
+        configureWorkflow("""
+                name: Completion
+                on:
+                  <caret>
+                """);
+        final WorkflowCompletion.TypedAutoPopup handler = new WorkflowCompletion.TypedAutoPopup();
+
+        assertThat(handler.checkAutoPopup('\n', getProject(), myFixture.getEditor(), myFixture.getFile()))
+                .isEqualTo(TypedHandlerDelegate.Result.CONTINUE);
+        assertThat(handler.charTyped('\n', getProject(), myFixture.getEditor(), myFixture.getFile()))
+                .isEqualTo(TypedHandlerDelegate.Result.CONTINUE);
+    }
+
+    public void testEnterHandlerTriggersAfterYamlMappingKey() {
+        configureWorkflow("""
+                name: Completion
+                on:
+                  <caret>
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo ok
+                """);
+
+        assertThat(WorkflowCompletion.EnterAutoPopup.shouldAutoPopupAfterEnter(myFixture.getEditor(), myFixture.getFile()))
+                .isTrue();
+    }
+
+    public void testEnterHandlerIgnoresPlainYamlValueLine() {
+        configureWorkflow("""
+                name: Completion
+                on: workflow_dispatch
+                  <caret>
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo ok
+                """);
+
+        assertThat(WorkflowCompletion.EnterAutoPopup.shouldAutoPopupAfterEnter(myFixture.getEditor(), myFixture.getFile()))
+                .isFalse();
+    }
+
+    public void testWorkflowCompletionConfidenceKeepsAutoPopupAvailable() {
+        configureWorkflow("""
+                name: Completion
+                on:
+                  <caret>
+                """);
+
+        assertThat(new WorkflowCompletion.Confidence().shouldSkipAutopopup(
+                myFixture.getEditor(),
+                myFixture.getFile().findElementAt(myFixture.getCaretOffset()),
+                myFixture.getFile(),
+                myFixture.getCaretOffset()
+        )).isEqualTo(ThreeState.NO);
+    }
+
+    public void testAutoPopupTriggersAfterYamlKeySeparator() {
+        configureWorkflow("""
+                name: Completion
+                on:<caret>
+                """);
+
+        assertThat(invokeAutoPopup(':')).isTrue();
+    }
+
+    public void testAutoPopupTriggersAfterExpressionDot() {
+        configureWorkflow("""
+                name: Completion
+                on: workflow_dispatch
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo "${{ github.<caret> }}"
+                """);
+
+        assertThat(invokeAutoPopup('.')).isTrue();
+    }
+
+    public void testAutoPopupIgnoresPlainLetters() {
+        configureWorkflow("""
+                name: Completion
+                on: workflow_dispatch
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo ok<caret>
+                """);
+
+        assertThat(invokeAutoPopup('x')).isFalse();
+    }
+
+    public void testRootCompletionSuggestsAvailableContexts() {
+        assertThat(completeWorkflow("""
+                name: Completion
+                on:
+                  workflow_call:
+                    inputs:
+                      deploy-target:
+                        type: string
+                    secrets:
+                      SECRET_TOKEN:
+                        required: false
+                env:
+                  TOP_LEVEL: top
+                jobs:
+                  build:
+                    runs-on: ${{ matrix.os }}
+                    strategy:
+                      matrix:
+                        os: [ubuntu-latest]
+                    steps:
+                      - id: package
+                        run: echo ok
+                      - run: echo "${{ <caret> }}"
+                """)).contains("github", "job", "runner", "strategy", "matrix", "env", "inputs", "secrets", "steps");
+    }
+
+    private boolean invokeAutoPopup(final char typeChar) {
+        return WorkflowCompletion.TypedAutoPopup.shouldAutoPopup(typeChar, myFixture.getEditor(), myFixture.getFile());
+    }
+
+    public void testGithubCompletionSuggestsRefName() {
+        assertThat(completeWorkflow("""
+                name: Completion
+                on: workflow_dispatch
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo "${{ github.<caret> }}"
+                """)).contains("ref_name");
+    }
+
+    public void testGithubCompletionSuggestsCurrentDocumentedIds() {
+        assertThat(completeWorkflow("""
+                name: Completion
+                on: workflow_dispatch
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo "${{ github.<caret> }}"
+                """)).contains("actor_id", "ref_protected", "repository_owner_id");
+    }
+
+    public void testIfExpressionCompletionAfterDotWithoutBraces() {
+        assertThat(completeWorkflow("""
+                name: Completion
+                on: workflow_dispatch
+                jobs:
+                  build:
+                    if: github.<caret>
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo ok
+                """)).contains("ref_name");
+    }
+
+    public void testRunnerCompletionSuggestsEnvironment() {
+        assertThat(completeWorkflow("""
+                name: Completion
+                on: workflow_dispatch
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo "${{ runner.<caret> }}"
+                """)).contains("environment");
+    }
+
+    public void testRunnerCompletionSuggestsDebug() {
+        assertThat(completeWorkflow("""
+                name: Completion
+                on: workflow_dispatch
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo "${{ runner.<caret> }}"
+                """)).contains("debug");
+    }
+
+    public void testJobCompletionSuggestsStatus() {
+        assertThat(completeWorkflow("""
+                name: Completion
+                on: workflow_dispatch
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo "${{ job.<caret> }}"
+                """)).contains("status");
+    }
+
+    public void testJobContainerCompletionSuggestsContainerMembers() {
+        assertThat(completeWorkflow("""
+                name: Completion
+                on: workflow_dispatch
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    container: postgres:16
+                    steps:
+                      - run: echo "${{ job.container.<caret> }}"
+                """)).contains("id", "network");
+    }
+
+    public void testJobServicesCompletionSuggestsServiceIds() {
+        assertThat(completeWorkflow("""
+                name: Completion
+                on: workflow_dispatch
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    services:
+                      postgres:
+                        image: postgres:16
+                    steps:
+                      - run: echo "${{ job.services.<caret> }}"
+                """)).contains("postgres");
+    }
+
+    public void testJobServiceCompletionSuggestsServiceMembers() {
+        assertThat(completeWorkflow("""
+                name: Completion
+                on: workflow_dispatch
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    services:
+                      postgres:
+                        image: postgres:16
+                    steps:
+                      - run: echo "${{ job.services.postgres.<caret> }}"
+                """)).contains("id", "network", "ports");
+    }
+
+    public void testJobServicePortsCompletionSuggestsMappedPorts() {
+        assertThat(completeWorkflow("""
+                name: Completion
+                on: workflow_dispatch
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    services:
+                      postgres:
+                        image: postgres:16
+                        ports:
+                          - 5432/tcp
+                    steps:
+                      - run: echo "${{ job.services.postgres.ports[<caret>] }}"
+                """)).contains("5432");
+    }
+
+    public void testStrategyCompletionSuggestsJobIndex() {
+        assertThat(completeWorkflow("""
+                name: Completion
+                on: workflow_dispatch
+                jobs:
+                  build:
+                    runs-on: ${{ matrix.os }}
+                    strategy:
+                      matrix:
+                        os: [ubuntu-latest]
+                    steps:
+                      - run: echo "${{ strategy.<caret> }}"
+                """)).contains("job-index", "job-total", "max-parallel");
+    }
+
+    public void testMatrixCompletionUsesCurrentJobMatrixKeys() {
+        assertThat(completeWorkflow("""
+                name: Completion
+                on: workflow_dispatch
+                jobs:
+                  build:
+                    runs-on: ${{ matrix.os }}
+                    strategy:
+                      matrix:
+                        os: [ubuntu-latest]
+                        node: [24, 25]
+                    steps:
+                      - run: echo "${{ matrix.<caret> }}"
+                """)).contains("os", "node");
+    }
+
+    public void testMatrixCompletionUsesIncludeKeys() {
+        assertThat(completeWorkflow("""
+                name: Completion
+                on: workflow_dispatch
+                jobs:
+                  build:
+                    runs-on: ${{ matrix.os }}
+                    strategy:
+                      matrix:
+                        include:
+                          - os: ubuntu-latest
+                            node: 25
+                    steps:
+                      - run: echo "${{ matrix.<caret> }}"
+                """)).contains("os", "node");
+    }
+
+    public void testEnvCompletionIncludesWorkflowJobStepAndRunEnvironmentValues() {
+        assertThat(completeWorkflow("""
+                name: Completion
+                on: workflow_dispatch
+                env:
+                  WORKFLOW_LEVEL: workflow
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    env:
+                      JOB_LEVEL: job
+                    steps:
+                      - run: echo "RUN_LEVEL=run" >> "$GITHUB_ENV"
+                      - env:
+                          STEP_LEVEL: step
+                        run: echo "${{ env.<caret> }}"
+                """)).contains("WORKFLOW_LEVEL", "JOB_LEVEL", "STEP_LEVEL", "RUN_LEVEL");
+    }
+
+    public void testGiteaRunEnvironmentCompletionIncludesGiteaRunnerVariables() {
+        assertThat(completeGiteaWorkflow("""
+                name: Completion
+                on: workflow_dispatch
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo "$GITEA<caret>"
+                """)).contains("GITEA_OUTPUT", "GITEA_ENV", "GITEA_STEP_SUMMARY");
+    }
+
+    public void testEnvCompletionIncludesJobEnvMapAliasValues() {
+        assertThat(completeWorkflow("""
+                name: Completion
+                on: workflow_dispatch
+                jobs:
+                  define:
+                    runs-on: ubuntu-latest
+                    env: &env_vars
+                      NODE_ENV: production
+                    steps:
+                      - run: echo ok
+                  reuse:
+                    runs-on: ubuntu-latest
+                    env: *env_vars
+                    steps:
+                      - run: echo "${{ env.<caret> }}"
+                """)).contains("NODE_ENV");
+    }
+
+    public void testInputsCompletionUsesWorkflowCallInputs() {
+        assertThat(completeWorkflow("""
+                name: Completion
+                on:
+                  workflow_call:
+                    inputs:
+                      deploy-target:
+                        type: string
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo "${{ inputs.<caret> }}"
+                """)).contains("deploy-target");
+    }
+
+    public void testInputsCompletionUsesDispatchInputs() {
+        assertThat(completeWorkflow("""
+                name: Completion
+                on:
+                  workflow_dispatch:
+                    inputs:
+                      release-tag:
+                        type: string
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo "${{ inputs.<caret> }}"
+                """)).contains("release-tag");
+    }
+
+    public void testWorkflowCallInputDefaultCompletionSuggestsInputs() {
+        assertThat(completeWorkflow("""
+                name: Completion
+                on:
+                  workflow_call:
+                    inputs:
+                      deploy-target:
+                        type: string
+                      target:
+                        type: string
+                        default: ${{ inputs.<caret> }}
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo ok
+                """)).contains("deploy-target");
+    }
+
+    public void testJobContainerCredentialsCompletionSuggestsInputs() {
+        assertThat(completeWorkflow("""
+                name: Completion
+                on:
+                  workflow_call:
+                    inputs:
+                      registry-user:
+                        type: string
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    container:
+                      image: ghcr.io/owner/image
+                      credentials:
+                        username: ${{ inputs.<caret> }}
+                    steps:
+                      - run: echo ok
+                """)).contains("registry-user");
+    }
+
+    public void testJobStrategyFailFastCompletionSuggestsInputs() {
+        assertThat(completeWorkflow("""
+                name: Completion
+                on:
+                  workflow_call:
+                    inputs:
+                      fail-fast:
+                        type: boolean
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    strategy:
+                      fail-fast: ${{ inputs.<caret> }}
+                      matrix:
+                        os: [ubuntu-latest]
+                    steps:
+                      - run: echo ok
+                """)).contains("fail-fast");
+    }
+
+    public void testWorkflowDispatchTriggerCompletionSuggestsInputs() {
+        assertThat(completeWorkflow("""
+                name: Completion
+                on:
+                  workflow_dispatch:
+                    <caret>
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo ok
+                """)).contains("inputs");
+    }
+
+    public void testTopLevelSyntaxCompletionSuggestsCurrentWorkflowKeys() {
+        assertThat(completeWorkflow("""
+                name: Completion
+                <caret>
+                """)).contains("run-name", "permissions", "defaults", "concurrency", "jobs");
+    }
+
+    public void testOnSyntaxCompletionSuggestsCurrentEvents() {
+        assertThat(completeWorkflow("""
+                name: Completion
+                on:
+                  <caret>
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo ok
+                """)).contains("push", "pull_request", "workflow_call", "workflow_dispatch", "workflow_run", "merge_group", "image_version");
+    }
+
+    public void testOnSyntaxCompletionShowsTriggerDescriptions() {
+        assertThat(completeWorkflowTypeTexts("""
+                name: Completion
+                on:
+                  <caret>
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo ok
+                """)).containsEntry("push", "Commit or tag pushed")
+                .containsEntry("workflow_dispatch", "Manual run button")
+                .containsEntry("workflow_call", "Reusable workflow call");
+    }
+
+    public void testTriggerTypesValueCompletionSuggestsActivityTypesInline() {
+        assertThat(completeWorkflow("""
+                name: Completion
+                on:
+                  pull_request:
+                    types: [<caret>]
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo ok
+                """)).contains("opened", "synchronize", "ready_for_review", "auto_merge_enabled");
+    }
+
+    public void testTriggerTypesValueCompletionSuggestsActivityTypesInList() {
+        assertThat(completeWorkflow("""
+                name: Completion
+                on:
+                  workflow_run:
+                    types:
+                      - <caret>
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo ok
+                """)).contains("completed", "requested", "in_progress");
+    }
+
+    public void testBranchFilterCompletionSuggestsLocalGitBranches() throws Exception {
+        writeProjectFile(".git/refs/heads/main", "abc123");
+        writeProjectFile(".git/refs/heads/feature/one", "abc123");
+
+        configureWorkflowProjectFile("""
+                name: Completion
+                on:
+                  push:
+                    branches: [<caret>]
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo ok
+                """);
+
+        assertThat(completeBasicLookupStrings()).contains("main", "feature/one");
+    }
+
+    public void testTagFilterCompletionSuggestsLocalGitTags() throws Exception {
+        writeProjectFile(".git/refs/tags/v1.2.3", "abc123");
+
+        configureWorkflowProjectFile("""
+                name: Completion
+                on:
+                  push:
+                    tags:
+                      - <caret>
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo ok
+                """);
+
+        assertThat(completeBasicLookupStrings()).contains("v1.2.3");
+    }
+
+    public void testPathFilterCompletionSuggestsProjectFiles() {
+        myFixture.addFileToProject("src/main/App.java", "class App {}");
+
+        configureWorkflowProjectFile("""
+                name: Completion
+                on:
+                  pull_request:
+                    paths: [<caret>]
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo ok
+                """);
+
+        assertThat(completeBasicLookupStrings()).contains("src/main/App.java");
+    }
+
+    public void testPushFilterCompletionSuggestsBranchTagAndPathKeys() {
+        assertThat(completeWorkflow("""
+                name: Completion
+                on:
+                  push:
+                    <caret>
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo ok
+                """)).contains("branches", "branches-ignore", "tags", "paths", "paths-ignore")
+                .doesNotContain("types");
+    }
+
+    public void testScheduleFilterCompletionSuggestsOnlyCron() {
+        assertThat(completeWorkflow("""
+                name: Completion
+                on:
+                  schedule:
+                    <caret>
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo ok
+                """)).contains("cron")
+                .doesNotContain("branches", "paths", "types");
+    }
+
+    public void testWorkflowCallTriggerCompletionSuggestsInputsOutputsAndSecrets() {
+        assertThat(completeWorkflow("""
+                name: Completion
+                on:
+                  workflow_call:
+                    <caret>
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo ok
+                """)).contains("inputs", "outputs", "secrets");
+    }
+
+    public void testWorkflowCallOutputCompletionSuggestsValueAndDescription() {
+        assertThat(completeWorkflow("""
+                name: Completion
+                on:
+                  workflow_call:
+                    outputs:
+                      artifact:
+                        <caret>
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo ok
+                """)).contains("value", "description");
+    }
+
+    public void testWorkflowDispatchInputDefinitionCompletionSuggestsInputProperties() {
+        assertThat(completeWorkflow("""
+                name: Completion
+                on:
+                  workflow_dispatch:
+                    inputs:
+                      release-tag:
+                        <caret>
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo ok
+                """)).contains("description", "type", "required", "default", "options");
+    }
+
+    public void testWorkflowCallInputDefinitionCompletionSuggestsInputProperties() {
+        assertThat(completeWorkflow("""
+                name: Completion
+                on:
+                  workflow_call:
+                    inputs:
+                      release-tag:
+                        <caret>
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo ok
+                """)).contains("description", "type", "required", "default");
+    }
+
+    public void testWorkflowCallSecretDefinitionCompletionSuggestsSecretProperties() {
+        assertThat(completeWorkflow("""
+                name: Completion
+                on:
+                  workflow_call:
+                    secrets:
+                      token:
+                        <caret>
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo ok
+                """)).contains("description", "required");
+    }
+
+    public void testGiteaSecretCompletionSuggestsGiteaToken() {
+        assertThat(completeGiteaWorkflow("""
+                name: Completion
+                on: workflow_dispatch
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo "${{ secrets.<caret> }}"
+                """)).contains("GITEA_TOKEN")
+                .doesNotContain("GITHUB_TOKEN");
+    }
+
+    public void testWorkflowDispatchInputTypeCompletionSuggestsDispatchTypes() {
+        assertThat(completeWorkflow("""
+                name: Completion
+                on:
+                  workflow_dispatch:
+                    inputs:
+                      target:
+                        type: <caret>
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo ok
+                """)).contains("string", "boolean", "choice", "number", "environment");
+    }
+
+    public void testWorkflowCallInputTypeCompletionSuggestsReusableWorkflowTypes() {
+        assertThat(completeWorkflow("""
+                name: Completion
+                on:
+                  workflow_call:
+                    inputs:
+                      target:
+                        type: <caret>
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo ok
+                """)).contains("string", "boolean", "number").doesNotContain("choice", "environment");
+    }
+
+    public void testPermissionScopeCompletionSuggestsCurrentScopes() {
+        assertThat(completeWorkflow("""
+                name: Completion
+                on: workflow_dispatch
+                permissions:
+                  <caret>
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo ok
+                """)).contains("contents", "pull-requests", "id-token", "attestations", "models", "artifact-metadata", "code-quality", "vulnerability-alerts");
+    }
+
+    public void testPermissionScopeCompletionShowsDescriptions() {
+        assertThat(completeWorkflowTypeTexts("""
+                name: Completion
+                on: workflow_dispatch
+                permissions:
+                  <caret>
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo ok
+                """)).containsEntry("contents", "Repository contents")
+                .containsEntry("id-token", "OpenID Connect tokens")
+                .containsEntry("models", "GitHub Models");
+    }
+
+    public void testGiteaPermissionScopeCompletionUsesGiteaTokenScopes() {
+        assertThat(completeGiteaWorkflow("""
+                name: Completion
+                on: workflow_dispatch
+                permissions:
+                  <caret>
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo ok
+                """)).contains("actions", "contents", "code", "releases", "wiki", "projects", "packages")
+                .doesNotContain("id-token", "statuses", "checks", "deployments", "pages", "security-events");
+    }
+
+    public void testGiteaPermissionScopeCompletionKeepsDescriptionsTranslated() {
+        assertThat(completeGiteaWorkflowTypeTexts("""
+                name: Completion
+                on: workflow_dispatch
+                permissions:
+                  <caret>
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo ok
+                """)).containsEntry("contents", "Repository contents")
+                .containsEntry("wiki", "Wiki page changed")
+                .containsEntry("projects", "Classic project changed");
+    }
+
+    public void testPermissionValueCompletionSuggestsReadWriteNone() {
+        assertThat(completeWorkflow("""
+                name: Completion
+                on: workflow_dispatch
+                permissions:
+                  contents: <caret>
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo ok
+                """)).contains("read", "write", "none");
+    }
+
+    public void testPermissionShorthandCompletionSuggestsReadAllWriteAllAndEmpty() {
+        assertThat(completeWorkflow("""
+                name: Completion
+                on: workflow_dispatch
+                permissions: <caret>
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo ok
+                """)).contains("read-all", "write-all", "{}");
+    }
+
+    public void testGiteaPermissionShorthandCompletionUsesDocumentedValues() {
+        assertThat(completeGiteaWorkflow("""
+                name: Completion
+                on: workflow_dispatch
+                permissions: <caret>
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo ok
+                """)).contains("read-all", "write-all")
+                .doesNotContain("{}");
+    }
+
+    public void testGiteaScheduleCompletionSuggestsCronAliases() {
+        assertThat(completeGiteaWorkflow("""
+                name: Completion
+                on:
+                  schedule:
+                    - cron: <caret>
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo ok
+                """)).contains("@yearly", "@monthly", "@weekly", "@daily", "@hourly");
+    }
+
+    public void testGiteaRootExpressionCompletionKeepsDocumentedFunctionSetSmall() {
+        assertThat(completeGiteaWorkflow("""
+                name: Completion
+                on: workflow_dispatch
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo "${{ <caret> }}"
+                """)).contains("always()")
+                .doesNotContain("success()", "failure()", "cancelled()", "hashFiles()", "startsWith()");
+    }
+
+    public void testIdTokenPermissionCompletionSuggestsOnlyWriteOrNone() {
+        assertThat(completeWorkflow("""
+                name: Completion
+                on: workflow_dispatch
+                permissions:
+                  id-token: <caret>
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo ok
+                """)).contains("write", "none").doesNotContain("read");
+    }
+
+    public void testModelsPermissionCompletionSuggestsOnlyReadOrNone() {
+        assertThat(completeWorkflow("""
+                name: Completion
+                on: workflow_dispatch
+                permissions:
+                  models: <caret>
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo ok
+                """)).contains("read", "none").doesNotContain("write");
+    }
+
+    public void testJobSyntaxCompletionSuggestsDocumentedJobKeys() {
+        assertThat(completeWorkflow("""
+                name: Completion
+                on: workflow_dispatch
+                jobs:
+                  build:
+                    <caret>
+                """)).contains("runs-on", "permissions", "environment", "strategy", "container", "services", "uses");
+    }
+
+    public void testGiteaIgnoredJobKeysExplainRuntimeNoop() {
+        assertThat(completeGiteaWorkflowTypeTexts("""
+                name: Completion
+                on: workflow_dispatch
+                jobs:
+                  build:
+                    <caret>
+                """)).containsEntry("timeout-minutes", "Accepted by Gitea, ignored at runtime.")
+                .containsEntry("continue-on-error", "Accepted by Gitea, ignored at runtime.")
+                .containsEntry("environment", "Accepted by Gitea, ignored at runtime.");
+    }
+
+    public void testWorkflowSyntaxCompletionDescriptionsUseConfiguredLanguageAfterEnglishTableUse() {
+        assertThat(completeWorkflowTypeTexts("""
+                name: Completion
+                on: workflow_dispatch
+                jobs:
+                  build:
+                    <caret>
+                """)).containsEntry("steps", "Step list. The actual work.");
+        final GitHubWorkflowBundle.Settings settings = GitHubWorkflowBundle.Settings.getInstance();
+        final String previousLanguage = settings.languageTag();
+        try {
+            settings.languageTag("de");
+
+            assertThat(completeWorkflowTypeTexts("""
+                    name: Completion
+                    on: workflow_dispatch
+                    jobs:
+                      build:
+                        <caret>
+                    """)).containsEntry("steps", "Schrittliste. Die eigentliche Arbeit.")
+                    .containsEntry("environment", "Bereitstellungsumgebung");
+        } finally {
+            settings.languageTag(previousLanguage);
+        }
+    }
+
+    public void testDefaultsRunCompletionSuggestsShellAndWorkingDirectory() {
+        assertThat(completeWorkflow("""
+                name: Completion
+                on: workflow_dispatch
+                defaults:
+                  run:
+                    <caret>
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo ok
+                """)).contains("shell", "working-directory");
+    }
+
+    public void testStrategyCompletionSuggestsMatrixFailFastAndMaxParallelKeys() {
+        assertThat(completeWorkflow("""
+                name: Completion
+                on: workflow_dispatch
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    strategy:
+                      <caret>
+                    steps:
+                      - run: echo ok
+                """)).contains("matrix", "fail-fast", "max-parallel");
+    }
+
+    public void testMatrixCompletionSuggestsIncludeAndExcludeKeys() {
+        assertThat(completeWorkflow("""
+                name: Completion
+                on: workflow_dispatch
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    strategy:
+                      matrix:
+                        <caret>
+                    steps:
+                      - run: echo ok
+                """)).contains("include", "exclude");
+    }
+
+    public void testContainerCompletionSuggestsContainerShapeKeys() {
+        assertThat(completeWorkflow("""
+                name: Completion
+                on: workflow_dispatch
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    container:
+                      <caret>
+                    steps:
+                      - run: echo ok
+                """)).contains("image", "credentials", "env", "ports", "volumes", "options");
+    }
+
+    public void testContainerCredentialsCompletionSuggestsUsernameAndPassword() {
+        assertThat(completeWorkflow("""
+                name: Completion
+                on: workflow_dispatch
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    container:
+                      image: ghcr.io/example/app:latest
+                      credentials:
+                        <caret>
+                    steps:
+                      - run: echo ok
+                """)).contains("username", "password");
+    }
+
+    public void testServiceCompletionSuggestsServiceShapeKeys() {
+        assertThat(completeWorkflow("""
+                name: Completion
+                on: workflow_dispatch
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    services:
+                      postgres:
+                        <caret>
+                    steps:
+                      - run: echo ok
+                """)).contains("image", "credentials", "env", "ports", "volumes", "options");
+    }
+
+    public void testServiceCredentialsCompletionSuggestsUsernameAndPassword() {
+        assertThat(completeWorkflow("""
+                name: Completion
+                on: workflow_dispatch
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    services:
+                      postgres:
+                        image: postgres:16
+                        credentials:
+                          <caret>
+                    steps:
+                      - run: echo ok
+                """)).contains("username", "password");
+    }
+
+    public void testConcurrencyCompletionSuggestsGroupAndCancelInProgress() {
+        assertThat(completeWorkflow("""
+                name: Completion
+                on: workflow_dispatch
+                concurrency:
+                  <caret>
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo ok
+                """)).contains("group", "cancel-in-progress");
+    }
+
+    public void testEnvironmentCompletionSuggestsNameAndUrl() {
+        assertThat(completeWorkflow("""
+                name: Completion
+                on: workflow_dispatch
+                jobs:
+                  deploy:
+                    runs-on: ubuntu-latest
+                    environment:
+                      <caret>
+                    steps:
+                      - run: echo ok
+                """)).contains("name", "url");
+    }
+
+    public void testStepSyntaxCompletionSuggestsDocumentedStepKeys() {
+        assertThat(completeWorkflow("""
+                name: Completion
+                on: workflow_dispatch
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - <caret>
+                """)).contains("id", "name", "uses", "run", "shell", "with", "continue-on-error", "timeout-minutes");
+    }
+
+    public void testRunsOnCompletionSuggestsCommonHostedRunnerLabels() {
+        assertThat(completeWorkflow("""
+                name: Completion
+                on: workflow_dispatch
+                jobs:
+                  build:
+                    runs-on: <caret>
+                    steps:
+                      - run: echo ok
+                """)).contains("ubuntu-latest", "windows-latest", "macos-latest", "self-hosted");
+    }
+
+    public void testBooleanFieldCompletionSuggestsTrueFalse() {
+        assertThat(completeWorkflow("""
+                name: Completion
+                on: workflow_dispatch
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    continue-on-error: <caret>
+                    steps:
+                      - run: echo ok
+                """)).contains("true", "false");
+    }
+
+    public void testBracketInputCompletionUsesWorkflowCallInputs() {
+        assertThat(completeWorkflow("""
+                name: Completion
+                on:
+                  workflow_call:
+                    inputs:
+                      deploy-target:
+                        type: string
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo "${{ inputs['<caret>'] }}"
+                """)).contains("deploy-target");
+    }
+
+    public void testBracketInputCompletionHonorsPrefix() {
+        assertThat(completeWorkflow("""
+                name: Completion
+                on:
+                  workflow_call:
+                    inputs:
+                      deploy-target:
+                        type: string
+                      package-name:
+                        type: string
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo "${{ inputs['dep<caret>'] }}"
+                """)).contains("deploy-target").doesNotContain("package-name");
+    }
+
+    public void testSecretsCompletionUsesWorkflowCallSecrets() {
+        assertThat(completeWorkflow("""
+                name: Completion
+                on:
+                  workflow_call:
+                    secrets:
+                      SECRET_TOKEN:
+                        required: false
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo "${{ secrets.<caret> }}"
+                """)).contains("SECRET_TOKEN");
+    }
+
+    public void testSecretsCompletionIncludesAutomaticGithubToken() {
+        assertThat(completeWorkflow("""
+                name: Completion
+                on: workflow_dispatch
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo "${{ secrets.<caret> }}"
+                """)).contains("GITHUB_TOKEN");
+    }
+
+    public void testBracketGithubCompletionSuggestsRefName() {
+        assertThat(completeWorkflow("""
+                name: Completion
+                on: workflow_dispatch
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo "${{ github['<caret>'] }}"
+                """)).contains("ref_name");
+    }
+
+    public void testNeedsFieldCompletionSuggestsPreviousJobs() {
+        assertThat(completeWorkflow("""
+                name: Completion
+                on: workflow_dispatch
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo ok
+                  lint:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo ok
+                  test:
+                    needs: <caret>
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo ok
+                """)).contains("build");
+    }
+
+    public void testNeedsContextCompletionSuggestsDirectNeeds() {
+        assertThat(completeWorkflow("""
+                name: Completion
+                on: workflow_dispatch
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo ok
+                  test:
+                    needs: build
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo "${{ needs.<caret> }}"
+                """)).contains("build");
+    }
+
+    public void testBracketNeedsCompletionSuggestsDirectNeeds() {
+        assertThat(completeWorkflow("""
+                name: Completion
+                on: workflow_dispatch
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo ok
+                  test:
+                    needs: build
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo "${{ needs['<caret>'] }}"
+                """)).contains("build");
+    }
+
+    public void testNeedsContextMemberCompletionSuggestsOutputsAndResult() {
+        assertThat(completeWorkflow("""
+                name: Completion
+                on: workflow_dispatch
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo ok
+                  test:
+                    needs: build
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo "${{ needs.build.<caret> }}"
+                """)).contains("outputs", "result");
+    }
+
+    public void testNeedsOutputCompletionSuggestsJobOutputs() {
+        assertThat(completeWorkflow("""
+                name: Completion
+                on: workflow_dispatch
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    outputs:
+                      artifact: ${{ steps.package.outputs.artifact }}
+                    steps:
+                      - id: package
+                        run: echo "artifact=dist" >> "$GITHUB_OUTPUT"
+                  test:
+                    needs: build
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo "${{ needs.build.outputs.<caret> }}"
+                """)).contains("artifact");
+    }
+
+    public void testRunScriptExpressionCompletionSuggestsNeedsOutputs() {
+        assertThat(completeWorkflow("""
+                name: Completion
+                on: workflow_dispatch
+                jobs:
+                  github_release:
+                    runs-on: ubuntu-latest
+                    outputs:
+                      has_pom: ${{ steps.pom.outputs.has_pom }}
+                    steps:
+                      - id: pom
+                        run: echo "has_pom=true" >> "$GITHUB_OUTPUT"
+                  show:
+                    needs: github_release
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo "has_pom [${{ needs.github_release.outputs.<caret> }}]"
+                """)).contains("has_pom");
+    }
+
+    public void testBracketNeedsOutputCompletionSuggestsJobOutputs() {
+        assertThat(completeWorkflow("""
+                name: Completion
+                on: workflow_dispatch
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    outputs:
+                      artifact: ${{ steps.package.outputs.artifact }}
+                    steps:
+                      - id: package
+                        run: echo "artifact=dist" >> "$GITHUB_OUTPUT"
+                  test:
+                    needs: build
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo "${{ needs['build'].outputs['<caret>'] }}"
+                """)).contains("artifact");
+    }
+
+    public void testJobsWorkflowOutputCompletionSuggestsJobs() {
+        assertThat(completeWorkflow("""
+                name: Completion
+                on:
+                  workflow_call:
+                    outputs:
+                      artifact:
+                        value: ${{ jobs.<caret> }}
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    outputs:
+                      artifact: ${{ steps.package.outputs.artifact }}
+                    steps:
+                      - id: package
+                        run: echo "artifact=dist" >> "$GITHUB_OUTPUT"
+                """)).contains("build");
+    }
+
+    public void testJobsContextMemberCompletionSuggestsOutputsAndResult() {
+        assertThat(completeWorkflow("""
+                name: Completion
+                on:
+                  workflow_call:
+                    outputs:
+                      artifact:
+                        value: ${{ jobs.build.<caret> }}
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo ok
+                """)).contains("outputs", "result");
+    }
+
+    public void testJobsOutputCompletionSuggestsJobOutputs() {
+        assertThat(completeWorkflow("""
+                name: Completion
+                on:
+                  workflow_call:
+                    outputs:
+                      artifact:
+                        value: ${{ jobs.build.outputs.<caret> }}
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    outputs:
+                      artifact: ${{ steps.package.outputs.artifact }}
+                    steps:
+                      - id: package
+                        run: echo "artifact=dist" >> "$GITHUB_OUTPUT"
+                """)).contains("artifact");
+    }
+
+    public void testStepsCompletionSuggestsPreviousStepIds() {
+        assertThat(completeWorkflow("""
+                name: Completion
+                on: workflow_dispatch
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - id: package
+                        run: echo ok
+                      - run: echo "${{ steps.<caret> }}"
+                """)).contains("package");
+    }
+
+    public void testBracketStepsCompletionSuggestsPreviousStepIds() {
+        assertThat(completeWorkflow("""
+                name: Completion
+                on: workflow_dispatch
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - id: package
+                        run: echo ok
+                      - run: echo "${{ steps['<caret>'] }}"
+                """)).contains("package");
+    }
+
+    public void testStepsMemberCompletionSuggestsOutputsOutcomeConclusion() {
+        assertThat(completeWorkflow("""
+                name: Completion
+                on: workflow_dispatch
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - id: package
+                        run: echo ok
+                      - run: echo "${{ steps.package.<caret> }}"
+                """)).contains("outputs", "outcome", "conclusion");
+    }
+
+    public void testStepsOutputCompletionSuggestsRunOutput() {
+        assertThat(completeWorkflow("""
+                name: Completion
+                on: workflow_dispatch
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - id: package
+                        run: echo "artifact=dist" >> "$GITHUB_OUTPUT"
+                      - run: echo "${{ steps.package.outputs.<caret> }}"
+                """)).contains("artifact");
+    }
+
+    public void testBracketStepsOutputCompletionSuggestsRunOutput() {
+        assertThat(completeWorkflow("""
+                name: Completion
+                on: workflow_dispatch
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - id: package
+                        run: echo "artifact=dist" >> "$GITHUB_OUTPUT"
+                      - run: echo "${{ steps['package'].outputs['<caret>'] }}"
+                """)).contains("artifact");
+    }
+
+    public void testStepsOutputCompletionSuggestsActionOutput() {
+        seedRemoteAction("owner/tool@v1", Map.of(), Map.of("artifact", "Artifact path"));
+
+        assertThat(completeWorkflow("""
+                name: Completion
+                on: workflow_dispatch
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - id: package
+                        uses: owner/tool@v1
+                      - run: echo "${{ steps.package.outputs.<caret> }}"
+                """)).contains("artifact");
+    }
+
+    public void testCompositeActionOutputStepCompletionSuggestsRunStep() {
+        assertThat(completeWorkflow("""
+                name: Composite Action
+                outputs:
+                  artifact:
+                    value: ${{ steps.<caret> }}
+                runs:
+                  using: composite
+                  steps:
+                    - id: package
+                      run: echo "artifact=dist" >> "$GITHUB_OUTPUT"
+                      shell: sh
+                """)).contains("package");
+    }
+
+    public void testActionInputCompletionUsesResolvedActionMetadata() {
+        seedRemoteAction("owner/tool@v1", Map.of("known-input", "Known input", "other-input", "Other input"), Map.of());
+
+        assertThat(completeWorkflow("""
+                name: Completion
+                on: workflow_dispatch
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - uses: owner/tool@v1
+                        with:
+                          <caret>
+                """)).contains("known-input");
+    }
+
+    public void testReusableWorkflowInputCompletionUsesResolvedWorkflowMetadata() {
+        seedRemoteAction("owner/repo/.github/workflows/build.yml@v1", Map.of("config-path", "Config path"), Map.of());
+
+        assertThat(completeWorkflow("""
+                name: Completion
+                on: workflow_dispatch
+                jobs:
+                  call:
+                    uses: owner/repo/.github/workflows/build.yml@v1
+                    with:
+                      <caret>
+                """)).contains("config-path");
+    }
+
+    public void testReusableWorkflowOutputCompletionSuggestsWorkflowOutputs() {
+        seedRemoteAction("owner/repo/.github/workflows/build.yml@v1", Map.of(), Map.of("artifact", "Artifact path"));
+
+        assertThat(completeWorkflow("""
+                name: Completion
+                on: workflow_dispatch
+                jobs:
+                  call:
+                    uses: owner/repo/.github/workflows/build.yml@v1
+                  consume:
+                    needs: call
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo "${{ needs.call.outputs.<caret> }}"
+                """)).contains("artifact");
+    }
+
+    public void testReusableWorkflowSecretCompletionSuggestsWorkflowSecrets() {
+        seedRemoteAction("owner/repo/.github/workflows/build.yml@v1", Map.of(), Map.of(), Map.of("access-token", "Access token"));
+
+        assertThat(completeWorkflow("""
+                name: Completion
+                on: workflow_dispatch
+                jobs:
+                  call:
+                    uses: owner/repo/.github/workflows/build.yml@v1
+                    secrets:
+                      <caret>
+                """)).contains("access-token");
+    }
+
+    public void testLocalActionInputCompletionUsesActionYamlMetadata() throws Exception {
+        final Path actionYaml = Files.createTempFile("github-workflow-local-action", ".yaml");
+        actionYaml.toFile().deleteOnExit();
+        Files.writeString(actionYaml, """
+                name: Local Action
+                inputs:
+                  local-input:
+                    description: Local input
+                  other-local-input:
+                    description: Other local input
+                runs:
+                  using: composite
+                  steps:
+                    - run: echo ok
+                      shell: sh
+                """);
+        final GitHubAction action = GitHubAction.createGithubAction(true, "./.github/actions/local", actionYaml.toString())
+                .isResolved(true);
+        getActionCache().getState().actions.put("./.github/actions/local", action);
+        assertThat(action.freshInputs()).containsKey("local-input");
+
+        configureWorkflow("""
+                name: Completion
+                on: workflow_dispatch
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - uses: ./.github/actions/local
+                        with:
+                          <caret>
+                """);
+
+        assertThat(completeBasicLookupStrings()).contains("local-input");
+    }
+
+    public void testProjectLocalActionInputCompletionUsesActionYamlMetadata() {
+        final GitHubAction action = seedLocalAction("./.github/actions/local", myFixture.addFileToProject(".github/actions/local/action.yml", """
+                name: Local Action
+                inputs:
+                  local-input:
+                    description: Local input
+                runs:
+                  using: composite
+                  steps:
+                    - run: echo ok
+                      shell: sh
+                """));
+        assertThat(action.freshInputs()).containsKey("local-input");
+
+        configureWorkflowProjectFile("""
+                name: Completion
+                on: workflow_dispatch
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - uses: ./.github/actions/local
+                        with:
+                          <caret>
+                """);
+
+        assertThat(completeBasicLookupStrings()).contains("local-input");
+    }
+
+    public void testLocalReusableWorkflowInputCompletionUsesWorkflowCallMetadata() {
+        final GitHubAction action = seedLocalAction("./.github/workflows/reusable.yml", myFixture.addFileToProject(".github/workflows/reusable.yml", """
+                name: Local Reusable
+                on:
+                  workflow_call:
+                    inputs:
+                      config-path:
+                        type: string
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo ok
+                """));
+        assertThat(action.freshInputs()).containsKey("config-path");
+
+        configureWorkflowProjectFile("""
+                name: Completion
+                on: workflow_dispatch
+                jobs:
+                  call:
+                    uses: ./.github/workflows/reusable.yml
+                    with:
+                      <caret>
+                """);
+
+        assertThat(completeBasicLookupStrings()).contains("config-path");
+    }
+
+    public void testLocalReusableWorkflowOutputCompletionUsesWorkflowCallMetadata() {
+        final GitHubAction action = seedLocalAction("./.github/workflows/reusable.yml", myFixture.addFileToProject(".github/workflows/reusable.yml", """
+                name: Local Reusable
+                on:
+                  workflow_call:
+                    outputs:
+                      artifact:
+                        value: ${{ jobs.build.outputs.artifact }}
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    outputs:
+                      artifact: ${{ steps.package.outputs.artifact }}
+                    steps:
+                      - id: package
+                        run: echo "artifact=dist" >> "$GITHUB_OUTPUT"
+                """));
+        assertThat(action.freshOutputs()).containsKey("artifact");
+
+        configureWorkflowProjectFile("""
+                name: Completion
+                on: workflow_dispatch
+                jobs:
+                  call:
+                    uses: ./.github/workflows/reusable.yml
+                  consume:
+                    needs: call
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo "${{ needs.call.outputs.<caret> }}"
+                """);
+
+        assertThat(completeBasicLookupStrings()).contains("artifact");
+    }
+
+    public void testLocalReusableWorkflowSecretCompletionUsesWorkflowCallMetadata() {
+        final GitHubAction action = seedLocalAction("./.github/workflows/reusable.yml", myFixture.addFileToProject(".github/workflows/reusable.yml", """
+                name: Local Reusable
+                on:
+                  workflow_call:
+                    secrets:
+                      access-token:
+                        required: true
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo ok
+                """));
+        assertThat(action.freshSecrets()).containsKey("access-token");
+
+        configureWorkflowProjectFile("""
+                name: Completion
+                on: workflow_dispatch
+                jobs:
+                  call:
+                    uses: ./.github/workflows/reusable.yml
+                    secrets:
+                      <caret>
+                """);
+
+        assertThat(completeBasicLookupStrings()).contains("access-token");
+    }
+
+    public void testStepUsesCompletionSuggestsLocalActionDirectories() {
+        myFixture.addFileToProject(".github/actions/local/action.yml", """
+                name: Local Action
+                runs:
+                  using: composite
+                  steps:
+                    - run: echo ok
+                      shell: sh
+                """);
+
+        configureWorkflowProjectFile("""
+                name: Completion
+                on: workflow_dispatch
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - uses: <caret>
+                """);
+
+        assertThat(completeBasicLookupStrings()).contains("./.github/actions/local");
+    }
+
+    public void testUsesCompletionSuggestsKnownRemoteCallableTargets() {
+        seedRemoteAction("owner/tool@v1", Map.of(), Map.of());
+
+        configureWorkflowProjectFile("""
+                name: Completion
+                on: workflow_dispatch
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - uses: owner/<caret>
+                """);
+
+        assertThat(completeBasicLookupStrings()).contains("owner/tool");
+    }
+
+    public void testUsesCompletionDiscoversRemoteCallableTargetsBeforeResolution() throws Exception {
+        try (FakeRemoteServer server = new FakeRemoteServer()) {
+            server.setRepositories("actions", Map.of(
+                    "checkout", "Checkout repository",
+                    "setup-java", "Set up Java"
+            ));
+            RemoteActionProviders.Settings.getInstance().setCustomServers(List.of(new RemoteActionProviders.Server(
+                    "Fake Enterprise",
+                    server.webUrl(),
+                    server.apiUrl("/api/v3"),
+                    "",
+                    true
+            )));
+
+            configureWorkflowProjectFile("""
+                    name: Completion
+                    on: workflow_dispatch
+                    jobs:
+                      build:
+                        runs-on: ubuntu-latest
+                        steps:
+                          - uses: actions/<caret>
+                    """);
+
+            assertThat(completeBasicLookupStrings()).contains("actions/checkout", "actions/setup-java");
+        }
+    }
+
+    public void testUsesRefCompletionSuggestsKnownRemoteRefsFromCache() {
+        seedRemoteAction("owner/tool@v1", Map.of(), Map.of());
+        seedRemoteAction("owner/tool@main", Map.of(), Map.of());
+
+        configureWorkflowProjectFile("""
+                name: Completion
+                on: workflow_dispatch
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - uses: owner/tool@<caret>
+                """);
+
+        assertThat(completeBasicLookupStrings()).contains("v1", "main");
+    }
+
+    public void testUsesRefCompletionDiscoversLatestRemoteRefsBeforeActionIsResolved() throws Exception {
+        try (FakeRemoteServer server = new FakeRemoteServer()) {
+            server.setTags("acme", "tool", List.of("v10", "v9", "v8", "v7", "v6", "v5", "v4", "v3", "v2", "v1", "v0"));
+            RemoteActionProviders.Settings.getInstance().setCustomServers(List.of(new RemoteActionProviders.Server(
+                    "Fake Enterprise",
+                    server.webUrl(),
+                    server.apiUrl("/api/v3"),
+                    "",
+                    true
+            )));
+
+            configureWorkflowProjectFile("""
+                    name: Completion
+                    on: workflow_dispatch
+                    jobs:
+                      build:
+                        runs-on: ubuntu-latest
+                        steps:
+                          - uses: acme/tool@<caret>
+                    """);
+
+            assertThat(completeBasicLookupStrings())
+                    .contains("v10", "v9", "v8", "v7", "v6", "v5", "v4", "v3", "v2", "v1")
+                    .doesNotContain("v0");
+        }
+    }
+
+    public void testEmptyWithBlockCompletionSuggestsResolvedActionInputs() {
+        seedRemoteAction("actions/checkout@v4", Map.of(
+                "fetch-depth", "Description: Number of commits to fetch\nDefault: 1",
+                "ref", "Description: Branch, tag, or SHA to checkout"
+        ), Map.of());
+
+        assertThat(completeWorkflow("""
+                name: Completion
+                on: workflow_dispatch
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - uses: actions/checkout@v4
+                        with:
+                          <caret>
+                """)).contains("fetch-depth", "ref");
+    }
+
+    public void testUsesRefCompletionSuggestsRefsAlreadyPresentInWorkflow() {
+        configureWorkflowProjectFile("""
+                name: Completion
+                on: workflow_dispatch
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - uses: owner/tool@v1
+                      - uses: owner/tool@<caret>
+                """);
+
+        assertThat(completeBasicLookupStrings()).contains("v1");
+    }
+
+    public void testUsesRefCompletionSuggestsRefsResolvedFromConfiguredServer() throws Exception {
+        try (FakeRemoteServer server = new FakeRemoteServer()) {
+            server.addContent("acme", "tool", "action.yml", "v1", """
+                    name: Enterprise Tool
+                    runs:
+                      using: composite
+                      steps:
+                        - run: echo ok
+                          shell: sh
+                    """);
+            server.setBranches("acme", "tool", List.of("main"));
+            server.setTags("acme", "tool", List.of("v1"));
+            RemoteActionProviders.Settings.getInstance().setCustomServers(List.of(new RemoteActionProviders.Server("Fake",
+                    server.webUrl(),
+                    server.apiUrl("/api/v3"),
+                    "",
+                    true
+            )));
+            configureWorkflowProjectFile("""
+                    name: Completion
+                    on: workflow_dispatch
+                    jobs:
+                      build:
+                        runs-on: ubuntu-latest
+                        steps:
+                          - uses: acme/tool@v1
+                          - uses: acme/tool@<caret>
+                    """);
+            GitHubActionCache.getActionCache().get(getProject(), "acme/tool@v1").resolve();
+
+            assertThat(completeBasicLookupStrings()).contains("main", "v1");
+        }
+    }
+
+    public void testAbsoluteGithubServerUrlCompletionSuggestsRefsResolvedFromConfiguredServer() throws Exception {
+        try (FakeRemoteServer server = new FakeRemoteServer()) {
+            server.addContent("acme", "tool", "action.yml", "main", """
+                    name: Enterprise Tool
+                    runs:
+                      using: composite
+                      steps:
+                        - run: echo ok
+                          shell: sh
+                    """);
+            server.setBranches("acme", "tool", List.of("main"));
+            server.setTags("acme", "tool", List.of("v2"));
+            RemoteActionProviders.Settings.getInstance().setCustomServers(List.of(new RemoteActionProviders.Server("Fake Enterprise",
+                    server.webUrl(),
+                    server.apiUrl("/api/v3"),
+                    "",
+                    true
+            )));
+            final String usesValue = server.webUrl() + "/acme/tool@main";
+            configureWorkflowProjectFile("""
+                    name: Completion
+                    on: workflow_dispatch
+                    jobs:
+                      build:
+                        runs-on: ubuntu-latest
+                        steps:
+                          - uses: %s
+                          - uses: %s/acme/tool@<caret>
+                    """.formatted(usesValue, server.webUrl()));
+            GitHubActionCache.getActionCache().get(getProject(), usesValue).resolve();
+
+            assertThat(completeBasicLookupStrings()).contains("main", "v2");
+        }
+    }
+
+    public void testStepUsesCompletionDoesNotSuggestReusableWorkflows() {
+        myFixture.addFileToProject(".github/actions/local/action.yml", """
+                name: Local Action
+                runs:
+                  using: composite
+                  steps:
+                    - run: echo ok
+                      shell: sh
+                """);
+        myFixture.addFileToProject(".github/workflows/reusable.yml", """
+                name: Reusable
+                on: workflow_call
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo ok
+                """);
+
+        configureWorkflowProjectFile("""
+                name: Completion
+                on: workflow_dispatch
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - uses: <caret>
+                """);
+
+        assertThat(completeBasicLookupStrings())
+                .contains("./.github/actions/local")
+                .doesNotContain("./.github/workflows/reusable.yml");
+    }
+
+    public void testJobUsesCompletionSuggestsLocalReusableWorkflowFiles() {
+        myFixture.addFileToProject(".github/actions/local/action.yml", """
+                name: Local Action
+                runs:
+                  using: composite
+                  steps:
+                    - run: echo ok
+                      shell: sh
+                """);
+        myFixture.addFileToProject(".github/workflows/reusable.yml", """
+                name: Reusable
+                on: workflow_call
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo ok
+                """);
+
+        configureWorkflowProjectFile("""
+                name: Completion
+                on: workflow_dispatch
+                jobs:
+                  call:
+                    uses: <caret>
+                """);
+
+        assertThat(completeBasicLookupStrings())
+                .contains("./.github/workflows/reusable.yml")
+                .doesNotContain("./.github/actions/local");
+    }
+
+    public void testRootActionUsesCompletionSuggestsRepositoryAction() {
+        myFixture.addFileToProject("action.yml", """
+                name: Root Action
+                runs:
+                  using: composite
+                  steps:
+                    - run: echo ok
+                      shell: sh
+                """);
+
+        configureWorkflowProjectFile("""
+                name: Completion
+                on: workflow_dispatch
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - uses: <caret>
+                """);
+
+        assertThat(completeBasicLookupStrings()).contains("./");
+    }
+
+    public void testRunCompletionSuggestsGithubEnvironmentFiles() {
+        assertThat(completeWorkflow("""
+                name: Completion
+                on: workflow_dispatch
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo "x=y" >> "$<caret>"
+                """)).contains("GITHUB_ENV", "GITHUB_OUTPUT");
+    }
+
+    public void testRunCompletionSuggestsDefaultEnvironmentVariables() {
+        assertThat(completeWorkflow("""
+                name: Completion
+                on: workflow_dispatch
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo "$<caret>"
+                """)).contains("GITHUB_TRIGGERING_ACTOR", "GITHUB_REPOSITORY_OWNER_ID", "RUNNER_ENVIRONMENT");
+    }
+
+    public void testPlainRunFieldDoesNotSuggestStepKeys() {
+        assertThat(completeWorkflow("""
+                name: Completion
+                on: workflow_dispatch
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: <caret>
+                """)).doesNotContain("uses", "with", "shell", "id");
+    }
+
+    public void testShellCompletionSuggestsSupportedGithubShells() {
+        assertThat(completeWorkflow("""
+                name: Completion
+                on: workflow_dispatch
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - shell: <caret>
+                        run: echo ok
+                """)).contains("bash", "sh", "pwsh", "powershell", "cmd", "python");
+    }
+
+    private Map<String, String> completeWorkflowTypeTexts(final String text) {
+        configureWorkflow(text);
+        final LookupElement[] elements = myFixture.completeBasic();
+        assertThat(elements).isNotNull();
+        return java.util.Arrays.stream(elements)
+                .collect(Collectors.toMap(
+                        LookupElement::getLookupString,
+                        WorkflowSyntaxCompletionTest::typeText,
+                        (left, right) -> left
+                ));
+    }
+
+    private Map<String, String> completeGiteaWorkflowTypeTexts(final String text) {
+        configureGiteaWorkflowProjectFile(text);
+        final LookupElement[] elements = myFixture.completeBasic();
+        assertThat(elements).isNotNull();
+        return java.util.Arrays.stream(elements)
+                .collect(Collectors.toMap(
+                        LookupElement::getLookupString,
+                        WorkflowSyntaxCompletionTest::typeText,
+                        (left, right) -> left
+                ));
+    }
+
+    private void writeProjectFile(final String relativePath, final String content) throws Exception {
+        final Path path = Path.of(getProject().getBasePath(), relativePath);
+        Files.createDirectories(path.getParent());
+        Files.writeString(path, content);
+    }
+
+    private static String typeText(final LookupElement element) {
+        final LookupElementPresentation presentation = new LookupElementPresentation();
+        element.renderElement(presentation);
+        return presentation.getTypeText();
+    }
+}

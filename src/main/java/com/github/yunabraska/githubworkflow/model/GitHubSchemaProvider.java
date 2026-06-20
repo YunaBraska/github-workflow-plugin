@@ -1,6 +1,7 @@
 package com.github.yunabraska.githubworkflow.model;
 
-import com.github.yunabraska.githubworkflow.helper.PsiElementHelper;
+import com.github.yunabraska.githubworkflow.i18n.GitHubWorkflowBundle;
+import com.github.yunabraska.githubworkflow.syntax.WorkflowPsi;
 import com.intellij.json.JsonFileType;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.testFramework.LightVirtualFile;
@@ -9,50 +10,41 @@ import com.jetbrains.jsonSchema.extension.SchemaType;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import java.io.IOException;
+import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.Scanner;
 import java.util.function.Predicate;
-
-import static java.util.Optional.ofNullable;
 
 public class GitHubSchemaProvider implements JsonSchemaFileProvider {
 
+    private final String schemaName;
     private final String displayName;
-    private final VirtualFile schemaFile;
     private final Predicate<Path> validatePath;
 
     public GitHubSchemaProvider(final String schemaName, final String displayName, final Predicate<Path> validatePath) {
+        this.schemaName = schemaName;
         this.displayName = displayName;
         this.validatePath = validatePath;
-
-        schemaFile = ofNullable(getClass().getResourceAsStream("/schemas/" + schemaName + ".json"))
-                .map(schemaStream -> {
-                    try (final Scanner scanner = new Scanner(schemaStream, StandardCharsets.UTF_8)) {
-                        final String schemaContent = scanner.useDelimiter("\\A").next();
-                        return new LightVirtualFile("github_workflow_plugin_" + schemaName + "_schema.json", JsonFileType.INSTANCE, schemaContent);
-                    }
-                })
-                .orElse(null);
     }
 
     @NotNull
     @Override
     public String getName() {
-        return displayName;
+        return GitHubWorkflowBundle.message("schema.auto", displayName);
     }
 
     @Override
     public boolean isAvailable(@NotNull final VirtualFile file) {
-        return Optional.of(file).flatMap(PsiElementHelper::toPath).filter(validatePath).isPresent();
+        return Optional.of(file).flatMap(WorkflowPsi::toPath).filter(validatePath).isPresent();
     }
 
     @Nullable
     @Override
     public VirtualFile getSchemaFile() {
-        return schemaFile;
+        return new LightVirtualFile("github_workflow_plugin_" + schemaName + "_schema.json", JsonFileType.INSTANCE, schemaContent());
     }
 
     @NotNull
@@ -66,11 +58,19 @@ public class GitHubSchemaProvider implements JsonSchemaFileProvider {
         if (this == o) return true;
         if (o == null || getClass() != o.getClass()) return false;
         final GitHubSchemaProvider that = (GitHubSchemaProvider) o;
-        return Objects.equals(getName(), that.getName());
+        return Objects.equals(schemaName, that.schemaName);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(getName());
+        return Objects.hash(schemaName);
+    }
+
+    private String schemaContent() {
+        try (InputStream stream = getClass().getResourceAsStream("/schemas/" + schemaName + ".json")) {
+            return stream == null ? "{}" : new String(stream.readAllBytes(), StandardCharsets.UTF_8);
+        } catch (final IOException ignored) {
+            return "{}";
+        }
     }
 }

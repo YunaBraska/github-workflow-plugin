@@ -4,7 +4,30 @@
 
 ## [Unreleased]
 
+### Plugin Wiring
+
+- Simplified workflow syntax routing for completion, highlighting, references, and documentation.
+- Reduced duplicated workflow run, action cache, and schema handling internals while keeping behavior stable.
+- Reorganized plugin internals into fewer `Workflow*` service entry points, with public service Javadocs where humans
+  might actually read them.
+- Added the plugin size refactor plan and documented the release/changelog flow.
+- Release automation now uses plain date tags, avoids duplicated Marketplace change-note headings, and groups Dependabot
+  dependency updates into one weekly PR against `dev`.
+- Updated the IntelliJ test platform, JaCoCo, and GitHub Actions cache action to current stable metadata.
+- Fixed the README build badge link and refreshed navigation/release docs.
+- `.gitea/workflows/*` files now get their own light/dark Gitea-flavored file icon instead of cosplaying GitHub.
+- Gitea workflow runs now use `GITEA_TOKEN`-style auth, clean browser links, and repo-level run discovery for `/api/v1`.
+- `.gitea/workflows/*` syntax now uses Gitea permission scopes and cron aliases instead of GitHub-only scope clutter.
+- `.gitea/workflows/*` completion and validation now know `GITEA_TOKEN`, Gitea runner env vars, single-label `runs-on`,
+  documented expression functions, and job keys Gitea accepts but ignores.
+
 ## [2026.5.29] - 2026-05-29
+
+### Release Polish
+
+- Marketplace change notes skip the duplicated version heading.
+- Future GitHub release tags use plain date versions without a leading `v`.
+- Dependabot dependency bumps are grouped into one weekly cross-ecosystem PR against `dev`.
 
 ## [2026.5.23] - 2026-05-23
 

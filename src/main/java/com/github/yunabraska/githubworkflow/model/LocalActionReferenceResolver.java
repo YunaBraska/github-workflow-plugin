@@ -1,5 +1,7 @@
 package com.github.yunabraska.githubworkflow.model;
 
+import com.github.yunabraska.githubworkflow.syntax.WorkflowReferences;
+
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.psi.PsiElement;
@@ -11,8 +13,8 @@ import com.intellij.psi.ResolveResult;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import static com.github.yunabraska.githubworkflow.helper.PsiElementHelper.getProject;
-import static com.github.yunabraska.githubworkflow.services.ReferenceContributor.ACTION_KEY;
+import static com.github.yunabraska.githubworkflow.syntax.WorkflowPsi.getProject;
+import static com.github.yunabraska.githubworkflow.syntax.WorkflowReferences.ACTION_KEY;
 import static java.util.Optional.ofNullable;
 
 public class LocalActionReferenceResolver extends PsiReferenceBase<PsiElement> implements PsiPolyVariantReference {
