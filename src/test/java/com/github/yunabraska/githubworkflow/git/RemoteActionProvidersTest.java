@@ -17,7 +17,9 @@ public class RemoteActionProvidersTest extends BasePlatformTestCase {
     @Override
     protected void tearDown() throws Exception {
         try {
-            RemoteActionProviders.Settings.getInstance().setCustomServers(List.of());
+            final RemoteActionProviders.Settings settings = RemoteActionProviders.Settings.getInstance();
+            settings.customServers().forEach(settings::clearGiteaToken);
+            settings.setCustomServers(List.of());
         } finally {
             super.tearDown();
         }
@@ -175,6 +177,34 @@ public class RemoteActionProvidersTest extends BasePlatformTestCase {
         }
     }
 
+    public void testGiteaReusableWorkflowPathIsDetectedAsWorkflowMetadata() throws Exception {
+        try (FakeRemoteServer server = new FakeRemoteServer()) {
+            server.addContent("acme", "automation", ".gitea/workflows/reuse.yml", "main", """
+                    name: Reuse
+                    on:
+                      workflow_call:
+                        inputs:
+                          config:
+                            type: string
+                    jobs:
+                      build:
+                        runs-on: ubuntu-latest
+                        steps:
+                          - run: echo ok
+                    """);
+            useGiteaServer(server, "");
+
+            final String usesValue = server.webUrl() + "/acme/automation/.gitea/workflows/reuse.yml@main";
+            final GitHubAction action = GitHubAction.createGithubAction(false, usesValue, server.webUrl()).resolve();
+
+            assertThat(action.isResolved()).isTrue();
+            assertThat(action.isAction()).isFalse();
+            assertThat(action.freshInputs()).containsKey("config");
+            assertThat(action.githubUrl()).isEqualTo(server.webUrl() + "/acme/automation/blob/main/.gitea/workflows/reuse.yml");
+            assertThat(server.requests()).contains("/api/v1/repos/acme/automation/contents/.gitea/workflows/reuse.yml?ref=main");
+        }
+    }
+
     public void testLatestRefsReturnsLatestTenTagsBeforeBranches() throws Exception {
         try (FakeRemoteServer server = new FakeRemoteServer()) {
             server.setTags("acme", "tool", List.of("v10", "v9", "v8", "v7", "v6", "v5", "v4", "v3", "v2", "v1", "v0"));
@@ -232,6 +262,193 @@ public class RemoteActionProvidersTest extends BasePlatformTestCase {
                 .contains("Bearer env-token");
     }
 
+    public void testGiteaEnvironmentTokensUseTokenAuthorizationScheme() {
+        final RemoteActionProviders.Server server = RemoteActionProviders.Server.gitea(
+                "Local Gitea",
+                "http://gitea.local",
+                "http://gitea.local/api/v1",
+                "LOCAL_GITEA_TOKEN",
+                true
+        );
+
+        final List<RemoteActionProviders.Authorizations.Authorization> authorizations = RemoteActionProviders.Authorizations.forServer(
+                server,
+                null,
+                Map.of("LOCAL_GITEA_TOKEN", "local-token", "GITEA_TOKEN", "default-token", "GITHUB_TOKEN", "wrong-for-gitea")
+        );
+
+        assertThat(authorizations)
+                .extracting(RemoteActionProviders.Authorizations.Authorization::source)
+                .containsExactly("LOCAL_GITEA_TOKEN", "GITEA_TOKEN", "anonymous");
+        assertThat(authorizations)
+                .extracting(RemoteActionProviders.Authorizations.Authorization::authorizationHeader)
+                .containsExactly("token local-token", "token default-token", "");
+    }
+
+    public void testGiteaWorkflowRunEnvironmentTokensUseTokenAuthorizationScheme() {
+        final List<RemoteActionProviders.Authorizations.Authorization> authorizations = RemoteActionProviders.Authorizations.forWorkflowRun(
+                "http://gitea.local/api/v1",
+                ".gitea/workflows/build.yml",
+                "LOCAL_GITEA_TOKEN",
+                null,
+                Map.of("LOCAL_GITEA_TOKEN", "local-token", "GITEA_TOKEN", "default-token", "GITHUB_TOKEN", "wrong-for-gitea")
+        );
+
+        assertThat(authorizations)
+                .extracting(RemoteActionProviders.Authorizations.Authorization::source)
+                .containsExactly("LOCAL_GITEA_TOKEN", "GITEA_TOKEN", "anonymous");
+        assertThat(authorizations)
+                .extracting(RemoteActionProviders.Authorizations.Authorization::authorizationHeader)
+                .containsExactly("token local-token", "token default-token", "");
+    }
+
+    public void testGiteaStoredTokenIsTriedBeforeEnvironmentTokens() {
+        final RemoteActionProviders.Server server = RemoteActionProviders.Server.gitea(
+                "Local Gitea",
+                "http://gitea.local",
+                "http://gitea.local/api/v1",
+                "LOCAL_GITEA_TOKEN",
+                true
+        );
+        final RemoteActionProviders.Settings settings = RemoteActionProviders.Settings.getInstance()
+                .setCustomServers(List.of(server))
+                .setGiteaToken(server, "stored-token");
+
+        final List<RemoteActionProviders.Authorizations.Authorization> authorizations = RemoteActionProviders.Authorizations.forServer(
+                server,
+                null,
+                Map.of("LOCAL_GITEA_TOKEN", "local-token", "GITEA_TOKEN", "default-token")
+        );
+
+        assertThat(settings.hasGiteaToken(server)).isTrue();
+        assertThat(settings.customServers().getFirst().tokenStored).isTrue();
+        assertThat(authorizations)
+                .extracting(RemoteActionProviders.Authorizations.Authorization::source)
+                .containsExactly("Local Gitea", "LOCAL_GITEA_TOKEN", "GITEA_TOKEN", "anonymous");
+        assertThat(authorizations)
+                .extracting(RemoteActionProviders.Authorizations.Authorization::authorizationHeader)
+                .containsExactly("token stored-token", "token local-token", "token default-token", "");
+    }
+
+    public void testGiteaStoredTokenForMatchingServerBeatsOtherGiteaTokens() {
+        final RemoteActionProviders.Server first = RemoteActionProviders.Server.gitea(
+                "First Gitea",
+                "http://first.local",
+                "http://first.local/api/v1",
+                "",
+                true
+        );
+        final RemoteActionProviders.Server second = RemoteActionProviders.Server.gitea(
+                "Second Gitea",
+                "http://second.local",
+                "http://second.local/api/v1",
+                "",
+                true
+        );
+        RemoteActionProviders.Settings.getInstance()
+                .setCustomServers(List.of(first, second))
+                .setGiteaToken(first, "first-token")
+                .setGiteaToken(second, "second-token");
+
+        final List<RemoteActionProviders.Authorizations.Authorization> authorizations = RemoteActionProviders.Authorizations.forWorkflowRun(
+                "http://second.local/api/v1",
+                ".gitea/workflows/build.yml",
+                "",
+                null,
+                Map.of()
+        );
+
+        assertThat(authorizations)
+                .extracting(RemoteActionProviders.Authorizations.Authorization::source)
+                .containsExactly("Second Gitea", "First Gitea", "anonymous");
+        assertThat(authorizations)
+                .extracting(RemoteActionProviders.Authorizations.Authorization::authorizationHeader)
+                .containsExactly("token second-token", "token first-token", "");
+    }
+
+    public void testGiteaStoredTokenIsNotSerializedInSettingsState() {
+        final RemoteActionProviders.Server server = RemoteActionProviders.Server.gitea(
+                "Local Gitea",
+                "http://gitea.local",
+                "http://gitea.local/api/v1",
+                "LOCAL_GITEA_TOKEN",
+                true
+        );
+
+        final RemoteActionProviders.Settings settings = RemoteActionProviders.Settings.getInstance()
+                .setCustomServers(List.of(server))
+                .setGiteaToken(server, "stored-token");
+
+        assertThat(settings.getState().servers)
+                .hasSize(1)
+                .allSatisfy(state -> assertThat(List.of(
+                        state.type,
+                        state.name,
+                        state.webUrl,
+                        state.apiUrl,
+                        state.tokenEnvVar
+                )).doesNotContain("stored-token"));
+        assertThat(settings.getState().servers.getFirst().tokenEnvVar).isEqualTo("LOCAL_GITEA_TOKEN");
+        assertThat(settings.getState().servers.getFirst().tokenStored).isTrue();
+    }
+
+    public void testGiteaStoredTokenMarkerIsClearedWithToken() {
+        final RemoteActionProviders.Server server = RemoteActionProviders.Server.gitea(
+                "Local Gitea",
+                "http://gitea.local",
+                "http://gitea.local/api/v1",
+                "LOCAL_GITEA_TOKEN",
+                true
+        );
+        final RemoteActionProviders.Settings settings = RemoteActionProviders.Settings.getInstance()
+                .setCustomServers(List.of(server))
+                .setGiteaToken(server, "stored-token");
+
+        settings.clearGiteaToken(server);
+
+        assertThat(settings.hasGiteaToken(server)).isFalse();
+        assertThat(settings.customServers().getFirst().tokenStored).isFalse();
+    }
+
+    public void testDisabledGiteaServerIsStoredButNotUsed() {
+        final RemoteActionProviders.Server server = RemoteActionProviders.Server.gitea(
+                "Quiet Gitea",
+                "http://gitea.local",
+                "http://gitea.local/api/v1",
+                "LOCAL_GITEA_TOKEN",
+                false
+        );
+        final RemoteActionProviders.Settings settings = RemoteActionProviders.Settings.getInstance()
+                .setCustomServers(List.of(server));
+
+        assertThat(settings.customServers()).containsExactly(server.normalized());
+        assertThat(settings.enabledServers())
+                .noneMatch(candidate -> "http://gitea.local/api/v1".equals(candidate.apiUrl));
+    }
+
+    public void testGithubEnvironmentTokensStillUseBearerAuthorizationScheme() {
+        final RemoteActionProviders.Server server = new RemoteActionProviders.Server(
+                "GitHub",
+                "https://github.com",
+                "https://api.github.com",
+                "LOCAL_GITHUB_TOKEN",
+                true
+        );
+
+        final List<RemoteActionProviders.Authorizations.Authorization> authorizations = RemoteActionProviders.Authorizations.forServer(
+                server,
+                null,
+                Map.of("LOCAL_GITHUB_TOKEN", "local-token", "GITHUB_TOKEN", "default-token", "GITEA_TOKEN", "wrong-for-github")
+        );
+
+        assertThat(authorizations)
+                .extracting(RemoteActionProviders.Authorizations.Authorization::source)
+                .containsSubsequence("LOCAL_GITHUB_TOKEN", "GITHUB_TOKEN", "anonymous");
+        assertThat(authorizations)
+                .extracting(RemoteActionProviders.Authorizations.Authorization::authorizationHeader)
+                .contains("Bearer local-token", "Bearer default-token");
+    }
+
     public void testExplicitEnvironmentTokenIsTriedBeforeStandardEnvironmentTokens() {
         final List<RemoteActionProviders.Authorizations.Authorization> authorizations = RemoteActionProviders.Authorizations.forApiUrl(
                 "https://github.acme.test/api/v3",
@@ -264,6 +481,16 @@ public class RemoteActionProvidersTest extends BasePlatformTestCase {
                 server.webUrl(),
                 server.apiUrl(apiPrefix),
                 "",
+                true
+        )));
+    }
+
+    private static void useGiteaServer(final FakeRemoteServer server, final String tokenEnvVar) {
+        RemoteActionProviders.Settings.getInstance().setCustomServers(List.of(RemoteActionProviders.Server.gitea(
+                "Fake Gitea",
+                server.webUrl(),
+                server.apiUrl("/api/v1"),
+                tokenEnvVar,
                 true
         )));
     }

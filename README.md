@@ -66,7 +66,7 @@ _[See Screenshots](https://plugins.jetbrains.com/plugin/21396-github-workflow)_
   matching IDE accounts first, then other IDE GitHub accounts, then `GITHUB_TOKEN`, `GH_TOKEN`, `GITHUB_PAT`, then
   anonymous access. An optional token environment variable can still be set explicitly for custom setups. GitHub log
   timestamps, groups, command markers, and ANSI color codes are compacted before display.
-* **Usage**: Enjoy autocomplete, syntax highlighting, and much more as you code your GitHub Workflows and Actions.
+* **Usage**: Enjoy autocomplete, syntax highlighting, and much more as you code GitHub or Gitea Workflows and Actions.
 
 ## Local Development
 
@@ -74,8 +74,21 @@ The project uses the Gradle wrapper and Java 25. No manual JetBrains JDK path is
 Plugin downloads the IDE, bundled plugins, verifier, and test runtime.
 
 1. Install Java 25 and make it available as `java`.
-2. Run `./gradlew test` for the fast regression suite.
+2. Run `./gradlew test` for the regression suite, including the Docker-backed Gitea smoke test.
 3. Run `./gradlew check verifyPlugin buildPlugin` before publishing or opening a release PR.
+
+Gitea smoke test controls:
+
+```sh
+./gradlew test --tests com.github.yunabraska.githubworkflow.git.GiteaDockerIntegrationTest --rerun-tasks
+GITEA_DOCKER_TEST=false ./gradlew test
+```
+
+That starts the official rootless Gitea Docker image, seeds a tiny repository, and checks action plus `.gitea/workflows`
+metadata through the same remote resolver. Set `GITEA_DOCKER_TEST=false` to skip it locally, or override the image with
+`GITEA_IMAGE` when testing another Gitea release. If `docker` is not on the Gradle process `PATH`, set
+`GITEA_DOCKER_BIN`, `DOCKER_BIN`, or `DOCKER_CLI` to the Docker executable; the test also tries `command -v docker`,
+`which docker`, `where docker`, and common Docker Desktop/Homebrew locations.
 
 ## Release Automation
 

@@ -25,6 +25,8 @@ import com.intellij.psi.PsiElement;
 import com.intellij.psi.impl.source.tree.LeafPsiElement;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.yaml.psi.YAMLKeyValue;
+import org.jetbrains.yaml.psi.YAMLSequence;
+import org.jetbrains.yaml.psi.YAMLSequenceItem;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -32,8 +34,11 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.function.BiConsumer;
 import java.util.function.Predicate;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -94,12 +99,16 @@ public class WorkflowAnnotator implements Annotator {
             "GITHUB_WORKFLOW_SCALAR_LITERAL",
             DefaultLanguageHighlighterColors.NUMBER
     );
+    private static final Pattern EXPRESSION_FUNCTION = Pattern.compile("\\b([A-Za-z_][A-Za-z0-9_]*)\\s*\\(");
+    private static final Set<String> GITHUB_EXPRESSION_FUNCTIONS = Set.copyOf(githubExpressionFunctionNames());
+    private static final Set<String> GITEA_EXPRESSION_FUNCTIONS = Set.of("always");
 
     @Override
     public void annotate(@NotNull final PsiElement psiElement, @NotNull final AnnotationHolder holder) {
         annotationTrigger(holder, psiElement).ifPresent(trigger -> trigger
                 .then(WorkflowAnnotator::processPsiElement)
                 .then(WorkflowAnnotator::variableElementHandler)
+                .then(WorkflowAnnotator::validateGiteaExpressionFunctions)
                 .then(WorkflowAnnotator::highlightVariableReferences)
                 .then(WorkflowAnnotator::highlightDeclarations)
                 .then(WorkflowAnnotator::highlightRunOutputs)
@@ -155,7 +164,7 @@ public class WorkflowAnnotator implements Annotator {
                 .filter(LeafPsiElement.class::isInstance)
                 .map(LeafPsiElement.class::cast)
                 .filter(element -> getParent(element, FIELD_RUN).isPresent())
-                .ifPresent(element -> DEFAULT_VALUE_MAP.get(FIELD_ENVS).get().keySet().forEach(name -> highlightWord(holder, element, name, RUNNER_VARIABLE)));
+                .ifPresent(element -> defaultEnvs(WorkflowSyntax.providerFor(element)).keySet().forEach(name -> highlightWord(holder, element, name, RUNNER_VARIABLE)));
     }
 
     private static void highlightWord(
@@ -196,7 +205,12 @@ public class WorkflowAnnotator implements Annotator {
         }
         WorkflowLocation.from(psiElement)
                 .filter(WorkflowAnnotator::shouldValidateWorkflowSyntax)
-                .ifPresent(location -> validateWorkflowKeyValue(holder, location.keyValue(), location.path()));
+                .ifPresent(location -> validateWorkflowKeyValue(
+                        holder,
+                        location.keyValue(),
+                        location.path(),
+                        WorkflowSyntax.providerFor(location.keyValue())
+                ));
     }
 
     private static boolean shouldValidateWorkflowSyntax(final WorkflowLocation location) {
@@ -208,17 +222,23 @@ public class WorkflowAnnotator implements Annotator {
                 && WorkflowPsi.getChild(element.getContainingFile(), "runs").isEmpty();
     }
 
-    private static void validateWorkflowKeyValue(final AnnotationHolder holder, final YAMLKeyValue element, final List<String> path) {
-        WorkflowSyntax.validationKeysForPath(path).ifPresent(keys -> {
+    private static void validateWorkflowKeyValue(
+            final AnnotationHolder holder,
+            final YAMLKeyValue element,
+            final List<String> path,
+            final WorkflowSyntax.Provider provider
+    ) {
+        WorkflowSyntax.validationKeysForPath(path, provider).ifPresent(keys -> {
             validateKnownKey(holder, element, keys.values(), keys.messageKey());
-            validateWorkflowPropertyValue(holder, element, path);
+            validateWorkflowPropertyValue(holder, element, path, provider);
         });
     }
 
     private static void validateWorkflowPropertyValue(
             final AnnotationHolder holder,
             final YAMLKeyValue element,
-            final List<String> path
+            final List<String> path,
+            final WorkflowSyntax.Provider provider
     ) {
         final String key = element.getKeyText();
         if (isChildOf(path, FIELD_ON, "workflow_dispatch", FIELD_INPUTS)
@@ -229,11 +249,31 @@ public class WorkflowAnnotator implements Annotator {
             validateKnownValue(holder, element, WorkflowSyntax.booleanValues(), "inspection.workflow.syntax.unknownTriggerValue");
         }
         if (pathMatches(path, FIELD_ON, "*") && "types".equals(key)) {
-            validateKnownValue(holder, element, WorkflowSyntax.eventActivityTypesFor(path.get(1)), "inspection.workflow.syntax.unknownTriggerValue");
+            validateKnownValue(holder, element, WorkflowSyntax.eventActivityTypesFor(path.get(1), provider), "inspection.workflow.syntax.unknownTriggerValue");
         }
         if (pathEndsWith(path, "permissions")) {
-            validateKnownValue(holder, element, WorkflowSyntax.permissionValuesFor(key), "inspection.workflow.syntax.unknownPermissionValue");
+            validateKnownValue(holder, element, WorkflowSyntax.permissionValuesFor(key, provider), "inspection.workflow.syntax.unknownPermissionValue");
         }
+        if (provider == WorkflowSyntax.Provider.GITEA && pathMatches(path, FIELD_JOBS, "*") && "runs-on".equals(key)) {
+            validateGiteaRunsOn(holder, element);
+        }
+    }
+
+    private static void validateGiteaRunsOn(final AnnotationHolder holder, final YAMLKeyValue element) {
+        if (!(element.getValue() instanceof YAMLSequence sequence)) {
+            return;
+        }
+        final List<YAMLSequenceItem> items = WorkflowPsi.getChildren(sequence, YAMLSequenceItem.class);
+        if (items.size() <= 1) {
+            return;
+        }
+        new SyntaxAnnotation(
+                GitHubWorkflowBundle.message("inspection.workflow.syntax.giteaRunsOnSingleLabel"),
+                null,
+                HighlightSeverity.WEAK_WARNING,
+                ProblemHighlightType.WEAK_WARNING,
+                null
+        ).createAnnotation(element, sequence.getTextRange(), holder);
     }
 
     private static void validateWorkflowInputPropertyValue(
@@ -400,6 +440,84 @@ public class WorkflowAnnotator implements Annotator {
                             }
                         })
                 );
+    }
+
+    private static void validateGiteaExpressionFunctions(final AnnotationHolder holder, final PsiElement psiElement) {
+        Optional.of(psiElement)
+                .filter(LeafPsiElement.class::isInstance)
+                .map(LeafPsiElement.class::cast)
+                .filter(element -> WorkflowSyntax.providerFor(element) == WorkflowSyntax.Provider.GITEA)
+                .filter(isElementWithVariables(getParent(psiElement, FIELD_IF).orElse(null)))
+                .ifPresent(element -> expressionRanges(element).forEach(range -> validateGiteaExpressionRange(holder, element, range)));
+    }
+
+    private static List<TextRange> expressionRanges(final LeafPsiElement element) {
+        final String text = element.getText();
+        if (getParent(element, FIELD_IF).isPresent()) {
+            return text.isBlank() ? List.of() : List.of(new TextRange(0, text.length()));
+        }
+        final List<TextRange> result = new ArrayList<>();
+        int index = 0;
+        while (index < text.length()) {
+            final int start = text.indexOf("${{", index);
+            if (start < 0) {
+                break;
+            }
+            final int bodyStart = start + 3;
+            final int end = text.indexOf("}}", bodyStart);
+            if (end < 0) {
+                break;
+            }
+            result.add(new TextRange(bodyStart, end));
+            index = end + 2;
+        }
+        return result;
+    }
+
+    private static void validateGiteaExpressionRange(final AnnotationHolder holder, final LeafPsiElement element, final TextRange relativeRange) {
+        final String body = element.getText().substring(relativeRange.getStartOffset(), relativeRange.getEndOffset());
+        final Matcher matcher = EXPRESSION_FUNCTION.matcher(body);
+        while (matcher.find()) {
+            if (insideQuotedString(body, matcher.start(1))) {
+                continue;
+            }
+            final String name = matcher.group(1);
+            if (!GITHUB_EXPRESSION_FUNCTIONS.contains(name) || GITEA_EXPRESSION_FUNCTIONS.contains(name)) {
+                continue;
+            }
+            final int start = element.getTextRange().getStartOffset() + relativeRange.getStartOffset() + matcher.start(1);
+            final int end = element.getTextRange().getStartOffset() + relativeRange.getStartOffset() + matcher.end(1);
+            new SyntaxAnnotation(
+                    GitHubWorkflowBundle.message("inspection.workflow.syntax.giteaExpressionFunction", name + "()"),
+                    null,
+                    HighlightSeverity.WEAK_WARNING,
+                    ProblemHighlightType.WEAK_WARNING,
+                    null
+            ).createAnnotation(element, new TextRange(start, end), holder);
+        }
+    }
+
+    private static boolean insideQuotedString(final String text, final int offset) {
+        char quote = 0;
+        for (int index = 0; index < text.length() && index < offset; index++) {
+            final char current = text.charAt(index);
+            if (quote == '\'') {
+                if (current == '\'' && index + 1 < text.length() && text.charAt(index + 1) == '\'') {
+                    index++;
+                } else if (current == '\'') {
+                    quote = 0;
+                }
+            } else if (quote == '"') {
+                if (current == '\\' && index + 1 < text.length()) {
+                    index++;
+                } else if (current == '"') {
+                    quote = 0;
+                }
+            } else if (current == '\'' || current == '"') {
+                quote = current;
+            }
+        }
+        return quote != 0;
     }
 
     private static void highlightContext(

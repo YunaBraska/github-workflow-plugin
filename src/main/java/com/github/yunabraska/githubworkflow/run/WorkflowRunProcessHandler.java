@@ -23,6 +23,7 @@ import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Instant;
 import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -157,7 +158,7 @@ public class WorkflowRunProcessHandler extends ProcessHandler {
             terminate(runFromTrigger());
         } catch (final IOException | RuntimeException exception) {
             if (exception instanceof WorkflowRun.WorkflowRunHttpException httpException && httpException.accountActionRecommended()) {
-                notifyAuthenticationHelp();
+                notifyAuthenticationHelp(httpException.settingsId());
             }
             stderr(exception.getMessage() + "\n");
             terminate(1, "failure");
@@ -180,10 +181,11 @@ public class WorkflowRunProcessHandler extends ProcessHandler {
 
     private long dispatchFromTrigger() throws IOException, InterruptedException {
         stdout(dispatchMessage() + "\n");
-        return resolveRunId(client.dispatch(request));
+        final Instant dispatchTime = Instant.now();
+        return resolveRunId(client.dispatch(request), dispatchTime);
     }
 
-    private long resolveRunId(final WorkflowRun.DispatchResult dispatch) throws IOException, InterruptedException {
+    private long resolveRunId(final WorkflowRun.DispatchResult dispatch, final Instant dispatchTime) throws IOException, InterruptedException {
         if (hasText(dispatch.htmlUrl())) {
             stdout(GitHubWorkflowBundle.message("workflow.run.link", dispatch.htmlUrl()) + "\n");
         }
@@ -192,7 +194,7 @@ public class WorkflowRunProcessHandler extends ProcessHandler {
         }
         stdout(GitHubWorkflowBundle.message("workflow.run.discovery") + "\n");
         for (int attempt = 0; attempt < 12 && !stopping.get(); attempt++) {
-            final var latest = client.latestRun(request);
+            final var latest = client.latestRun(request, dispatchTime);
             if (latest.isPresent()) {
                 final WorkflowRun.RunStatus run = latest.get();
                 if (hasText(run.htmlUrl())) {
@@ -341,9 +343,9 @@ public class WorkflowRunProcessHandler extends ProcessHandler {
     }
 
     private String workflowUrl() {
-        final String webUrl = request.apiUrl().equals("https://api.github.com")
-                ? "https://github.com"
-                : request.apiUrl().replaceFirst("/api/v3/?$", "");
+        final String webUrl = RemoteActionProviders.Server
+                .fromWorkflowRun(request.apiUrl(), request.workflowPath(), request.tokenEnvVar())
+                .webUrl;
         return " (" + webUrl + "/" + request.owner() + "/" + request.repo() + "/blob/" + request.ref() + "/" + request.workflowPath() + ")";
     }
 
@@ -530,16 +532,21 @@ public class WorkflowRunProcessHandler extends ProcessHandler {
         terminate(outcome.exitCode(), outcome.conclusion());
     }
 
-    private void notifyAuthenticationHelp() {
+    private void notifyAuthenticationHelp(final String settingsId) {
         final var notification = NotificationGroupManager.getInstance()
                 .getNotificationGroup("GitHub Workflow")
                 .createNotification(
-                        GitHubWorkflowBundle.message("workflow.run.notification.auth", RemoteActionProviders.Authorizations.settingsHint()),
+                        GitHubWorkflowBundle.message(
+                                "workflow.run.notification.auth",
+                                "github.workflow.gitea.settings".equals(settingsId)
+                                        ? GitHubWorkflowBundle.message("workflow.run.auth.settings.gitea")
+                                        : GitHubWorkflowBundle.message("workflow.run.auth.settings.github")
+                        ),
                         NotificationType.WARNING
                 );
         notification.addAction(NotificationAction.createSimple(GitHubWorkflowBundle.message("workflow.run.notification.openSettings"), () ->
                 ApplicationManager.getApplication().invokeLater(() ->
-                        ShowSettingsUtil.getInstance().showSettingsDialog(project, "GitHub"))));
+                        ShowSettingsUtil.getInstance().showSettingsDialog(project, settingsId))));
         notification.notify(project);
     }
 

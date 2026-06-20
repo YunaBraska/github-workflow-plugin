@@ -59,7 +59,7 @@ public class WorkflowSyntax {
                     new GitHubSchemaProvider("dependabot-2.0", "Dependabot", WorkflowYaml::isDependabotFile),
                     new GitHubSchemaProvider("github-action", "GitHub Action", WorkflowYaml::isActionFile),
                     new GitHubSchemaProvider("github-funding", "GitHub Funding", WorkflowYaml::isFoundingFile),
-                    new GitHubSchemaProvider("github-workflow", "GitHub Workflow", WorkflowYaml::isWorkflowFile),
+                    new GitHubSchemaProvider("github-workflow", "GitHub Workflow", WorkflowYaml::isGithubWorkflowFile),
                     new GitHubSchemaProvider("github-discussion", "GitHub Discussion", WorkflowYaml::isDiscussionFile),
                     new GitHubSchemaProvider("github-issue-forms", "GitHub Issue Forms", WorkflowYaml::isIssueForms),
                     new GitHubSchemaProvider("github-issue-config", "GitHub Workflow Issue Template configuration", WorkflowYaml::isIssueConfigFile),
@@ -75,22 +75,22 @@ public class WorkflowSyntax {
             rule(
                     (path, completion) -> isChildOf(path, FIELD_ON, "workflow_dispatch", FIELD_INPUTS)
                             || isChildOf(path, FIELD_ON, "workflow_call", FIELD_INPUTS),
-                    ignored -> workflowInputPropertyKeys(),
+                    (ignored, provider) -> workflowInputPropertyKeys(),
                     "inspection.workflow.syntax.unknownTriggerKey"
             ),
             rule(
                     (path, completion) -> isChildOf(path, FIELD_ON, "workflow_call", FIELD_OUTPUTS),
-                    ignored -> workflowOutputPropertyKeys(),
+                    (ignored, provider) -> workflowOutputPropertyKeys(),
                     "inspection.workflow.syntax.unknownTriggerKey"
             ),
             rule(
                     (path, completion) -> isChildOf(path, FIELD_ON, "workflow_call", FIELD_SECRETS),
-                    ignored -> workflowSecretPropertyKeys(),
+                    (ignored, provider) -> workflowSecretPropertyKeys(),
                     "inspection.workflow.syntax.unknownTriggerKey"
             ),
             rule(
                     (path, completion) -> pathMatches(path, FIELD_ON, "*"),
-                    path -> eventFilterKeysFor(path.get(path.size() - 1)),
+                    (path, provider) -> eventFilterKeysFor(path.get(path.size() - 1), provider),
                     "inspection.workflow.syntax.unknownTriggerFilter"
             ),
             rule((path, completion) -> pathEndsWith(path, "permissions"), "permission", "inspection.workflow.syntax.unknownPermission"),
@@ -120,6 +120,24 @@ public class WorkflowSyntax {
     private WorkflowSyntax() {
     }
 
+    public enum Provider {
+        GITHUB,
+        GITEA
+    }
+
+    /**
+     * Detects the workflow syntax provider from the edited file path.
+     *
+     * @param element any PSI element inside the edited file
+     * @return {@link Provider#GITEA} for {@code .gitea/workflows}, otherwise {@link Provider#GITHUB}
+     */
+    public static Provider providerFor(final PsiElement element) {
+        return WorkflowYaml.getWorkflowFile(element)
+                .filter(WorkflowYaml::isGiteaWorkflowFile)
+                .map(ignored -> Provider.GITEA)
+                .orElse(Provider.GITHUB);
+    }
+
     public static class FileIcon extends IconProvider {
         // IconLoader automatically resolves /icons/gitea_dark.svg in dark themes.
         private static final Icon GITEA_ICON = IconLoader.getIcon("/icons/gitea.svg", FileIcon.class);
@@ -133,14 +151,20 @@ public class WorkflowSyntax {
                     .filter(PsiFile.class::isInstance)
                     .map(PsiFile.class::cast)
                     .map(PsiFile::getVirtualFile)
-                    .flatMap(virtualFile -> SCHEMA_FILE_PROVIDERS.stream()
-                            .filter(GitHubSchemaProvider.class::isInstance)
-                            .map(GitHubSchemaProvider.class::cast)
-                            .filter(schemaProvider -> schemaProvider.isAvailable(virtualFile))
-                            .map(schema -> iconFor(virtualFile))
-                            .findFirst()
-                    )
+                    .flatMap(FileIcon::iconForKnownFile)
                     .orElse(null);
+        }
+
+        private static Optional<Icon> iconForKnownFile(final VirtualFile virtualFile) {
+            if (WorkflowPsi.toPath(virtualFile).filter(WorkflowYaml::isWorkflowFile).isPresent()) {
+                return Optional.of(iconFor(virtualFile));
+            }
+            return SCHEMA_FILE_PROVIDERS.stream()
+                    .filter(GitHubSchemaProvider.class::isInstance)
+                    .map(GitHubSchemaProvider.class::cast)
+                    .filter(schemaProvider -> schemaProvider.isAvailable(virtualFile))
+                    .map(schema -> iconFor(virtualFile))
+                    .findFirst();
         }
 
         private static Icon iconFor(final VirtualFile virtualFile) {
@@ -381,28 +405,61 @@ public class WorkflowSyntax {
     }
 
     public static Map<String, String> eventFilterKeysFor(final String event) {
-        final Map<String, String> result = table("eventFilter." + event);
+        return eventFilterKeysFor(event, Provider.GITHUB);
+    }
+
+    /**
+     * Returns trigger filter keys valid for the selected workflow provider.
+     *
+     * @param event trigger event name
+     * @param provider syntax provider inferred from the workflow file
+     * @return localized filter keys keyed by YAML key name
+     */
+    public static Map<String, String> eventFilterKeysFor(final String event, final Provider provider) {
+        final Map<String, String> result = table("eventFilter." + event, provider);
         return result.isEmpty() ? eventFilterKeys() : result;
     }
 
     public static Optional<Map<String, String>> completionKeysForPath(final List<String> path) {
-        return knownKeysForPath(path, true).map(KnownKeys::values);
+        return completionKeysForPath(path, Provider.GITHUB);
+    }
+
+    /**
+     * Returns structure completion keys for a YAML path and provider.
+     *
+     * @param path YAML key path before the caret
+     * @param provider syntax provider inferred from the workflow file
+     * @return localized completion keys when this plugin owns the path
+     */
+    public static Optional<Map<String, String>> completionKeysForPath(final List<String> path, final Provider provider) {
+        return knownKeysForPath(path, true, provider).map(KnownKeys::values);
     }
 
     public static Optional<String> descriptionForKey(final YAMLKeyValue keyValue) {
         return WorkflowLocation.from(keyValue)
                 .filter(WorkflowLocation::workflowFile)
-                .flatMap(location -> knownKeysForPath(location.path(), true)
+                .flatMap(location -> knownKeysForPath(location.path(), true, providerFor(keyValue))
                         .map(KnownKeys::values)
                         .map(values -> values.get(location.keyValue().getKeyText())))
                 .filter(value -> !value.isBlank());
     }
 
     public static Optional<KnownKeys> validationKeysForPath(final List<String> path) {
-        return knownKeysForPath(path, false);
+        return validationKeysForPath(path, Provider.GITHUB);
     }
 
-    private static Optional<KnownKeys> knownKeysForPath(final List<String> path, final boolean completion) {
+    /**
+     * Returns validation keys for a YAML path and provider.
+     *
+     * @param path YAML key path at the inspected element
+     * @param provider syntax provider inferred from the workflow file
+     * @return allowed keys and diagnostic message when this plugin owns the path
+     */
+    public static Optional<KnownKeys> validationKeysForPath(final List<String> path, final Provider provider) {
+        return knownKeysForPath(path, false, provider);
+    }
+
+    private static Optional<KnownKeys> knownKeysForPath(final List<String> path, final boolean completion, final Provider provider) {
         if (pathEndsWith(path, FIELD_ON, "workflow_dispatch", FIELD_INPUTS)
                 || pathEndsWith(path, FIELD_ON, "workflow_call", FIELD_INPUTS)
                 || pathEndsWith(path, FIELD_ON, "workflow_call", FIELD_OUTPUTS)
@@ -410,12 +467,23 @@ public class WorkflowSyntax {
             return Optional.empty();
         }
         return KEY_RULES.stream()
-                .flatMap(rule -> rule.known(path, completion).stream())
+                .flatMap(rule -> rule.known(path, completion, provider).stream())
                 .findFirst();
     }
 
     public static Map<String, String> eventActivityTypesFor(final String event) {
-        return table("activity." + event);
+        return eventActivityTypesFor(event, Provider.GITHUB);
+    }
+
+    /**
+     * Returns documented activity types for a trigger event.
+     *
+     * @param event trigger event name
+     * @param provider syntax provider inferred from the workflow file
+     * @return localized activity values keyed by YAML value
+     */
+    public static Map<String, String> eventActivityTypesFor(final String event, final Provider provider) {
+        return table("activity." + event, provider);
     }
 
     static Map<String, String> permissionScopes() {
@@ -427,12 +495,33 @@ public class WorkflowSyntax {
     }
 
     public static Map<String, String> permissionValuesFor(final String permission) {
+        return permissionValuesFor(permission, Provider.GITHUB);
+    }
+
+    /**
+     * Returns permission access values for a permission scope and provider.
+     *
+     * @param permission permission scope name
+     * @param provider syntax provider inferred from the workflow file
+     * @return localized access values keyed by YAML value
+     */
+    public static Map<String, String> permissionValuesFor(final String permission, final Provider provider) {
         final Map<String, String> result = table("permissionValue." + permission);
-        return result.isEmpty() ? permissionValues() : result;
+        return provider == Provider.GITEA || result.isEmpty() ? permissionValues() : result;
     }
 
     public static Map<String, String> permissionShorthandValues() {
         return table("permissionShorthand");
+    }
+
+    /**
+     * Returns shorthand permission values for the selected workflow provider.
+     *
+     * @param provider syntax provider inferred from the workflow file
+     * @return localized shorthand permission values keyed by YAML value
+     */
+    public static Map<String, String> permissionShorthandValues(final Provider provider) {
+        return table("permissionShorthand", provider);
     }
 
     static Map<String, String> jobKeys() {
@@ -527,6 +616,26 @@ public class WorkflowSyntax {
         return table("runner");
     }
 
+    /**
+     * Returns runner label completions for the selected workflow provider.
+     *
+     * @param provider syntax provider inferred from the workflow file
+     * @return localized runner labels keyed by YAML value
+     */
+    public static Map<String, String> runnerLabels(final Provider provider) {
+        return table("runner", provider);
+    }
+
+    /**
+     * Returns schedule cron value completions for the selected workflow provider.
+     *
+     * @param provider syntax provider inferred from the workflow file
+     * @return localized cron values keyed by YAML value
+     */
+    public static Map<String, String> cronValues(final Provider provider) {
+        return table("cron", provider);
+    }
+
     private static Map<String, String> table(final String group) {
         final Map<String, String> keys = Tables.DATA.getOrDefault(group, Collections.emptyMap());
         if (keys.isEmpty()) {
@@ -535,6 +644,30 @@ public class WorkflowSyntax {
         final Map<String, String> result = new LinkedHashMap<>();
         keys.forEach((key, bundleKey) -> result.put(key, GitHubWorkflowBundle.message(bundleKey)));
         return Collections.unmodifiableMap(result);
+    }
+
+    private static Map<String, String> table(final String group, final Provider provider) {
+        if (provider != Provider.GITEA) {
+            return table(group);
+        }
+        final Map<String, String> gitea = table(group + ".gitea");
+        if (gitea.isEmpty()) {
+            return table(group);
+        }
+        if (replacesGithubTable(group)) {
+            return gitea;
+        }
+        final Map<String, String> result = new LinkedHashMap<>(table(group));
+        result.putAll(gitea);
+        return Collections.unmodifiableMap(result);
+    }
+
+    private static boolean replacesGithubTable(final String group) {
+        return "permission".equals(group)
+                || "permissionShorthand".equals(group)
+                || group.startsWith("permissionValue.")
+                || "runner".equals(group)
+                || "cron".equals(group);
     }
 
     private static Map<String, Map<String, String>> loadTables() {
@@ -588,7 +721,7 @@ public class WorkflowSyntax {
     }
 
     private static SyntaxRule rule(final PathPredicate predicate, final String table, final String messageKey) {
-        return rule(predicate, ignored -> table(table), messageKey);
+        return rule(predicate, (ignored, provider) -> table(table, provider), messageKey);
     }
 
     private static SyntaxRule rule(final PathPredicate predicate, final ValueProvider values, final String messageKey) {
@@ -602,13 +735,13 @@ public class WorkflowSyntax {
 
     @FunctionalInterface
     private interface ValueProvider {
-        Map<String, String> values(List<String> path);
+        Map<String, String> values(List<String> path, Provider provider);
     }
 
     private record SyntaxRule(PathPredicate predicate, ValueProvider values, String messageKey) {
-        Optional<KnownKeys> known(final List<String> path, final boolean completion) {
+        Optional<KnownKeys> known(final List<String> path, final boolean completion, final Provider provider) {
             return predicate.matches(path, completion)
-                    ? Optional.of(new KnownKeys(values.values(path), messageKey))
+                    ? Optional.of(new KnownKeys(values.values(path, provider), messageKey))
                     : Optional.empty();
         }
     }

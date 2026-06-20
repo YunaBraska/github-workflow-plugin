@@ -36,7 +36,10 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.time.Instant;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -45,7 +48,6 @@ import java.util.StringJoiner;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.stream.Stream;
 
@@ -69,11 +71,21 @@ public class WorkflowRun {
         this(new JdkHttpTransport(HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(5))
                 .followRedirects(HttpClient.Redirect.NORMAL)
-                .build()), request -> RemoteActionProviders.Authorizations.forApiUrl(request.apiUrl(), request.tokenEnvVar(), project));
+                .build()), request -> RemoteActionProviders.Authorizations.forWorkflowRun(
+                request.apiUrl(),
+                request.workflowPath(),
+                request.tokenEnvVar(),
+                project
+        ));
     }
 
     WorkflowRun(final HttpTransport transport) {
-        this(transport, request -> RemoteActionProviders.Authorizations.forApiUrl(request.apiUrl(), request.tokenEnvVar(), null));
+        this(transport, request -> RemoteActionProviders.Authorizations.forWorkflowRun(
+                request.apiUrl(),
+                request.workflowPath(),
+                request.tokenEnvVar(),
+                null
+        ));
     }
 
     WorkflowRun(final HttpTransport transport, final AuthorizationProvider authorizationProvider) {
@@ -85,7 +97,7 @@ public class WorkflowRun {
         final HttpResponse<String> response = send(
                 request,
                 "POST",
-                workflowUrl(request) + "/dispatches",
+                dispatchUrl(request),
                 dispatchBody(request),
                 "GitHub workflow dispatch"
         );
@@ -165,19 +177,45 @@ public class WorkflowRun {
         return new DeleteResult(response.statusCode(), accepted(response));
     }
 
+    /**
+     * Finds the most likely run created by a workflow dispatch when the dispatch response did not include a run id.
+     *
+     * @param request workflow repository and branch context
+     * @return the closest matching workflow dispatch run, or an empty result when no safe candidate exists
+     * @throws IOException when the remote API rejects the request or the network call fails
+     * @throws InterruptedException when the IDE cancels the remote call
+     */
     public Optional<RunStatus> latestRun(final Request request) throws IOException, InterruptedException {
+        return latestRun(request, Instant.now());
+    }
+
+    /**
+     * Finds the most likely run created near one dispatch timestamp.
+     *
+     * @param request workflow repository and branch context
+     * @param dispatchTime local timestamp captured immediately before dispatching the workflow
+     * @return the closest same-workflow run near the dispatch timestamp, or an empty result when no candidate fits
+     * @throws IOException when the remote API rejects the request or the network call fails
+     * @throws InterruptedException when the IDE cancels the remote call
+     */
+    public Optional<RunStatus> latestRun(final Request request, final Instant dispatchTime) throws IOException, InterruptedException {
         final HttpResponse<String> response = send(
                 request,
                 "GET",
-                workflowUrl(request) + "/runs?branch=" + encode(request.ref()) + "&event=workflow_dispatch&per_page=1",
+                latestRunsUrl(request),
                 "",
                 "GitHub workflow run discovery"
         );
         final JsonObject json = parseObject(response.body());
+        final Instant baseTime = Optional.ofNullable(dispatchTime).orElse(Instant.EPOCH);
+        final Instant earliest = baseTime.minusSeconds(30);
         return objects(json, "workflow_runs")
-                .findFirst()
-                .map(run -> runStatus(run, -1L))
-                .filter(run -> run.runId() >= 0);
+                .map(run -> runCandidate(request, run))
+                .filter(candidate -> candidate.status().runId() >= 0)
+                .filter(RunCandidate::workflowMatches)
+                .filter(candidate -> candidate.timestamp().map(timestamp -> !timestamp.isBefore(earliest)).orElse(true))
+                .min(runCandidateComparator(baseTime))
+                .map(RunCandidate::status);
     }
 
     public String logs(final Request request, final long runId) throws IOException, InterruptedException {
@@ -298,7 +336,7 @@ public class WorkflowRun {
             final String body,
             final String operation,
             final ResponseSender<T> sender,
-            final BiFunction<String, HttpResponse<T>, WorkflowRunHttpException> failureFactory,
+            final FailureFactory<T> failureFactory,
             final Function<HttpResponse<T>, String> bodyText
     ) throws IOException, InterruptedException {
         WorkflowRunHttpException lastFailure = null;
@@ -315,7 +353,7 @@ public class WorkflowRun {
                 }
                 return response;
             }
-            lastFailure = failureFactory.apply(operation, response);
+            lastFailure = failureFactory.failure(workflow, operation, response);
             if (authorization.authenticated() && rateLimitExceeded(response.statusCode(), response.headers(), bodyText.apply(response))) {
                 authenticatedRateLimitFailure = true;
             }
@@ -363,9 +401,13 @@ public class WorkflowRun {
     ) {
         final HttpRequest.Builder builder = HttpRequest.newBuilder(URI.create(url))
                 .timeout(TIMEOUT)
-                .header("Accept", "application/vnd.github+json")
-                .header("X-GitHub-Api-Version", API_VERSION)
                 .header("User-Agent", "GitHub-Workflow-Plugin");
+        if (server(workflow).isGitea()) {
+            builder.header("Accept", "application/json");
+        } else {
+            builder.header("Accept", "application/vnd.github+json");
+            builder.header("X-GitHub-Api-Version", API_VERSION);
+        }
         if (authorization.authenticated()) {
             builder.header("Authorization", authorization.authorizationHeader());
         }
@@ -379,31 +421,38 @@ public class WorkflowRun {
         return builder.build();
     }
 
-    private static WorkflowRunHttpException failure(final String operation, final HttpResponse<String> response) {
-        return failure(operation, response.statusCode(), response.headers(), response.body());
+    private static WorkflowRunHttpException failure(final Request request, final String operation, final HttpResponse<String> response) {
+        return failure(request, operation, response.statusCode(), response.headers(), response.body());
     }
 
-    private static WorkflowRunHttpException failureBytes(final String operation, final HttpResponse<byte[]> response) {
+    private static WorkflowRunHttpException failureBytes(final Request request, final String operation, final HttpResponse<byte[]> response) {
         final String body = new String(Optional.ofNullable(response.body()).orElseGet(() -> new byte[0]), StandardCharsets.UTF_8);
-        return failure(operation, response.statusCode(), response.headers(), body);
+        return failure(request, operation, response.statusCode(), response.headers(), body);
     }
 
     private static WorkflowRunHttpException failure(
+            final Request request,
             final String operation,
             final int statusCode,
             final HttpHeaders headers,
             final String body
     ) {
         final boolean accountActionRecommended = needsAccountAction(statusCode, headers, body);
+        final RemoteActionProviders.Server server = RemoteActionProviders.Server.fromWorkflowRun(
+                request.apiUrl(),
+                request.workflowPath(),
+                request.tokenEnvVar()
+        );
         final String hint = accountActionRecommended
-                ? "\nAdd or refresh GitHub accounts in " + RemoteActionProviders.Authorizations.settingsHint() + "."
+                ? "\n" + GitHubWorkflowBundle.message("workflow.run.auth.add", RemoteActionProviders.Authorizations.settingsHint(server))
                 : "";
         final String summary = responseSummary(statusCode, headers, body);
         return new WorkflowRunHttpException(
                 operation + " failed with HTTP " + statusCode + (summary.isEmpty() ? "" : ": " + summary) + hint,
                 statusCode,
                 body,
-                accountActionRecommended
+                accountActionRecommended,
+                server.isGitea() ? "github.workflow.gitea.settings" : "GitHub"
         );
     }
 
@@ -473,6 +522,20 @@ public class WorkflowRun {
         return request.apiUrl() + "/repos/" + encode(request.owner()) + "/" + encode(request.repo()) + "/actions/workflows/" + encode(workflowId(request.workflowPath()));
     }
 
+    private static String dispatchUrl(final Request request) {
+        final String url = workflowUrl(request) + "/dispatches";
+        return server(request).isGitea() ? url + "?return_run_details=true" : url;
+    }
+
+    private static String latestRunsUrl(final Request request) {
+        final RemoteActionProviders.Server server = server(request);
+        final String baseUrl = server.isGitea()
+                ? request.apiUrl() + "/repos/" + encode(request.owner()) + "/" + encode(request.repo()) + "/actions/runs"
+                : workflowUrl(request) + "/runs";
+        final String pageLimit = server.isGitea() ? "limit=20" : "per_page=20";
+        return baseUrl + "?branch=" + encode(request.ref()) + "&event=workflow_dispatch&" + pageLimit;
+    }
+
     private static String authorizationCacheKey(final Request request) {
         return Optional.ofNullable(request.apiUrl()).orElse("") + "|" + Optional.ofNullable(request.tokenEnvVar()).orElse("");
     }
@@ -485,6 +548,10 @@ public class WorkflowRun {
         final String normalized = Optional.ofNullable(workflowPath).orElse("").replace('\\', '/');
         final int slash = normalized.lastIndexOf('/');
         return slash < 0 ? normalized : normalized.substring(slash + 1);
+    }
+
+    private static RemoteActionProviders.Server server(final Request request) {
+        return RemoteActionProviders.Server.fromWorkflowRun(request.apiUrl(), request.workflowPath(), request.tokenEnvVar());
     }
 
     private static String dispatchBody(final Request request) {
@@ -525,6 +592,72 @@ public class WorkflowRun {
                 stringValue(object, "conclusion").orElse(""),
                 stringValue(object, "html_url").orElse("")
         );
+    }
+
+    private static RunCandidate runCandidate(final Request request, final JsonObject object) {
+        return new RunCandidate(
+                runStatus(object, -1L),
+                runTimestamp(object),
+                workflowMatches(request, object)
+        );
+    }
+
+    private static Comparator<RunCandidate> runCandidateComparator(final Instant dispatchTime) {
+        return Comparator
+                .comparingInt((RunCandidate candidate) -> candidate.timestamp().isPresent() ? 0 : 1)
+                .thenComparingLong(candidate -> candidate.timestamp()
+                        .map(timestamp -> instantDistanceMillis(timestamp, dispatchTime))
+                        .orElse(Long.MAX_VALUE));
+    }
+
+    private static long instantDistanceMillis(final Instant left, final Instant right) {
+        try {
+            return Math.abs(Duration.between(left, right).toMillis());
+        } catch (final ArithmeticException ignored) {
+            return Long.MAX_VALUE;
+        }
+    }
+
+    private static Optional<Instant> runTimestamp(final JsonObject object) {
+        return Stream.of("created_at", "run_started_at", "started_at", "updated_at")
+                .flatMap(name -> stringValue(object, name).stream())
+                .flatMap(value -> parseInstant(value).stream())
+                .filter(timestamp -> timestamp.isAfter(Instant.parse("2000-01-01T00:00:00Z")))
+                .findFirst();
+    }
+
+    private static Optional<Instant> parseInstant(final String value) {
+        try {
+            return Optional.of(Instant.parse(value));
+        } catch (final DateTimeParseException ignored) {
+            return Optional.empty();
+        }
+    }
+
+    private static boolean workflowMatches(final Request request, final JsonObject object) {
+        if (!server(request).isGitea()) {
+            return true;
+        }
+        return Stream.of("path", "workflow_path", "workflow_file_path")
+                .flatMap(name -> stringValue(object, name).stream())
+                .findFirst()
+                .map(path -> sameWorkflowPath(request.workflowPath(), path))
+                .orElse(true);
+    }
+
+    private static boolean sameWorkflowPath(final String expected, final String actual) {
+        final String normalizedExpected = normalizeWorkflowPath(expected);
+        final String normalizedActual = normalizeWorkflowPath(actual);
+        return normalizedExpected.equals(normalizedActual)
+                || workflowId(normalizedExpected).equals(workflowId(normalizedActual));
+    }
+
+    private static String normalizeWorkflowPath(final String value) {
+        String normalized = Optional.ofNullable(value).orElse("").replace('\\', '/').strip();
+        while (normalized.startsWith("./")) {
+            normalized = normalized.substring(2);
+        }
+        return normalized;
     }
 
     private static JobStatus jobStatus(final JsonObject object) {
@@ -603,6 +736,10 @@ public class WorkflowRun {
 
     private interface ResponseSender<T> {
         HttpResponse<T> send(HttpRequest request) throws IOException, InterruptedException;
+    }
+
+    private interface FailureFactory<T> {
+        WorkflowRunHttpException failure(Request request, String operation, HttpResponse<T> response);
     }
 
     private record JdkHttpTransport(HttpClient client) implements HttpTransport {
@@ -999,6 +1136,9 @@ public class WorkflowRun {
         }
     }
 
+    private record RunCandidate(RunStatus status, Optional<Instant> timestamp, boolean workflowMatches) {
+    }
+
     public record CancelResult(int statusCode, boolean accepted) {
     }
 
@@ -1019,17 +1159,20 @@ public class WorkflowRun {
         private final int statusCode;
         private final String body;
         private final boolean accountActionRecommended;
+        private final String settingsId;
 
         public WorkflowRunHttpException(
                 final String message,
                 final int statusCode,
                 final String body,
-                final boolean accountActionRecommended
+                final boolean accountActionRecommended,
+                final String settingsId
         ) {
             super(message);
             this.statusCode = statusCode;
             this.body = body;
             this.accountActionRecommended = accountActionRecommended;
+            this.settingsId = settingsId;
         }
 
         public int statusCode() {
@@ -1042,6 +1185,10 @@ public class WorkflowRun {
 
         public boolean accountActionRecommended() {
             return accountActionRecommended;
+        }
+
+        public String settingsId() {
+            return settingsId;
         }
     }
 }

@@ -5,7 +5,6 @@ import com.github.yunabraska.githubworkflow.state.GitHubActionCache;
 import com.github.yunabraska.githubworkflow.i18n.GitHubWorkflowBundle;
 
 import com.intellij.ide.BrowserUtil;
-import com.intellij.openapi.options.ConfigurationException;
 import com.intellij.openapi.options.SearchableConfigurable;
 import com.intellij.openapi.ui.Messages;
 import com.intellij.ui.table.JBTable;
@@ -22,6 +21,7 @@ import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
 import javax.swing.JTable;
+import javax.swing.border.TitledBorder;
 import javax.swing.table.DefaultTableModel;
 import java.awt.BorderLayout;
 import java.awt.FlowLayout;
@@ -33,6 +33,7 @@ import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.Arrays;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
@@ -74,8 +75,19 @@ public class GitHubWorkflowSettingsConfigurable implements SearchableConfigurabl
     private final JComboBox<LocaleOption> language = new JComboBox<>(LOCALES.toArray(LocaleOption[]::new));
     private final DefaultTableModel tableModel = new DefaultTableModel();
     private final JTable table = new JBTable(tableModel);
+    private final JLabel languageLabel = new JLabel();
+    private final JButton support = new JButton();
     private final JLabel summary = new JLabel();
+    private final List<LocalizedButton> buttons = new ArrayList<>();
     private @Nullable JPanel panel;
+    private @Nullable TitledBorder cacheBorder;
+
+    /**
+     * Creates the settings page and wires the support button action.
+     */
+    public GitHubWorkflowSettingsConfigurable() {
+        support.addActionListener(event -> BrowserUtil.browse(SUPPORT_URL));
+    }
 
     @Override
     public @NotNull String getId() {
@@ -89,6 +101,7 @@ public class GitHubWorkflowSettingsConfigurable implements SearchableConfigurabl
 
     @Override
     public @Nullable JComponent createComponent() {
+        buttons.clear();
         panel = new JPanel(new BorderLayout(8, 8));
         panel.setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
         panel.add(topPanel(), BorderLayout.NORTH);
@@ -104,9 +117,10 @@ public class GitHubWorkflowSettingsConfigurable implements SearchableConfigurabl
     }
 
     @Override
-    public void apply() throws ConfigurationException {
+    public void apply() {
         final LocaleOption option = (LocaleOption) language.getSelectedItem();
         settings.languageTag(option == null ? GitHubWorkflowBundle.Settings.SYSTEM_LANGUAGE : option.tag());
+        refreshTexts();
         reloadTable();
         GitHubActionCache.triggerSyntaxHighlightingForActiveFiles();
     }
@@ -114,6 +128,7 @@ public class GitHubWorkflowSettingsConfigurable implements SearchableConfigurabl
     @Override
     public void reset() {
         selectLanguage(settings.languageTag());
+        refreshTexts();
         reloadTable();
     }
 
@@ -129,7 +144,7 @@ public class GitHubWorkflowSettingsConfigurable implements SearchableConfigurabl
         label.gridy = 0;
         label.anchor = GridBagConstraints.WEST;
         label.insets = new Insets(0, 0, 0, 8);
-        result.add(new JLabel(GitHubWorkflowBundle.message("settings.language.label")), label);
+        result.add(languageLabel, label);
 
         final GridBagConstraints combo = new GridBagConstraints();
         combo.gridx = 1;
@@ -138,9 +153,6 @@ public class GitHubWorkflowSettingsConfigurable implements SearchableConfigurabl
         combo.fill = GridBagConstraints.HORIZONTAL;
         result.add(language, combo);
 
-        final JButton support = new JButton(randomSupportLine());
-        support.setToolTipText(GitHubWorkflowBundle.message("settings.support.tooltip"));
-        support.addActionListener(event -> BrowserUtil.browse(SUPPORT_URL));
         final GridBagConstraints supportConstraints = new GridBagConstraints();
         supportConstraints.gridx = 2;
         supportConstraints.gridy = 0;
@@ -150,17 +162,12 @@ public class GitHubWorkflowSettingsConfigurable implements SearchableConfigurabl
     }
 
     private JPanel cachePanel() {
-        tableModel.setColumnIdentifiers(new Object[]{
-                GitHubWorkflowBundle.message("settings.cache.column.key"),
-                GitHubWorkflowBundle.message("settings.cache.column.name"),
-                GitHubWorkflowBundle.message("settings.cache.column.kind"),
-                GitHubWorkflowBundle.message("settings.cache.column.state"),
-                GitHubWorkflowBundle.message("settings.cache.column.expires")
-        });
+        setCacheColumnHeaders();
         table.setSelectionMode(javax.swing.ListSelectionModel.MULTIPLE_INTERVAL_SELECTION);
 
         final JPanel result = new JPanel(new BorderLayout(4, 4));
-        result.setBorder(BorderFactory.createTitledBorder(GitHubWorkflowBundle.message("settings.cache.title")));
+        cacheBorder = BorderFactory.createTitledBorder(GitHubWorkflowBundle.message("settings.cache.title"));
+        result.setBorder(cacheBorder);
         result.add(summary, BorderLayout.NORTH);
         result.add(new JScrollPane(table), BorderLayout.CENTER);
         result.add(cacheButtons(), BorderLayout.SOUTH);
@@ -180,6 +187,7 @@ public class GitHubWorkflowSettingsConfigurable implements SearchableConfigurabl
     private void addButton(final JPanel panel, final String key, final Runnable action) {
         final JButton button = new JButton(GitHubWorkflowBundle.message(key));
         button.addActionListener(event -> action.run());
+        buttons.add(new LocalizedButton(button, key));
         panel.add(button);
     }
 
@@ -204,6 +212,31 @@ public class GitHubWorkflowSettingsConfigurable implements SearchableConfigurabl
                 cacheKb
         ));
         summary.setToolTipText(null);
+    }
+
+    private void setCacheColumnHeaders() {
+        tableModel.setColumnIdentifiers(new Object[]{
+                GitHubWorkflowBundle.message("settings.cache.column.key"),
+                GitHubWorkflowBundle.message("settings.cache.column.name"),
+                GitHubWorkflowBundle.message("settings.cache.column.kind"),
+                GitHubWorkflowBundle.message("settings.cache.column.state"),
+                GitHubWorkflowBundle.message("settings.cache.column.expires")
+        });
+    }
+
+    private void refreshTexts() {
+        languageLabel.setText(GitHubWorkflowBundle.message("settings.language.label"));
+        support.setText(randomSupportLine());
+        support.setToolTipText(GitHubWorkflowBundle.message("settings.support.tooltip"));
+        buttons.forEach(button -> button.component().setText(GitHubWorkflowBundle.message(button.key())));
+        setCacheColumnHeaders();
+        if (cacheBorder != null) {
+            cacheBorder.setTitle(GitHubWorkflowBundle.message("settings.cache.title"));
+        }
+        if (panel != null) {
+            panel.revalidate();
+            panel.repaint();
+        }
     }
 
     private String stateText(final GitHubActionCache.CacheEntry entry) {
@@ -295,5 +328,8 @@ public class GitHubWorkflowSettingsConfigurable implements SearchableConfigurabl
         public String toString() {
             return bundleKey ? GitHubWorkflowBundle.message(label) : label;
         }
+    }
+
+    private record LocalizedButton(JButton component, String key) {
     }
 }

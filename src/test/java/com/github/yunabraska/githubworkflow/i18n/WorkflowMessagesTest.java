@@ -109,6 +109,7 @@ public class WorkflowMessagesTest {
                 "error.report.ide",
                 "error.report.os",
                 "error.report.stacktrace",
+                "settings.gitea.displayName",
                 "completion.shell.powershell"
         );
         final Pattern placeholder = Pattern.compile("\\{\\d+\\}");
@@ -144,7 +145,8 @@ public class WorkflowMessagesTest {
                 "action.GitHubWorkflow.RefreshActionCache.text",
                 "action.GitHubWorkflow.RefreshActionCache.description",
                 "settings.cache.refresh",
-                "workflow.run.auth.settings"
+                "workflow.run.auth.settings.github",
+                "workflow.run.auth.settings.gitea"
         );
         for (final String suffix : LOCALE_SUFFIXES) {
             final Properties bundle = loadBundle("_" + suffix);
@@ -185,6 +187,7 @@ public class WorkflowMessagesTest {
         for (final String suffix : LOCALE_SUFFIXES) {
             final Locale locale = Locale.forLanguageTag(suffix.replace('_', '-'));
             assertThat(GitHubWorkflowBundle.messageFor(locale, "settings.displayName")).isNotBlank();
+            assertThat(GitHubWorkflowBundle.messageFor(locale, "settings.gitea.displayName")).isEqualTo("Gitea");
             assertThat(GitHubWorkflowBundle.messageFor(locale, "inspection.action.delete.invalid", "input", "bad"))
                     .contains("bad");
             assertThat(GitHubWorkflowBundle.messageFor(locale, "inspection.output.unused", "artifact"))
@@ -289,6 +292,7 @@ public class WorkflowMessagesTest {
                 "completion.workflow.permission.shorthand.empty",
                 "completion.workflow.job.runs-on",
                 "completion.workflow.job.steps",
+                "completion.workflow.job.gitea.ignored",
                 "completion.workflow.step.uses",
                 "completion.workflow.step.run",
                 "completion.workflow.defaultsRun.shell",
@@ -304,7 +308,12 @@ public class WorkflowMessagesTest {
                 "completion.workflow.credentials.password",
                 "completion.workflow.inputType.choice",
                 "completion.workflow.boolean.true",
-                "completion.workflow.runner.ubuntu-latest"
+                "completion.workflow.runner.ubuntu-latest",
+                "completion.secret.giteaToken",
+                "completion.env.gitea",
+                "completion.expressionFunction",
+                "inspection.workflow.syntax.giteaRunsOnSingleLabel",
+                "inspection.workflow.syntax.giteaExpressionFunction"
         );
         for (final String suffix : LOCALE_SUFFIXES) {
             final Locale locale = Locale.forLanguageTag(suffix.replace('_', '-'));

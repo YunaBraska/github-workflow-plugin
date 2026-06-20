@@ -55,6 +55,12 @@
                                  parentId="tools"
                                  key="settings.displayName"
                                  bundle="messages.GitHubWorkflowBundle"/>
+        <projectConfigurable instance="com.github.yunabraska.githubworkflow.settings.GiteaSettingsConfigurable"
+                             id="github.workflow.gitea.settings"
+                             parentId="project.propVCSSupport.Mappings"
+                             groupWeight="-500"
+                             key="settings.gitea.displayName"
+                             bundle="messages.GitHubWorkflowBundle"/>
         <projectService serviceImplementation="com.github.yunabraska.githubworkflow.run.WorkflowRun$Tracker"/>
 
         <!-- Schema Icon provider -->

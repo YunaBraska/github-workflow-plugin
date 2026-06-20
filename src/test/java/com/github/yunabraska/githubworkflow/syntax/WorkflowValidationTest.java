@@ -311,6 +311,88 @@ public class WorkflowValidationTest extends EditorFeatureTestCase {
                 """);
     }
 
+    public void testGiteaSpecificPermissionScopesAreAccepted() {
+        assertGiteaWorkflowHighlights("""
+                name: Syntax
+                on: workflow_dispatch
+                permissions:
+                  code: read
+                  releases: write
+                  wiki: none
+                  projects: read
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo ok
+                """);
+    }
+
+    public void testGiteaRejectsGithubOnlyPermissionScopes() {
+        assertGiteaWorkflowHighlights("""
+                name: Syntax
+                on: workflow_dispatch
+                permissions:
+                  <weak_warning descr="Unknown permission [id-token]">id-token</weak_warning>: write
+                  <weak_warning descr="Unknown permission [statuses]">statuses</weak_warning>: read
+                  <weak_warning descr="Unknown permission [pages]">pages</weak_warning>: write
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo ok
+                """);
+    }
+
+    public void testGiteaWarnsAboutMultipleRunsOnLabels() {
+        assertGiteaWorkflowHighlights("""
+                name: Syntax
+                on: workflow_dispatch
+                jobs:
+                  build:
+                    runs-on: <weak_warning descr="Gitea supports one runner label here">[self-hosted, linux]</weak_warning>
+                    steps:
+                      - run: echo ok
+                """);
+    }
+
+    public void testGiteaAcceptsSingleRunsOnLabelArray() {
+        assertGiteaWorkflowHighlights("""
+                name: Syntax
+                on: workflow_dispatch
+                jobs:
+                  build:
+                    runs-on: [ubuntu-latest]
+                    steps:
+                      - run: echo ok
+                """);
+    }
+
+    public void testGiteaWarnsAboutUnsupportedExpressionFunctions() {
+        assertGiteaWorkflowHighlights("""
+                name: Syntax
+                on: workflow_dispatch
+                jobs:
+                  build:
+                    if: always() && <weak_warning descr="Gitea only documents always() here: [startsWith()]">startsWith</weak_warning>(gitea.ref, 'refs/tags/')
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo "${{ <weak_warning descr="Gitea only documents always() here: [hashFiles()]">hashFiles</weak_warning>('package.json') }}"
+                """);
+    }
+
+    public void testGiteaIgnoresExpressionFunctionNamesInsideStrings() {
+        assertGiteaWorkflowHighlights("""
+                name: Syntax
+                on: workflow_dispatch
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo "${{ always() && 'startsWith(' != '' }}"
+                """);
+    }
+
     public void testResolvedActionInputIsAccepted() {
         seedRemoteAction("owner/tool@v1", Map.of("known-input", "Known input"), Map.of());
 

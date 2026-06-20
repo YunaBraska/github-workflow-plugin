@@ -78,15 +78,33 @@ public abstract class EditorFeatureTestCase extends BasePlatformTestCase {
         myFixture.checkHighlighting(true, false, true);
     }
 
+    protected final void assertGiteaWorkflowHighlights(final String text) {
+        configureGiteaWorkflowProjectFile(text);
+        myFixture.checkHighlighting(true, false, true);
+    }
+
     protected final void configureWorkflow(final String text) {
         myFixture.configureByText(YAMLFileType.YML, text);
     }
 
     protected final void configureWorkflowProjectFile(final String text) {
+        configureProjectFile(".github/workflows/workflow.yml", text);
+    }
+
+    protected final void configureGiteaWorkflowProjectFile(final String text) {
+        configureProjectFile(".gitea/workflows/workflow.yml", text);
+    }
+
+    protected final List<String> completeGiteaWorkflow(final String text) {
+        configureGiteaWorkflowProjectFile(text);
+        return completeBasicLookupStrings();
+    }
+
+    private void configureProjectFile(final String path, final String text) {
         final int caretOffset = text.indexOf("<caret>");
         final String fileText = text.replace("<caret>", "");
-        myFixture.addFileToProject(".github/workflows/workflow.yml", fileText);
-        myFixture.configureFromTempProjectFile(".github/workflows/workflow.yml");
+        myFixture.addFileToProject(path, fileText);
+        myFixture.configureFromTempProjectFile(path);
         if (caretOffset >= 0) {
             myFixture.getEditor().getCaretModel().moveToOffset(caretOffset);
         }

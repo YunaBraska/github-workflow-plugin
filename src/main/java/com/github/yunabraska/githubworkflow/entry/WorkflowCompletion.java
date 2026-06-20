@@ -55,7 +55,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.nio.file.Path;
-import java.util.function.Supplier;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
@@ -185,12 +184,9 @@ public class WorkflowCompletion extends CompletionContributor {
         if (!isCompletingRunEnvironmentVariable(trigger.completionPsi())) {
             return false;
         }
-        final Map<String, String> defaults = ofNullable(DEFAULT_VALUE_MAP.get(FIELD_ENVS))
-                .map(Supplier::get)
-                .orElseGet(Collections::emptyMap);
         addLookupElements(
                 trigger.resultSet().withPrefixMatcher(trigger.prefix()),
-                defaults,
+                defaultEnvs(WorkflowSyntax.providerFor(trigger.position())),
                 NodeIcon.ICON_ENV,
                 Character.MIN_VALUE
         );
@@ -246,7 +242,7 @@ public class WorkflowCompletion extends CompletionContributor {
         }
         addLookupElements(
                 trigger.resultSet().withPrefixMatcher(getDefaultPrefix(trigger.parameters())),
-                SHELLS,
+                shells(),
                 NodeIcon.ICON_NODE,
                 Character.MIN_VALUE
         );
@@ -355,15 +351,16 @@ public class WorkflowCompletion extends CompletionContributor {
             return Optional.empty();
         }
         final List<String> path = context.get().path();
-        final Optional<Map<String, String>> keys = WorkflowSyntax.completionKeysForPath(path);
+        final WorkflowSyntax.Provider provider = WorkflowSyntax.providerFor(completionPsi.position());
+        final Optional<Map<String, String>> keys = WorkflowSyntax.completionKeysForPath(path, provider);
         if (keys.isPresent()) {
             return Optional.of(new StructureCompletion(keys.get(), ':'));
         }
         if (pathMatches(path, FIELD_ON, "*", "types")) {
-            return Optional.of(new StructureCompletion(WorkflowSyntax.eventActivityTypesFor(path.get(1)), Character.MIN_VALUE));
+            return Optional.of(new StructureCompletion(WorkflowSyntax.eventActivityTypesFor(path.get(1), provider), Character.MIN_VALUE));
         }
         if (pathMatches(path, FIELD_ON, "*", "*")) {
-            return workflowEventFilterValueCompletion(completionPsi, context.get());
+            return workflowEventFilterValueCompletion(completionPsi, context.get(), provider);
         }
         return Optional.empty();
     }
@@ -381,19 +378,20 @@ public class WorkflowCompletion extends CompletionContributor {
             return Optional.empty();
         }
         final List<String> path = context.get().path();
+        final WorkflowSyntax.Provider provider = WorkflowSyntax.providerFor(completionPsi.position());
         final String currentKey = key.get();
-        final Optional<StructureCompletion> eventFilterValueCompletion = workflowEventFilterValueCompletion(completionPsi, context.get());
+        final Optional<StructureCompletion> eventFilterValueCompletion = workflowEventFilterValueCompletion(completionPsi, context.get(), provider);
         if (eventFilterValueCompletion.isPresent()) {
             return eventFilterValueCompletion;
         }
         if ("runs-on".equals(currentKey)) {
-            return Optional.of(new StructureCompletion(WorkflowSyntax.runnerLabels(), Character.MIN_VALUE));
+            return Optional.of(new StructureCompletion(WorkflowSyntax.runnerLabels(provider), Character.MIN_VALUE));
         }
         if ("permissions".equals(currentKey)) {
-            return Optional.of(new StructureCompletion(WorkflowSyntax.permissionShorthandValues(), Character.MIN_VALUE));
+            return Optional.of(new StructureCompletion(WorkflowSyntax.permissionShorthandValues(provider), Character.MIN_VALUE));
         }
         if ("types".equals(currentKey) && pathMatches(path, FIELD_ON, "*")) {
-            return Optional.of(new StructureCompletion(WorkflowSyntax.eventActivityTypesFor(path.get(1)), Character.MIN_VALUE));
+            return Optional.of(new StructureCompletion(WorkflowSyntax.eventActivityTypesFor(path.get(1), provider), Character.MIN_VALUE));
         }
         if ("type".equals(currentKey)
                 && (isChildOf(path, FIELD_ON, "workflow_dispatch", FIELD_INPUTS)
@@ -401,7 +399,7 @@ public class WorkflowCompletion extends CompletionContributor {
             return Optional.of(new StructureCompletion(WorkflowSyntax.workflowInputTypesFor(path.get(1)), Character.MIN_VALUE));
         }
         if (pathEndsWith(path, "permissions")) {
-            return Optional.of(new StructureCompletion(WorkflowSyntax.permissionValuesFor(currentKey), Character.MIN_VALUE));
+            return Optional.of(new StructureCompletion(WorkflowSyntax.permissionValuesFor(currentKey, provider), Character.MIN_VALUE));
         }
         if ("required".equals(currentKey)
                 || "continue-on-error".equals(currentKey)
@@ -412,39 +410,49 @@ public class WorkflowCompletion extends CompletionContributor {
         return Optional.empty();
     }
 
-    private static Optional<StructureCompletion> workflowEventFilterValueCompletion(final CompletionPsi completionPsi, final WorkflowLocation.KeyContext context) {
-        return eventFilterContext(context)
-                .map(eventFilter -> eventFilterValueCompletions(completionPsi.position(), eventFilter.event(), eventFilter.filter()))
+    private static Optional<StructureCompletion> workflowEventFilterValueCompletion(
+            final CompletionPsi completionPsi,
+            final WorkflowLocation.KeyContext context,
+            final WorkflowSyntax.Provider provider
+    ) {
+        return eventFilterContext(context, provider)
+                .map(eventFilter -> eventFilterValueCompletions(completionPsi.position(), eventFilter.event(), eventFilter.filter(), provider))
                 .filter(values -> !values.isEmpty())
                 .map(values -> new StructureCompletion(values, Character.MIN_VALUE));
     }
 
-    private static Optional<EventFilterContext> eventFilterContext(final WorkflowLocation.KeyContext context) {
+    private static Optional<EventFilterContext> eventFilterContext(final WorkflowLocation.KeyContext context, final WorkflowSyntax.Provider provider) {
         final List<String> path = context.path();
         final Optional<String> currentKey = currentLineKey(context.currentLine());
         if (currentKey.isPresent() && pathMatches(path, FIELD_ON, "*")) {
             final String event = path.get(1);
             final String filter = currentKey.get();
-            return WorkflowSyntax.eventFilterKeysFor(event).containsKey(filter)
+            return WorkflowSyntax.eventFilterKeysFor(event, provider).containsKey(filter)
                     ? Optional.of(new EventFilterContext(event, filter))
                     : Optional.empty();
         }
         if (pathMatches(path, FIELD_ON, "*", "*")) {
             final String event = path.get(1);
             final String filter = path.get(2);
-            return WorkflowSyntax.eventFilterKeysFor(event).containsKey(filter)
+            return WorkflowSyntax.eventFilterKeysFor(event, provider).containsKey(filter)
                     ? Optional.of(new EventFilterContext(event, filter))
                     : Optional.empty();
         }
         return Optional.empty();
     }
 
-    private static Map<String, String> eventFilterValueCompletions(final PsiElement position, final String event, final String filter) {
+    private static Map<String, String> eventFilterValueCompletions(
+            final PsiElement position,
+            final String event,
+            final String filter,
+            final WorkflowSyntax.Provider provider
+    ) {
         return switch (filter) {
-            case "types" -> WorkflowSyntax.eventActivityTypesFor(event);
+            case "types" -> WorkflowSyntax.eventActivityTypesFor(event, provider);
             case "branches", "branches-ignore" -> localGitRefs(position, "heads", "completion.workflow.eventFilter.branches");
             case "tags", "tags-ignore" -> localGitRefs(position, "tags", "completion.workflow.eventFilter.tags");
             case "paths", "paths-ignore" -> localProjectPaths(position);
+            case "cron" -> WorkflowSyntax.cronValues(provider);
             default -> Collections.emptyMap();
         };
     }
@@ -851,8 +859,7 @@ public class WorkflowCompletion extends CompletionContributor {
     }
 
     private static void addDefaultWorkflowCompletionItems(final int i, final PsiElement position, final Map<Integer, List<SimpleElement>> completionItemMap) {
-        ofNullable(DEFAULT_VALUE_MAP.getOrDefault(FIELD_DEFAULT, null))
-                .map(Supplier::get)
+        ofNullable(expressionRoots(WorkflowSyntax.providerFor(position)))
                 .map(map -> {
                     final Map<String, String> copyMap = new HashMap<>(map);
                     Optional.of(listInputs(position)).filter(List::isEmpty).ifPresent(empty -> copyMap.remove(FIELD_INPUTS));

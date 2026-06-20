@@ -415,6 +415,51 @@ public class WorkflowRunProcessHandlerTest extends BasePlatformTestCase {
                 .contains("feature/live-logs");
     }
 
+    public void testProcessUsesGiteaWorkflowUrlInDispatchMessage() throws Exception {
+        final AtomicInteger statusCalls = new AtomicInteger(0);
+        final AtomicInteger jobCalls = new AtomicInteger(0);
+        final AtomicInteger logCalls = new AtomicInteger(0);
+        final WorkflowRun client = new WorkflowRun(
+                request -> responseFor(request, statusCalls, jobCalls, logCalls),
+                request -> List.of(RemoteActionProviders.Authorizations.Authorization.anonymous())
+        );
+        final WorkflowRun.Request request = new WorkflowRun.Request(
+                "http://localhost:3000/api/v1",
+                "basuabhi",
+                "demo-app",
+                ".gitea/workflows/build-update-chart.yaml",
+                "main",
+                Map.of(),
+                "GITEA_TOKEN"
+        );
+        final WorkflowRunProcessHandler handler = new WorkflowRunProcessHandler(
+                getProject(),
+                request,
+                client,
+                new WorkflowRunProcessHandler.PollSettings(10, 10, 10)
+        );
+        final CountDownLatch terminated = new CountDownLatch(1);
+        final StringBuilder output = new StringBuilder();
+        handler.addProcessListener(new ProcessListener() {
+            @Override
+            public void onTextAvailable(@NotNull final ProcessEvent event, @NotNull final com.intellij.openapi.util.Key outputType) {
+                output.append(event.getText());
+            }
+
+            @Override
+            public void processTerminated(@NotNull final ProcessEvent event) {
+                terminated.countDown();
+            }
+        });
+
+        handler.startNotify();
+
+        assertThat(terminated.await(5, TimeUnit.SECONDS)).isTrue();
+        assertThat(output.toString())
+                .contains("http://localhost:3000/basuabhi/demo-app/blob/main/.gitea/workflows/build-update-chart.yaml")
+                .doesNotContain("http://localhost:3000/api/v1/basuabhi/demo-app/blob");
+    }
+
     public void testProcessRetriesLiveLogAfterDeferredHttpFailure() throws Exception {
         final AtomicInteger statusCalls = new AtomicInteger(0);
         final AtomicInteger logCalls = new AtomicInteger(0);

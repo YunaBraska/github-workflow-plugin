@@ -38,6 +38,7 @@ import static com.github.yunabraska.githubworkflow.model.SyntaxAnnotation.create
 public class Secrets {
 
     private static final String GITHUB_TOKEN = "GITHUB_TOKEN";
+    private static final String GITEA_TOKEN = "GITEA_TOKEN";
 
     public static void highLightSecrets(
             final AnnotationHolder holder,
@@ -86,7 +87,11 @@ public class Secrets {
                         LinkedHashMap::new
                 )))
                 .orElseGet(LinkedHashMap::new);
-        result.putIfAbsent(GITHUB_TOKEN, GitHubWorkflowBundle.message("completion.secret.githubToken"));
+        if (WorkflowSyntax.providerFor(psiElement) == WorkflowSyntax.Provider.GITEA) {
+            result.putIfAbsent(GITEA_TOKEN, GitHubWorkflowBundle.message("completion.secret.giteaToken"));
+        } else {
+            result.putIfAbsent(GITHUB_TOKEN, GitHubWorkflowBundle.message("completion.secret.githubToken"));
+        }
         return completionItemsOf(result, ICON_SECRET_WORKFLOW);
     }
 
