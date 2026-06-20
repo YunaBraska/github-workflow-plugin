@@ -4,6 +4,8 @@
 
 ## [Unreleased]
 
+## [2026.6.20] - 2026-06-20
+
 ### Plugin Wiring
 
 - Simplified workflow syntax routing for completion, highlighting, references, and documentation.
