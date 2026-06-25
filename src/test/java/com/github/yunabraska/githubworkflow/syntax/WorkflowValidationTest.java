@@ -1287,6 +1287,32 @@ public class WorkflowValidationTest extends EditorFeatureTestCase {
                 """);
     }
 
+    public void testGiteaStepOutputFromGroupedEchoIsAccepted() {
+        assertGiteaWorkflowHighlights("""
+                name: grouping bug
+                on:
+                  workflow_dispatch:
+                jobs:
+                  grouping-bug:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - name: Prepare outputs
+                        id: prepare
+                        run: |
+                          echo "output1=value1" >> "${GITEA_OUTPUT}"
+
+                          {
+                            echo "output2=value2"
+                            echo "output3=value3"
+                          } >> "${GITEA_OUTPUT}"
+                      - name: Print outputs
+                        run: |
+                          echo "Output 1: ${{ steps.prepare.outputs.output1 }}"
+                          echo "Output 2: ${{ steps.prepare.outputs.output2 }}"
+                          echo "Output 3: ${{ steps.prepare.outputs.output3 }}"
+                """);
+    }
+
     public void testIssue73StepOutputFromTeePipeIsAccepted() {
         assertWorkflowHighlights("""
                 name: Issue 73

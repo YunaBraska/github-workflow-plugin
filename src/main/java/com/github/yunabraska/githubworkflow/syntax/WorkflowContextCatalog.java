@@ -17,11 +17,11 @@ import java.util.regex.Pattern;
 @SuppressWarnings("java:S2386")
 public class WorkflowContextCatalog {
 
-    public static final Pattern PATTERN_GITHUB_OUTPUT = Pattern.compile("(?:echo\\s+)?[\"']([A-Za-z_][A-Za-z0-9_-]*)=(.*?)[\"']\\s*>>\\s*\"?\\$\\w*:?\\{?GITHUB_OUTPUT\\}?\"?");
-    public static final Pattern PATTERN_GITHUB_OUTPUT_TEE = Pattern.compile("(?:echo\\s+)?[\"']([A-Za-z_][A-Za-z0-9_-]*)=(.*?)[\"']\\s*\\|\\s*tee\\s+(?:-[A-Za-z]+\\s+)*.*\\$\\w*:?\\{?GITHUB_OUTPUT\\}?");
-    public static final Pattern PATTERN_GITHUB_OUTPUT_GROUP = Pattern.compile("(?m)^\\s*\\{\\s*\\R([\\s\\S]*?)^\\s*}\\s*>>\\s*\"?\\$\\w*:?\\{?GITHUB_OUTPUT\\}?\"?");
+    public static final Pattern PATTERN_GITHUB_OUTPUT = Pattern.compile("(?:echo\\s+)?[\"']([A-Za-z_][A-Za-z0-9_-]*)=(.*?)[\"']\\s*>>\\s*\"?\\$\\w*:?\\{?(?:GITHUB|GITEA)_OUTPUT\\}?\"?");
+    public static final Pattern PATTERN_GITHUB_OUTPUT_TEE = Pattern.compile("(?:echo\\s+)?[\"']([A-Za-z_][A-Za-z0-9_-]*)=(.*?)[\"']\\s*\\|\\s*tee\\s+(?:-[A-Za-z]+\\s+)*.*\\$\\w*:?\\{?(?:GITHUB|GITEA)_OUTPUT\\}?");
+    public static final Pattern PATTERN_GITHUB_OUTPUT_GROUP = Pattern.compile("(?m)^\\s*\\{\\s*\\R([\\s\\S]*?)^\\s*}\\s*>>\\s*\"?\\$\\w*:?\\{?(?:GITHUB|GITEA)_OUTPUT\\}?\"?");
     public static final Pattern PATTERN_SHELL_OUTPUT_ASSIGNMENT = Pattern.compile("(?m)^\\s*(?:echo\\s+)?[\"']([A-Za-z_][A-Za-z0-9_-]*)=(.*?)[\"']\\s*;?\\s*$");
-    public static final Pattern PATTERN_GITHUB_ENV = Pattern.compile("(?:echo\\s+)?[\"']([A-Za-z_][A-Za-z0-9_-]*)=(.*?)[\"']\\s*>>\\s*\"?\\$\\w*:?\\{?GITHUB_ENV\\}?\"?");
+    public static final Pattern PATTERN_GITHUB_ENV = Pattern.compile("(?:echo\\s+)?[\"']([A-Za-z_][A-Za-z0-9_-]*)=(.*?)[\"']\\s*>>\\s*\"?\\$\\w*:?\\{?(?:GITHUB|GITEA)_ENV\\}?\"?");
     public static final Pattern PATTERN_GITHUB_OUTPUT_MULTILINE = Pattern.compile("(?:echo\\s+)?[\"']?([A-Za-z_][A-Za-z0-9_-]*)<<[^\"'\\r\\n]+[\"']?");
     public static final Pattern PATTERN_GITHUB_ENV_MULTILINE = Pattern.compile("(?:echo\\s+)?[\"']?([A-Za-z_][A-Za-z0-9_-]*)<<[^\"'\\r\\n]+[\"']?");
     public static final long CACHE_ONE_DAY = 24L * 60 * 60 * 1000;
