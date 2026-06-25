@@ -1493,6 +1493,25 @@ public class WorkflowSyntaxCompletionTest extends EditorFeatureTestCase {
                 """)).contains("artifact");
     }
 
+    public void testStepsOutputCompletionSuggestsGroupedRunOutput() {
+        assertThat(completeWorkflow("""
+                name: Completion
+                on: workflow_dispatch
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - id: prepare
+                        run: |
+                          echo "output1=value1" >> "${GITHUB_OUTPUT}"
+                          {
+                            echo "output2=value2"
+                            echo "output3=value3"
+                          } >> "${GITHUB_OUTPUT}"
+                      - run: echo "${{ steps.prepare.outputs.<caret> }}"
+                """)).contains("output1", "output2", "output3");
+    }
+
     public void testBracketStepsOutputCompletionSuggestsRunOutput() {
         assertThat(completeWorkflow("""
                 name: Completion

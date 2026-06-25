@@ -43,8 +43,10 @@ import static com.github.yunabraska.githubworkflow.syntax.WorkflowContextCatalog
 import static com.github.yunabraska.githubworkflow.syntax.WorkflowContextCatalog.PATTERN_GITHUB_ENV;
 import static com.github.yunabraska.githubworkflow.syntax.WorkflowContextCatalog.PATTERN_GITHUB_ENV_MULTILINE;
 import static com.github.yunabraska.githubworkflow.syntax.WorkflowContextCatalog.PATTERN_GITHUB_OUTPUT;
+import static com.github.yunabraska.githubworkflow.syntax.WorkflowContextCatalog.PATTERN_GITHUB_OUTPUT_GROUP;
 import static com.github.yunabraska.githubworkflow.syntax.WorkflowContextCatalog.PATTERN_GITHUB_OUTPUT_MULTILINE;
 import static com.github.yunabraska.githubworkflow.syntax.WorkflowContextCatalog.PATTERN_GITHUB_OUTPUT_TEE;
+import static com.github.yunabraska.githubworkflow.syntax.WorkflowContextCatalog.PATTERN_SHELL_OUTPUT_ASSIGNMENT;
 import static java.util.Collections.unmodifiableList;
 import static java.util.Optional.ofNullable;
 
@@ -335,6 +337,7 @@ public class WorkflowPsi {
         if (text.contains("GITHUB_OUTPUT")) {
             putMatches(variables, PATTERN_GITHUB_OUTPUT.matcher(text), false);
             putMatches(variables, PATTERN_GITHUB_OUTPUT_TEE.matcher(text), false);
+            putGroupedOutputMatches(variables, text);
             putMatches(variables, PATTERN_GITHUB_OUTPUT_MULTILINE.matcher(text), true);
         }
         return variables;
@@ -347,6 +350,13 @@ public class WorkflowPsi {
             putMatches(variables, PATTERN_GITHUB_ENV_MULTILINE.matcher(text), true);
         }
         return variables;
+    }
+
+    private static void putGroupedOutputMatches(final Map<String, String> variables, final String text) {
+        final Matcher matcher = PATTERN_GITHUB_OUTPUT_GROUP.matcher(text);
+        while (matcher.find()) {
+            putMatches(variables, PATTERN_SHELL_OUTPUT_ASSIGNMENT.matcher(matcher.group(1)), false);
+        }
     }
 
     private static void putMatches(final Map<String, String> variables, final Matcher matcher, final boolean multiline) {

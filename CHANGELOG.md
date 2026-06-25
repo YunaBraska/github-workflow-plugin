@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+### Fixes
+
+- Step outputs written inside grouped shell redirects to `$GITHUB_OUTPUT` are now recognized.
+
 ## [2026.6.20] - 2026-06-20
 
 ### Plugin Wiring
