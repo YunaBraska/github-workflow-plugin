@@ -415,7 +415,7 @@ jobs:
           fi
 
       - name: 💾 Save cache
-        if: success() && github.event_name != 'pull_request' && steps.cache.outputs.cache-hit != 'true'
+        if: success() && github.event_name != 'pull_request' && steps.plan.outputs.sync_dev != 'true' && steps.cache.outputs.cache-hit != 'true'
         continue-on-error: true
         uses: actions/cache/save@v5
         with:
@@ -426,7 +426,7 @@ jobs:
           key: ${{ steps.cache-key.outputs.key }}
 
       - name: 🧽 Prune old caches
-        if: success() && github.event_name != 'pull_request'
+        if: success() && github.event_name != 'pull_request' && steps.plan.outputs.sync_dev != 'true'
         continue-on-error: true
         shell: sh
         env:
