@@ -4,6 +4,11 @@
 
 ## [Unreleased]
 
+### Fixes
+
+- Step outputs written inside grouped shell redirects to `$GITHUB_OUTPUT` or `$GITEA_OUTPUT` are now recognized. Thanks
+  to Adam Głowienka (@aglowienka) for pointing out the grouped-output edge case.
+
 ## [2026.6.20] - 2026-06-20
 
 ### Plugin Wiring

@@ -183,6 +183,28 @@ public class WorkflowGutterTest extends EditorFeatureTestCase {
         }
     }
 
+    public void testWorkflowDispatchShowsOneRunLineMarker() {
+        configureWorkflowProjectFile("""
+                name: Gutter
+                on:
+                  workflow_dispatch:
+                jobs:
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo ok
+                """);
+        final WorkflowRun.LineMarkerContributor.RepositoryAvailability previous =
+                WorkflowRun.LineMarkerContributor.useRepositoryAvailabilityForTests((project, file) -> true);
+        try {
+            assertThat(myFixture.findAllGutters().stream()
+                    .filter(gutter -> gutter.getIcon() == AllIcons.Actions.Execute)
+                    .count()).isEqualTo(1);
+        } finally {
+            WorkflowRun.LineMarkerContributor.useRepositoryAvailabilityForTests(previous);
+        }
+    }
+
     public void testWorkflowDispatchDoesNotShowRunLineMarkerWithoutGitRepository() {
         configureWorkflowProjectFile("""
                 name: Gutter
