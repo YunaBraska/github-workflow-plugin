@@ -12,6 +12,11 @@ on:
         required: true
         default: false
         type: boolean
+      sync_dev:
+        description: Sync dev to main instead of releasing.
+        required: true
+        default: false
+        type: boolean
   push:
     branches:
       - '**'
@@ -21,6 +26,7 @@ on:
       - synchronize
       - reopened
       - ready_for_review
+      - closed
 
 permissions:
   actions: write
@@ -34,6 +40,10 @@ concurrency:
 jobs:
   pipeline:
     name: Test, Build, Release
+    if: >-
+      github.event_name != 'pull_request' ||
+      github.event.action != 'closed' ||
+      (github.event.pull_request.merged == true && github.event.pull_request.base.ref == 'main')
     runs-on: ubuntu-latest
     timeout-minutes: 60
     env:
@@ -49,18 +59,24 @@ jobs:
         uses: actions/checkout@v6
         with:
           fetch-depth: 0
+          ref: ${{ github.event_name == 'pull_request' && github.event.action == 'closed' && github.event.pull_request.base.ref || github.ref }}
           token: ${{ secrets.RELEASE_TOKEN || github.token }}
 
       - name: 🧭 Plan run
         id: plan
         shell: sh
         env:
+          EVENT_ACTION: ${{ github.event.action || '' }}
           HEAD_MESSAGE: ${{ github.event.head_commit.message || '' }}
           INPUT_DRY_RUN: ${{ inputs.dry_run || 'false' }}
+          INPUT_SYNC_DEV: ${{ inputs.sync_dev || 'false' }}
           INPUT_TAG: ${{ inputs.tag || '' }}
+          PR_BASE_REF: ${{ github.event.pull_request.base.ref || '' }}
+          PR_MERGED: ${{ github.event.pull_request.merged || 'false' }}
         run: |
           release="false"
           dry_run="false"
+          sync_dev="false"
           plugin_id="$(sed -n 's/^[[:space:]]*pluginId[[:space:]]*=[[:space:]]*//p' gradle.properties | head -n 1 | tr -d '\r')"
           plugin_version="$(sed -n 's/^[[:space:]]*pluginVersion[[:space:]]*=[[:space:]]*//p' gradle.properties | head -n 1 | tr -d '\r')"
 
@@ -69,7 +85,15 @@ jobs:
             exit 1
           fi
 
-          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+          if [ "$GITHUB_EVENT_NAME" = "pull_request" ] \
+            && [ "$EVENT_ACTION" = "closed" ] \
+            && [ "$PR_MERGED" = "true" ] \
+            && [ "$PR_BASE_REF" = "main" ]; then
+            sync_dev="true"
+          elif [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ] && [ "$INPUT_SYNC_DEV" = "true" ]; then
+            sync_dev="true"
+            dry_run="$INPUT_DRY_RUN"
+          elif [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
             release="true"
             dry_run="$INPUT_DRY_RUN"
           elif [ "$GITHUB_EVENT_NAME" = "push" ] \
@@ -106,6 +130,7 @@ jobs:
           echo "branch=${GITHUB_REF_NAME:-unknown}"
           echo "release=$release"
           echo "dry_run=$dry_run"
+          echo "sync_dev=$sync_dev"
           echo "plugin_id=$plugin_id"
           echo "plugin_version=$plugin_version"
           echo "target_version=$target_version"
@@ -113,12 +138,44 @@ jobs:
 
           echo "release=$release" >> "$GITHUB_OUTPUT"
           echo "dry_run=$dry_run" >> "$GITHUB_OUTPUT"
+          echo "sync_dev=$sync_dev" >> "$GITHUB_OUTPUT"
           echo "plugin_id=$plugin_id" >> "$GITHUB_OUTPUT"
           echo "plugin_version=$plugin_version" >> "$GITHUB_OUTPUT"
           echo "tag=$release_tag" >> "$GITHUB_OUTPUT"
           echo "version=$target_version" >> "$GITHUB_OUTPUT"
 
+      - name: 🔄 Sync dev to main
+        if: steps.plan.outputs.sync_dev == 'true'
+        shell: sh
+        env:
+          DRY_RUN: ${{ steps.plan.outputs.dry_run }}
+          RELEASE_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+        run: |
+          git fetch origin main dev --prune
+          main_sha="$(git rev-parse origin/main)"
+          dev_sha="$(git rev-parse origin/dev)"
+
+          echo "main=$main_sha"
+          echo "dev=$dev_sha"
+
+          if [ "$main_sha" = "$dev_sha" ]; then
+            echo "dev already points at main"
+            exit 0
+          fi
+
+          if [ "$DRY_RUN" = "true" ]; then
+            echo "Dry run: would update dev to $main_sha"
+            exit 0
+          fi
+
+          if [ -n "$RELEASE_TOKEN" ]; then
+            git remote set-url origin "https://x-access-token:${RELEASE_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          fi
+
+          git push --force-with-lease=refs/heads/dev:"$dev_sha" origin "$main_sha:refs/heads/dev"
+
       - name: 🗝️ Resolve cache key
+        if: steps.plan.outputs.sync_dev != 'true'
         id: cache-key
         shell: sh
         run: |
@@ -128,6 +185,7 @@ jobs:
           } | sha256sum | awk '{ print "key=plugin-ci-${{ runner.os }}-" $1 }' >> "$GITHUB_OUTPUT"
 
       - name: ♻️ Restore cache
+        if: steps.plan.outputs.sync_dev != 'true'
         id: cache
         uses: actions/cache/restore@v5
         with:
@@ -140,12 +198,14 @@ jobs:
             plugin-ci-${{ runner.os }}-
 
       - name: ☕ Set up Java
+        if: steps.plan.outputs.sync_dev != 'true'
         uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: 25
 
       - name: 🐳 Check Docker
+        if: steps.plan.outputs.sync_dev != 'true'
         shell: sh
         run: |
           docker version
@@ -234,6 +294,7 @@ jobs:
           echo "publish_token=present length=$token_length format=permanent-token"
 
       - name: 🧪 Test and package
+        if: steps.plan.outputs.sync_dev != 'true'
         shell: sh
         env:
           RELEASE: ${{ steps.plan.outputs.release }}
@@ -354,7 +415,7 @@ jobs:
           fi
 
       - name: 💾 Save cache
-        if: success() && github.event_name != 'pull_request' && steps.cache.outputs.cache-hit != 'true'
+        if: success() && github.event_name != 'pull_request' && steps.plan.outputs.sync_dev != 'true' && steps.cache.outputs.cache-hit != 'true'
         continue-on-error: true
         uses: actions/cache/save@v5
         with:
@@ -365,7 +426,7 @@ jobs:
           key: ${{ steps.cache-key.outputs.key }}
 
       - name: 🧽 Prune old caches
-        if: success() && github.event_name != 'pull_request'
+        if: success() && github.event_name != 'pull_request' && steps.plan.outputs.sync_dev != 'true'
         continue-on-error: true
         shell: sh
         env:
@@ -381,7 +442,7 @@ jobs:
               done
 
       - name: 📊 Upload test reports
-        if: failure()
+        if: failure() && steps.plan.outputs.sync_dev != 'true'
         uses: actions/upload-artifact@v7
         with:
           name: test-reports
@@ -397,7 +458,7 @@ jobs:
           path: build/reports/pluginVerifier
 
       - name: 📮 Upload plugin archive
-        if: success()
+        if: success() && steps.plan.outputs.sync_dev != 'true'
         uses: actions/upload-artifact@v7
         with:
           name: plugin-archive
