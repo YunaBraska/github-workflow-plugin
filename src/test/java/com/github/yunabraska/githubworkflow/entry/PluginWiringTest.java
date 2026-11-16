@@ -27,6 +27,7 @@ import javax.swing.AbstractButton;
 import javax.swing.JComboBox;
 import javax.swing.JComponent;
 import javax.swing.JLabel;
+import javax.swing.JList;
 import javax.swing.JTable;
 import javax.swing.border.TitledBorder;
 import java.awt.Component;
@@ -170,81 +171,37 @@ public class PluginWiringTest extends BasePlatformTestCase {
         }
     }
 
-    public void testGiteaSettingsConfigurableIsLocalizedUnderVersionControl() {
-        final GitHubWorkflowBundle.Settings settings = GitHubWorkflowBundle.Settings.getInstance();
-        final String previousLanguage = settings.languageTag();
+    public void testGiteaSettingsUseAccountListUnderVersionControl() {
         final GiteaSettingsConfigurable configurable = new GiteaSettingsConfigurable();
         try {
-            settings.languageTag("de");
             final JComponent component = configurable.createComponent();
-
-            assertThat(configurable.getDisplayName()).isEqualTo("Gitea");
-            assertThat(visibleTexts(component))
-                    .contains(GitHubWorkflowBundle.message("settings.gitea.title"))
-                    .contains(GitHubWorkflowBundle.message("settings.gitea.add"))
-                    .contains(GitHubWorkflowBundle.message("settings.gitea.remove"))
-                    .contains(GitHubWorkflowBundle.message("settings.gitea.setToken"))
-                    .contains(GitHubWorkflowBundle.message("settings.gitea.clearToken"));
+            assertThat(configurable.getDisplayName()).isEqualTo("GW Gitea");
+            assertThat(findList(component)).isNotNull();
+            assertThat(com.intellij.ui.ToolbarDecorator.findAddButton(component)).isNotNull();
+            assertThat(com.intellij.ui.ToolbarDecorator.findEditButton(component)).isNotNull();
+            assertThat(com.intellij.ui.ToolbarDecorator.findRemoveButton(component)).isNotNull();
         } finally {
             configurable.disposeUIResources();
-            settings.languageTag(previousLanguage);
         }
     }
 
-    public void testGiteaSettingsInvalidRowsKeepApplyAvailable() {
-        final RemoteActionProviders.Settings remoteSettings = RemoteActionProviders.Settings.getInstance();
-        final List<RemoteActionProviders.Server> previousServers = remoteSettings.customServers();
-        final GiteaSettingsConfigurable configurable = new GiteaSettingsConfigurable();
-        try {
-            remoteSettings.setCustomServers(List.of());
-            final JComponent component = configurable.createComponent();
-            findButton(component, GitHubWorkflowBundle.message("settings.gitea.add")).doClick();
-            final JTable table = findTable(component);
-
-            table.setValueAt("", 0, 3);
-
-            assertThat(configurable.isModified()).isTrue();
-        } finally {
-            configurable.disposeUIResources();
-            remoteSettings.setCustomServers(previousServers);
-        }
-    }
-
-    public void testGithubAccountRenameKeepsItsStoredToken() throws Exception {
+    public void testGithubAccountListPreservesStoredToken() throws Exception {
         final RemoteActionProviders.Settings settings = RemoteActionProviders.Settings.getInstance();
         final var previous = settings.customServers();
-        final String name = "test-" + java.util.UUID.randomUUID();
-        final var original = new RemoteActionProviders.Server(name, "https://github.com", "https://api.github.com", "", true);
-        final var renamed = new RemoteActionProviders.Server(name + "-renamed", "https://github.com", "https://api.github.com", "", true);
+        final var account = new RemoteActionProviders.Server("test-" + java.util.UUID.randomUUID(),
+                "https://github.com", "https://api.github.com", "", true);
         final var configurable = new GitHubAccountsConfigurable();
         try {
-            settings.setCustomServers(List.of(original)).setGithubToken(original, "test-token");
-            final JTable table = findTable(configurable.createComponent());
-            table.setValueAt(renamed.name, 0, 1);
+            settings.setCustomServers(List.of(account)).setGithubToken(account, "test-token");
+            final JComponent component = configurable.createComponent();
+            assertThat(configurable.getDisplayName()).isEqualTo("GW GitHub");
+            assertThat(findList(component).getModel().getSize()).isEqualTo(1);
+            assertThat(configurable.isModified()).isFalse();
             configurable.apply();
-            assertThat(settings.githubToken(renamed)).contains("test-token");
-            assertThat(settings.githubToken(original)).isEmpty();
+            assertThat(settings.githubToken(account)).contains("test-token");
         } finally {
             configurable.disposeUIResources();
-            settings.clearGithubToken(original).clearGithubToken(renamed).setCustomServers(previous);
-        }
-    }
-
-    public void testGithubAccountRejectsDuplicateNamesOnTheSameServer() {
-        final RemoteActionProviders.Settings settings = RemoteActionProviders.Settings.getInstance();
-        final var previous = settings.customServers();
-        final var configurable = new GitHubAccountsConfigurable();
-        try {
-            settings.setCustomServers(List.of());
-            final JComponent component = configurable.createComponent();
-            findButton(component, GitHubWorkflowBundle.message("settings.github.add")).doClick();
-            findButton(component, GitHubWorkflowBundle.message("settings.github.add")).doClick();
-            assertThat(configurable.isModified()).isTrue();
-            assertThatExceptionOfType(com.intellij.openapi.options.ConfigurationException.class)
-                    .isThrownBy(configurable::apply);
-        } finally {
-            configurable.disposeUIResources();
-            settings.setCustomServers(previous);
+            settings.clearGithubToken(account).setCustomServers(previous);
         }
     }
 
@@ -258,8 +215,11 @@ public class PluginWiringTest extends BasePlatformTestCase {
         try {
             settings.setCustomServers(List.of(first, second)).setGithubToken(first, "first-token").setGithubToken(second, "second-token");
             final JComponent component = configurable.createComponent();
-            findTable(component).setRowSelectionInterval(0, 0);
-            findButton(component, GitHubWorkflowBundle.message("settings.gitea.remove")).doClick();
+            findList(component).setSelectedIndex(0);
+            final AnAction action = com.intellij.ui.ToolbarDecorator.findRemoveButton(component);
+            assertThat(action).isNotNull();
+            action.actionPerformed(AnActionEvent.createEvent(DataContext.EMPTY_CONTEXT, new Presentation(),
+                    "GithubWorkflowPluginTest", com.intellij.openapi.actionSystem.ActionUiKind.NONE, null));
             configurable.apply();
             assertThat(settings.githubToken(first)).isEmpty();
             assertThat(settings.githubToken(second)).contains("second-token");
@@ -322,6 +282,13 @@ public class PluginWiringTest extends BasePlatformTestCase {
             }
         }
         throw new AssertionError("Button not found: " + text);
+    }
+
+    private static JList<?> findList(final Component root) {
+        for (final Component component : components(root)) {
+            if (component instanceof JList<?> list) return list;
+        }
+        throw new AssertionError("Account list not found");
     }
 
     private static JTable findTable(final Component root) {

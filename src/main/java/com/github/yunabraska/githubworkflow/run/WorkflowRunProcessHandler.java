@@ -539,8 +539,8 @@ public class WorkflowRunProcessHandler extends ProcessHandler {
                         GitHubWorkflowBundle.message(
                                 "workflow.run.notification.auth",
                                 "github.workflow.gitea.settings".equals(settingsId)
-                                        ? GitHubWorkflowBundle.message("workflow.run.auth.settings.gitea")
-                                        : GitHubWorkflowBundle.message("workflow.run.auth.settings.github")
+                                        ? GitHubWorkflowBundle.message("workflow.run.auth.settings.gitea.plugin")
+                                        : GitHubWorkflowBundle.message("workflow.run.auth.settings.github.plugin")
                         ),
                         NotificationType.WARNING
                 );

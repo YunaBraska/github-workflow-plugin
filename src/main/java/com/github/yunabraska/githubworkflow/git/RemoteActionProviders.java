@@ -932,7 +932,7 @@ public class RemoteActionProviders {
         public static String settingsHint(final Server server) {
             final Server normalized = Optional.ofNullable(server).orElseGet(Settings::defaultGitHub).normalized();
             return normalized.isGitea()
-                    ? GitHubWorkflowBundle.message("workflow.run.auth.settings.gitea")
+                    ? GitHubWorkflowBundle.message("workflow.run.auth.settings.gitea.plugin")
                     : GitHubWorkflowBundle.message("workflow.run.auth.settings.github.plugin");
         }
 

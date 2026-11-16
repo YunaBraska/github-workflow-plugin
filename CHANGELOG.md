@@ -6,9 +6,10 @@
 
 ### Fixes
 
-- GitHub accounts are now configured under `Settings > Version Control > GitHub Workflow Accounts`. Existing JetBrains
+- GitHub accounts are now configured under `Settings > Version Control > GW GitHub`. Existing JetBrains
   GitHub accounts must be added again with a personal access token. Tokens are stored in the IDE password store, and
   configured/default environment tokens remain available as fallbacks.
+- GitHub and Gitea accounts use an IDE-style account list and token verification dialog. Plugin settings use the `GW` prefix.
 - Match GitHub accounts to the target API server before sending credentials.
 - Avoid incompatible path comparisons when finding workflow run markers and completing local paths.
 - Preserve JetBrains' cyclic-job inspection and action reload while resolving job and step references consistently.

@@ -33,7 +33,7 @@ _[See Screenshots](https://plugins.jetbrains.com/plugin/21396-github-workflow)_
 * 🏢 Self-hosted GitHub: Resolve metadata from GitHub.com and configured GitHub Enterprise accounts using tokens stored
   in the IDE password store.
 * 🧹 Cache Controls: Refresh, inspect, export, import, or clear resolved action/workflow metadata from Find Action,
-  `Tools > GitHub Workflow`, or `Settings > Tools > GitHub Workflow`.
+  `Tools > GitHub Workflow`, or `Settings > Tools > GW GitHub Workflow`.
 * ▶️ Workflow Runs: Create a GitHub Workflow Run Configuration from `workflow_dispatch`, default to the current branch,
   provide inputs, follow job progress in a Run tool-window tree, inspect selected job logs, and stop remote runs through
   the IDE or the `workflow_dispatch` gutter action. Job nodes use test-result style status icons and color warnings/errors in logs.
@@ -52,14 +52,16 @@ _[See Screenshots](https://plugins.jetbrains.com/plugin/21396-github-workflow)_
 
 * **Installation**: Download the plugin
   from [JetBrains Marketplace](https://plugins.jetbrains.com/plugin/21396-github-workflow).
-* **Configuration**: Under `Settings > Version Control > GitHub Workflow Accounts`, add a GitHub or GitHub Enterprise
-  account and set its personal access token. The next release no longer reads accounts from JetBrains' GitHub settings,
+* **Configuration**: Under `Settings > Version Control > GW GitHub`, add a GitHub or GitHub Enterprise account and
+  enter its personal access token. The add-account dialog verifies the token and identifies the account. Configure
+  Gitea accounts under `Settings > Version Control > GW Gitea`. Advanced options retain custom API URLs and token
+  environment variables. The next release no longer reads accounts from JetBrains' GitHub settings,
   so existing users need to add their account again. For private repositories, grant the token the required repository
   access. Workflow dispatch requires [Actions write permission](https://docs.github.com/en/rest/actions/workflows#create-a-workflow-dispatch-event).
 * **Cache**: Use Find Action (`Shift` twice) for `Refresh Action Cache`, `Clear Action Cache`, or `Restore Action
   Warnings`. IDEs with the classic Tools menu also show these under `Tools > GitHub Workflow`. For review/delete,
   import/export, plugin cache size, and language override, use
-  `Settings > Tools > GitHub Workflow`.
+  `Settings > Tools > GW GitHub Workflow`.
 * **Workflow Runs**: Add a GitHub Workflow account, then use the gutter play
   action on `workflow_dispatch` or create a `GitHub Workflow` Run Configuration. GitHub jobs appear in one Run tree with
   selected-node log output.
