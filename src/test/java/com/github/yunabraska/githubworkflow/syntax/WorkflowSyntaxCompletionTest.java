@@ -14,11 +14,13 @@ import com.github.yunabraska.githubworkflow.state.GitHubActionCache;
 
 import com.github.yunabraska.githubworkflow.model.GitHubAction;
 import com.intellij.codeInsight.editorActions.TypedHandlerDelegate;
+import com.intellij.codeInsight.lookup.Lookup;
 import com.intellij.codeInsight.lookup.LookupElement;
 import com.intellij.codeInsight.lookup.LookupElementPresentation;
 import com.intellij.util.ThreeState;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -1272,6 +1274,23 @@ public class WorkflowSyntaxCompletionTest extends EditorFeatureTestCase {
                 """)).contains("build");
     }
 
+    public void testNeedsFieldCompletionSuggestsJobDeclaredLaterButNotCurrentJob() {
+        assertThat(completeWorkflow("""
+                name: Completion
+                on: workflow_dispatch
+                jobs:
+                  test:
+                    needs: <caret>
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo ok
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo ok
+                """)).contains("build").doesNotContain("test");
+    }
+
     public void testNeedsContextCompletionSuggestsDirectNeeds() {
         assertThat(completeWorkflow("""
                 name: Completion
@@ -1699,7 +1718,16 @@ public class WorkflowSyntaxCompletionTest extends EditorFeatureTestCase {
                           <caret>
                 """);
 
-        assertThat(completeBasicLookupStrings()).contains("local-input");
+        final LookupElement[] elements = myFixture.completeBasic();
+        assertThat(elements).isNotNull();
+        final LookupElement input = Arrays.stream(elements)
+                .filter(element -> element.getLookupString().equals("local-input")
+                        || element.getLookupString().equals("local-input: "))
+                .findFirst()
+                .orElseThrow();
+        myFixture.getLookup().setCurrentItem(input);
+        myFixture.finishLookup(Lookup.NORMAL_SELECT_CHAR);
+        assertThat(myFixture.getFile().getText()).contains("local-input:");
     }
 
     public void testLocalReusableWorkflowInputCompletionUsesWorkflowCallMetadata() {

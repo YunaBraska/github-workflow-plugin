@@ -10,7 +10,6 @@ import com.intellij.codeInsight.daemon.impl.HighlightInfo;
 import com.intellij.codeInsight.lookup.LookupElement;
 import com.intellij.openapi.actionSystem.AnAction;
 import com.intellij.openapi.actionSystem.AnActionEvent;
-import com.intellij.openapi.actionSystem.ActionUiKind;
 import com.intellij.openapi.actionSystem.ActionGroup;
 import com.intellij.openapi.actionSystem.DataContext;
 import com.intellij.openapi.actionSystem.Presentation;
@@ -183,11 +182,10 @@ public abstract class EditorFeatureTestCase extends BasePlatformTestCase {
             throw new AssertionError("Gutter action has no click action [" + text + "]");
         }
         resolvedAction.actionPerformed(AnActionEvent.createEvent(
-                resolvedAction,
                 DataContext.EMPTY_CONTEXT,
                 new Presentation(),
                 "GithubWorkflowPluginTest",
-                ActionUiKind.NONE,
+                com.intellij.openapi.actionSystem.ActionUiKind.NONE,
                 null
         ));
     }

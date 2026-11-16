@@ -452,7 +452,7 @@ public class WorkflowRun {
                 statusCode,
                 body,
                 accountActionRecommended,
-                server.isGitea() ? "github.workflow.gitea.settings" : "GitHub"
+                server.isGitea() ? "github.workflow.gitea.settings" : "github.workflow.github.settings"
         );
     }
 
@@ -763,7 +763,7 @@ public class WorkflowRun {
      * @param workflowPath workflow file path or file name
      * @param ref branch or tag used for workflow dispatch
      * @param inputs workflow_dispatch input values
-     * @param tokenEnvVar optional environment variable used only after IDE GitHub accounts fail or are unavailable
+     * @param tokenEnvVar optional environment variable used after configured GitHub accounts
      */
     public record Request(
             String apiUrl,

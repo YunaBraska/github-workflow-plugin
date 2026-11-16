@@ -6,6 +6,7 @@ import com.github.yunabraska.githubworkflow.git.RemoteActionProviders;
 
 import com.github.yunabraska.githubworkflow.settings.GitHubWorkflowSettingsConfigurable;
 import com.github.yunabraska.githubworkflow.settings.GiteaSettingsConfigurable;
+import com.github.yunabraska.githubworkflow.settings.GitHubAccountsConfigurable;
 
 import com.github.yunabraska.githubworkflow.model.GitHubSchemaProvider;
 
@@ -15,7 +16,6 @@ import com.github.yunabraska.githubworkflow.i18n.GitHubWorkflowBundle;
 
 import com.intellij.openapi.actionSystem.ActionGroup;
 import com.intellij.openapi.actionSystem.ActionManager;
-import com.intellij.openapi.actionSystem.ActionUiKind;
 import com.intellij.openapi.actionSystem.AnAction;
 import com.intellij.openapi.actionSystem.AnActionEvent;
 import com.intellij.openapi.actionSystem.DataContext;
@@ -38,6 +38,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
 
 public class PluginWiringTest extends BasePlatformTestCase {
 
@@ -96,11 +97,10 @@ public class PluginWiringTest extends BasePlatformTestCase {
             final Presentation presentation = new Presentation();
 
             action.update(AnActionEvent.createEvent(
-                    action,
                     DataContext.EMPTY_CONTEXT,
                     presentation,
                     "GithubWorkflowPluginTest",
-                    ActionUiKind.NONE,
+                    com.intellij.openapi.actionSystem.ActionUiKind.NONE,
                     null
             ));
 
@@ -207,6 +207,84 @@ public class PluginWiringTest extends BasePlatformTestCase {
         } finally {
             configurable.disposeUIResources();
             remoteSettings.setCustomServers(previousServers);
+        }
+    }
+
+    public void testGithubAccountRenameKeepsItsStoredToken() throws Exception {
+        final RemoteActionProviders.Settings settings = RemoteActionProviders.Settings.getInstance();
+        final var previous = settings.customServers();
+        final String name = "test-" + java.util.UUID.randomUUID();
+        final var original = new RemoteActionProviders.Server(name, "https://github.com", "https://api.github.com", "", true);
+        final var renamed = new RemoteActionProviders.Server(name + "-renamed", "https://github.com", "https://api.github.com", "", true);
+        final var configurable = new GitHubAccountsConfigurable();
+        try {
+            settings.setCustomServers(List.of(original)).setGithubToken(original, "test-token");
+            final JTable table = findTable(configurable.createComponent());
+            table.setValueAt(renamed.name, 0, 1);
+            configurable.apply();
+            assertThat(settings.githubToken(renamed)).contains("test-token");
+            assertThat(settings.githubToken(original)).isEmpty();
+        } finally {
+            configurable.disposeUIResources();
+            settings.clearGithubToken(original).clearGithubToken(renamed).setCustomServers(previous);
+        }
+    }
+
+    public void testGithubAccountRejectsDuplicateNamesOnTheSameServer() {
+        final RemoteActionProviders.Settings settings = RemoteActionProviders.Settings.getInstance();
+        final var previous = settings.customServers();
+        final var configurable = new GitHubAccountsConfigurable();
+        try {
+            settings.setCustomServers(List.of());
+            final JComponent component = configurable.createComponent();
+            findButton(component, GitHubWorkflowBundle.message("settings.github.add")).doClick();
+            findButton(component, GitHubWorkflowBundle.message("settings.github.add")).doClick();
+            assertThat(configurable.isModified()).isTrue();
+            assertThatExceptionOfType(com.intellij.openapi.options.ConfigurationException.class)
+                    .isThrownBy(configurable::apply);
+        } finally {
+            configurable.disposeUIResources();
+            settings.setCustomServers(previous);
+        }
+    }
+
+    public void testRemovingOneGithubAccountKeepsTheOtherToken() throws Exception {
+        final RemoteActionProviders.Settings settings = RemoteActionProviders.Settings.getInstance();
+        final var previous = settings.customServers();
+        final String id = java.util.UUID.randomUUID().toString();
+        final var first = new RemoteActionProviders.Server("first-" + id, "https://github.com", "https://api.github.com", "", true);
+        final var second = new RemoteActionProviders.Server("second-" + id, "https://github.com", "https://api.github.com", "", true);
+        final var configurable = new GitHubAccountsConfigurable();
+        try {
+            settings.setCustomServers(List.of(first, second)).setGithubToken(first, "first-token").setGithubToken(second, "second-token");
+            final JComponent component = configurable.createComponent();
+            findTable(component).setRowSelectionInterval(0, 0);
+            findButton(component, GitHubWorkflowBundle.message("settings.gitea.remove")).doClick();
+            configurable.apply();
+            assertThat(settings.githubToken(first)).isEmpty();
+            assertThat(settings.githubToken(second)).contains("second-token");
+        } finally {
+            configurable.disposeUIResources();
+            settings.clearGithubToken(first).clearGithubToken(second).setCustomServers(previous);
+        }
+    }
+
+    public void testGithubSettingsDoNotOverwriteAccountsChangedElsewhere() {
+        final RemoteActionProviders.Settings settings = RemoteActionProviders.Settings.getInstance();
+        final var previous = settings.customServers();
+        final String id = java.util.UUID.randomUUID().toString();
+        final var first = new RemoteActionProviders.Server("first-" + id, "https://github.com", "https://api.github.com", "", true);
+        final var second = new RemoteActionProviders.Server("second-" + id, "https://github.com", "https://api.github.com", "", true);
+        final var configurable = new GitHubAccountsConfigurable();
+        try {
+            settings.setCustomServers(List.of(first));
+            configurable.createComponent();
+            settings.setCustomServers(List.of(first, second)).setGithubToken(second, "second-token");
+            assertThatExceptionOfType(com.intellij.openapi.options.ConfigurationException.class).isThrownBy(configurable::apply);
+            assertThat(settings.githubToken(second)).contains("second-token");
+        } finally {
+            configurable.disposeUIResources();
+            settings.clearGithubToken(second).setCustomServers(previous);
         }
     }
 

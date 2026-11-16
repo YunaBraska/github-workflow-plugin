@@ -6,7 +6,7 @@ plugins {
     id 'java'
     id 'jacoco'
     id 'maven-publish'
-    id 'org.jetbrains.intellij.platform' version '2.16.0'
+    id 'org.jetbrains.intellij.platform' version '2.20.1'
     id 'org.jetbrains.changelog' version '2.5.0'
 }
 
@@ -238,7 +238,7 @@ tasks.register('generateGitHubDocsData') {
 }
 
 jacoco {
-    toolVersion = '0.8.15'
+    toolVersion = '0.8.16'
 }
 
 jacocoTestReport {

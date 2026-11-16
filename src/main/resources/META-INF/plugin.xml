@@ -7,7 +7,7 @@
 
     <!-- Default -->
     <depends>com.intellij.modules.platform</depends>
-    <!-- Access to private workflows & actions -->
+    <!-- GitHub integration and authoring interoperability -->
     <depends>org.jetbrains.plugins.github</depends>
     <!-- Parsing YAML Elements -->
     <depends>org.jetbrains.plugins.yaml</depends>
@@ -60,6 +60,12 @@
                              parentId="project.propVCSSupport.Mappings"
                              groupWeight="-500"
                              key="settings.gitea.displayName"
+                             bundle="messages.GitHubWorkflowBundle"/>
+        <projectConfigurable instance="com.github.yunabraska.githubworkflow.settings.GitHubAccountsConfigurable"
+                             id="github.workflow.github.settings"
+                             parentId="project.propVCSSupport.Mappings"
+                             groupWeight="-500"
+                             key="settings.github.displayName"
                              bundle="messages.GitHubWorkflowBundle"/>
         <projectService serviceImplementation="com.github.yunabraska.githubworkflow.run.WorkflowRun$Tracker"/>
 

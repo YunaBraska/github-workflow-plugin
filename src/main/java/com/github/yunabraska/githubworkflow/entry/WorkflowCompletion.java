@@ -34,6 +34,7 @@ import com.intellij.openapi.project.Project;
 import com.intellij.openapi.roots.ProjectFileIndex;
 import com.intellij.patterns.PlatformPatterns;
 import com.intellij.psi.PsiDocumentManager;
+import com.intellij.openapi.vfs.VfsUtilCore;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.openapi.util.TextRange;
 import com.intellij.psi.PsiElement;
@@ -508,8 +509,8 @@ public class WorkflowCompletion extends CompletionContributor {
             if (!file.isDirectory() && !file.getPath().contains("/.git/")) {
                 final VirtualFile contentRoot = ProjectFileIndex.getInstance(project).getContentRootForFile(file);
                 if (contentRoot != null) {
-                    final String path = Path.of(contentRoot.getPath()).relativize(Path.of(file.getPath())).toString().replace('\\', '/');
-                    if (!path.isBlank()) {
+                    final String path = VfsUtilCore.getRelativePath(file, contentRoot);
+                    if (path != null && !path.isBlank()) {
                         result.putIfAbsent(path, GitHubWorkflowBundle.message("completion.workflow.eventFilter.paths"));
                     }
                 }
@@ -658,15 +659,14 @@ public class WorkflowCompletion extends CompletionContributor {
         if (contentRoot == null) {
             return Optional.empty();
         }
-        final Path basePath = Path.of(contentRoot.getPath());
         final Path path = Path.of(file.getPath());
         if (reusableWorkflowUse && isWorkflowFile(path)) {
-            return Optional.of("./" + basePath.relativize(path));
+            return Optional.ofNullable(VfsUtilCore.getRelativePath(file, contentRoot)).map(relative -> "./" + relative);
         }
         if (!reusableWorkflowUse && isActionFile(path)) {
-            final Path actionDirectory = path.getParent();
-            final Path relative = basePath.relativize(actionDirectory);
-            return Optional.of(relative.toString().isEmpty() ? "./" : "./" + relative);
+            return Optional.ofNullable(file.getParent())
+                    .map(directory -> VfsUtilCore.getRelativePath(directory, contentRoot))
+                    .map(relative -> "./" + relative);
         }
         return Optional.empty();
     }

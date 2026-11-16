@@ -348,8 +348,8 @@ public class WorkflowRunTest extends TestCase {
             } catch (final WorkflowRun.WorkflowRunHttpException exception) {
                 assertThat(exception.getMessage())
                         .contains("GitHub workflow dispatch failed with HTTP 401")
-                        .contains("Settings > Version Control > GitHub");
-                assertThat(exception.settingsId()).isEqualTo("GitHub");
+                        .contains("Settings > Version Control > GitHub Workflow Accounts");
+                assertThat(exception.settingsId()).isEqualTo("github.workflow.github.settings");
             }
         }
     }

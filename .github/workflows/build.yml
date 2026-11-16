@@ -46,7 +46,7 @@ jobs:
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
 
       - name: 📥 Fetch sources
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
           token: ${{ secrets.RELEASE_TOKEN || github.token }}
@@ -111,12 +111,14 @@ jobs:
           echo "target_version=$target_version"
           echo "release_tag=$release_tag"
 
-          echo "release=$release" >> "$GITHUB_OUTPUT"
-          echo "dry_run=$dry_run" >> "$GITHUB_OUTPUT"
-          echo "plugin_id=$plugin_id" >> "$GITHUB_OUTPUT"
-          echo "plugin_version=$plugin_version" >> "$GITHUB_OUTPUT"
-          echo "tag=$release_tag" >> "$GITHUB_OUTPUT"
-          echo "version=$target_version" >> "$GITHUB_OUTPUT"
+          {
+            echo "release=$release"
+            echo "dry_run=$dry_run"
+            echo "plugin_id=$plugin_id"
+            echo "plugin_version=$plugin_version"
+            echo "tag=$release_tag"
+            echo "version=$target_version"
+          } >> "$GITHUB_OUTPUT"
 
       - name: 🗝️ Resolve cache key
         id: cache-key
@@ -129,7 +131,7 @@ jobs:
 
       - name: ♻️ Restore cache
         id: cache
-        uses: actions/cache/restore@v5
+        uses: actions/cache/restore@v6
         with:
           path: |
             ~/.gradle/caches/transforms-*
@@ -140,7 +142,7 @@ jobs:
             plugin-ci-${{ runner.os }}-
 
       - name: ☕ Set up Java
-        uses: actions/setup-java@v5
+        uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: 25
@@ -356,7 +358,7 @@ jobs:
       - name: 💾 Save cache
         if: success() && github.event_name != 'pull_request' && steps.cache.outputs.cache-hit != 'true'
         continue-on-error: true
-        uses: actions/cache/save@v5
+        uses: actions/cache/save@v6
         with:
           path: |
             ~/.gradle/caches/transforms-*
@@ -365,7 +367,7 @@ jobs:
           key: ${{ steps.cache-key.outputs.key }}
 
       - name: 🧽 Prune old caches
-        if: success() && github.event_name != 'pull_request'
+        if: success() && github.event_name == 'push' && github.ref == 'refs/heads/main'
         continue-on-error: true
         shell: sh
         env:

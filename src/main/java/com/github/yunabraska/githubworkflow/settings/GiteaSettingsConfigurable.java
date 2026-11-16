@@ -5,6 +5,7 @@ import com.github.yunabraska.githubworkflow.i18n.GitHubWorkflowBundle;
 import com.github.yunabraska.githubworkflow.state.GitHubActionCache;
 
 import com.intellij.openapi.options.SearchableConfigurable;
+import com.intellij.openapi.options.ConfigurationException;
 import com.intellij.openapi.ui.Messages;
 import com.intellij.ui.table.JBTable;
 import org.jetbrains.annotations.Nls;
@@ -57,12 +58,22 @@ public class GiteaSettingsConfigurable implements SearchableConfigurable {
     };
     private final JTable table = new JBTable(model);
     private final Map<Integer, String> pendingTokens = new HashMap<>();
+    private final Map<Integer, RemoteActionProviders.Server> originalRows = new HashMap<>();
     private final Set<Integer> clearedTokens = new HashSet<>();
     private final Set<Integer> storedTokenRows = new HashSet<>();
     private final List<LocalizedButton> buttons = new ArrayList<>();
     private int nextRowSequence = 1;
     private @Nullable JPanel panel;
     private @Nullable TitledBorder border;
+    private final boolean github;
+
+    public GiteaSettingsConfigurable() {
+        this(false);
+    }
+
+    protected GiteaSettingsConfigurable(final boolean github) {
+        this.github = github;
+    }
 
     /**
      * Returns the stable settings identifier used by IntelliJ Settings search.
@@ -71,7 +82,7 @@ public class GiteaSettingsConfigurable implements SearchableConfigurable {
      */
     @Override
     public @NotNull String getId() {
-        return "github.workflow.gitea.settings";
+        return github ? "github.workflow.github.settings" : "github.workflow.gitea.settings";
     }
 
     /**
@@ -81,7 +92,7 @@ public class GiteaSettingsConfigurable implements SearchableConfigurable {
      */
     @Override
     public @Nls String getDisplayName() {
-        return GitHubWorkflowBundle.message("settings.gitea.displayName");
+        return GitHubWorkflowBundle.message(github ? "settings.github.displayName" : "settings.gitea.displayName");
     }
 
     /**
@@ -108,7 +119,7 @@ public class GiteaSettingsConfigurable implements SearchableConfigurable {
     public boolean isModified() {
         return invalidRowCount() > 0
                 || !Objects.equals(serversFromTable(), settings.customServers().stream()
-                        .filter(RemoteActionProviders.Server::isGitea)
+                        .filter(server -> server.isGitea() != github)
                         .toList())
                 || tokenModified();
     }
@@ -117,12 +128,19 @@ public class GiteaSettingsConfigurable implements SearchableConfigurable {
      * Stores Gitea account rows and tokens in IDE settings and Password Safe.
      */
     @Override
-    public void apply() {
+    public void apply() throws ConfigurationException {
         if (invalidRowCount() > 0) {
-            Messages.showErrorDialog(panel, GitHubWorkflowBundle.message("settings.gitea.invalidRows"), getDisplayName());
-            return;
+            throw new ConfigurationException(GitHubWorkflowBundle.message(github ? "settings.github.invalidRows" : "settings.gitea.invalidRows"), getDisplayName());
         }
-        saveRows();
+        if (github && !new HashSet<>(settings.customServers().stream().filter(server -> !server.isGitea()).toList())
+                .equals(new HashSet<>(originalRows.values()))) {
+            throw new ConfigurationException(GitHubWorkflowBundle.message("settings.github.changed"), getDisplayName());
+        }
+        try {
+            saveRows();
+        } catch (final RuntimeException exception) {
+            throw new ConfigurationException(GitHubWorkflowBundle.message("settings.github.storageError"), getDisplayName());
+        }
         refreshTexts();
         GitHubActionCache.triggerSyntaxHighlightingForActiveFiles();
     }
@@ -141,6 +159,7 @@ public class GiteaSettingsConfigurable implements SearchableConfigurable {
      */
     @Override
     public void disposeUIResources() {
+        pendingTokens.clear();
         panel = null;
         border = null;
     }
@@ -150,7 +169,7 @@ public class GiteaSettingsConfigurable implements SearchableConfigurable {
         table.setSelectionMode(javax.swing.ListSelectionModel.MULTIPLE_INTERVAL_SELECTION);
 
         final JPanel result = new JPanel(new BorderLayout(4, 4));
-        border = BorderFactory.createTitledBorder(GitHubWorkflowBundle.message("settings.gitea.title"));
+        border = BorderFactory.createTitledBorder(GitHubWorkflowBundle.message(github ? "settings.github.title" : "settings.gitea.title"));
         result.setBorder(border);
         result.add(new JScrollPane(table), BorderLayout.CENTER);
         result.add(buttonsPanel(), BorderLayout.SOUTH);
@@ -159,7 +178,7 @@ public class GiteaSettingsConfigurable implements SearchableConfigurable {
 
     private JPanel buttonsPanel() {
         final JPanel result = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
-        addButton(result, "settings.gitea.add", this::addRow);
+        addButton(result, github ? "settings.github.add" : "settings.gitea.add", this::addRow);
         addButton(result, "settings.gitea.remove", this::removeSelectedRows);
         addButton(result, "settings.gitea.setToken", this::setSelectedToken);
         addButton(result, "settings.gitea.clearToken", this::clearSelectedToken);
@@ -175,16 +194,18 @@ public class GiteaSettingsConfigurable implements SearchableConfigurable {
 
     private void reloadTable() {
         pendingTokens.clear();
+        originalRows.clear();
         clearedTokens.clear();
         storedTokenRows.clear();
         model.setRowCount(0);
         settings.customServers().stream()
-                .filter(RemoteActionProviders.Server::isGitea)
+                .filter(server -> server.isGitea() != github)
                 .forEach(this::addPersistedRow);
     }
 
     private void addPersistedRow(final RemoteActionProviders.Server server) {
         final int rowId = nextRowId();
+        originalRows.put(rowId, server);
         if (server.tokenStored) {
             storedTokenRows.add(rowId);
         }
@@ -202,10 +223,10 @@ public class GiteaSettingsConfigurable implements SearchableConfigurable {
     private void addRow() {
         model.addRow(new Object[]{
                 true,
-                "Gitea",
-                "https://gitea.com",
-                "https://gitea.com/api/v1",
-                "GITEA_TOKEN",
+                github ? "GitHub" : "Gitea",
+                github ? "https://github.com" : "https://gitea.com",
+                github ? "https://api.github.com" : "https://gitea.com/api/v1",
+                github ? "" : "GITEA_TOKEN",
                 "",
                 nextRowId()
         });
@@ -214,17 +235,19 @@ public class GiteaSettingsConfigurable implements SearchableConfigurable {
     private void removeSelectedRows() {
         final int[] rows = table.getSelectedRows();
         for (int index = rows.length - 1; index >= 0; index--) {
-            model.removeRow(table.convertRowIndexToModel(rows[index]));
+            final int row = table.convertRowIndexToModel(rows[index]);
+            pendingTokens.remove(rowId(row));
+            model.removeRow(row);
         }
     }
 
     private void setSelectedToken() {
         final int row = selectedRow();
         if (row < 0) {
-            Messages.showInfoMessage(panel, GitHubWorkflowBundle.message("settings.gitea.noneSelected"), getDisplayName());
+            Messages.showInfoMessage(panel, GitHubWorkflowBundle.message(github ? "settings.github.noneSelected" : "settings.gitea.noneSelected"), getDisplayName());
             return;
         }
-        final String token = Messages.showPasswordDialog(GitHubWorkflowBundle.message("settings.gitea.token.prompt"), getDisplayName());
+        final String token = Messages.showPasswordDialog(GitHubWorkflowBundle.message(github ? "settings.github.token.prompt" : "settings.gitea.token.prompt"), getDisplayName());
         if (token != null && !token.isBlank()) {
             final int rowId = rowId(row);
             pendingTokens.put(rowId, token);
@@ -237,7 +260,7 @@ public class GiteaSettingsConfigurable implements SearchableConfigurable {
     private void clearSelectedToken() {
         final int row = selectedRow();
         if (row < 0) {
-            Messages.showInfoMessage(panel, GitHubWorkflowBundle.message("settings.gitea.noneSelected"), getDisplayName());
+            Messages.showInfoMessage(panel, GitHubWorkflowBundle.message(github ? "settings.github.noneSelected" : "settings.gitea.noneSelected"), getDisplayName());
             return;
         }
         final int rowId = rowId(row);
@@ -253,16 +276,20 @@ public class GiteaSettingsConfigurable implements SearchableConfigurable {
     }
 
     private void saveRows() {
+        if (github) {
+            saveGithubRows();
+            return;
+        }
         final List<RemoteActionProviders.Server> previous = settings.customServers();
         final List<RemoteActionProviders.Server> servers = serversFromTable();
         final List<String> nextKeys = servers.stream().map(server -> server.apiUrl).toList();
         final List<RemoteActionProviders.Server> persisted = new ArrayList<>(previous.stream()
-                .filter(server -> !server.isGitea())
+                .filter(server -> server.isGitea() == github)
                 .toList());
         persisted.addAll(servers);
 
         previous.stream()
-                .filter(RemoteActionProviders.Server::isGitea)
+                .filter(server -> server.isGitea() != github)
                 .filter(server -> !nextKeys.contains(server.apiUrl))
                 .forEach(settings::clearGiteaToken);
 
@@ -282,18 +309,62 @@ public class GiteaSettingsConfigurable implements SearchableConfigurable {
         reloadTable();
     }
 
+    private void saveGithubRows() {
+        final List<RemoteActionProviders.Server> previous = settings.customServers();
+        final List<RemoteActionProviders.Server> servers = serversFromTable();
+        for (int row = 0; row < model.getRowCount(); row++) {
+            final int rowId = rowId(row);
+            final RemoteActionProviders.Server server = serverFromRow(row);
+            final RemoteActionProviders.Server original = originalRows.get(rowId);
+            final boolean moved = original != null && (!original.apiUrl.equals(server.apiUrl) || !original.name.equals(server.name));
+            if (pendingTokens.containsKey(rowId)) {
+                settings.setGithubToken(server, pendingTokens.get(rowId));
+            } else if (clearedTokens.contains(rowId)) {
+                settings.clearGithubToken(server);
+            } else if (moved && original.tokenStored) {
+                final String token = settings.githubToken(original).orElseThrow(() -> new IllegalStateException("Stored token is unavailable"));
+                settings.setGithubToken(server, token);
+            }
+        }
+        previous.stream().filter(server -> !server.isGitea())
+                .filter(server -> servers.stream().noneMatch(candidate -> candidate.apiUrl.equals(server.apiUrl) && candidate.name.equals(server.name)))
+                .forEach(settings::clearGithubToken);
+        final List<RemoteActionProviders.Server> persisted = new ArrayList<>(previous.stream().filter(RemoteActionProviders.Server::isGitea).toList());
+        persisted.addAll(servers);
+        settings.setCustomServers(persisted);
+        reloadTable();
+    }
+
     private boolean tokenModified() {
         return !pendingTokens.isEmpty() || !clearedTokens.isEmpty();
     }
 
     private int invalidRowCount() {
         int result = 0;
+        final Set<String> identities = new HashSet<>();
         for (int row = 0; row < model.getRowCount(); row++) {
-            if (!serverFromRow(row).isValid()) {
+            final RemoteActionProviders.Server server = serverFromRow(row);
+            final int currentRowId = rowId(row);
+            if (!server.isValid() || (github && (text(row, NAME).isBlank()
+                    || !validUrl(server.webUrl) || !validUrl(server.apiUrl)
+                    || !identities.add(server.apiUrl + "\n" + server.name)
+                    || originalRows.entrySet().stream().anyMatch(entry -> entry.getKey() != currentRowId
+                            && entry.getValue().apiUrl.equals(server.apiUrl) && entry.getValue().name.equals(server.name))))) {
                 result++;
             }
         }
         return result;
+    }
+
+    private boolean validUrl(final String value) {
+        try {
+            final java.net.URI uri = java.net.URI.create(value);
+            return ("https".equalsIgnoreCase(uri.getScheme()) || "http".equalsIgnoreCase(uri.getScheme()))
+                    && uri.getHost() != null && uri.getUserInfo() == null
+                    && uri.getQuery() == null && uri.getFragment() == null;
+        } catch (final IllegalArgumentException ignored) {
+            return false;
+        }
     }
 
     private List<RemoteActionProviders.Server> serversFromTable() {
@@ -308,7 +379,8 @@ public class GiteaSettingsConfigurable implements SearchableConfigurable {
     }
 
     private RemoteActionProviders.Server serverFromRow(final int row) {
-        return RemoteActionProviders.Server.gitea(
+        return new RemoteActionProviders.Server(
+                github ? RemoteActionProviders.Settings.TYPE_GITHUB : RemoteActionProviders.Settings.TYPE_GITEA,
                 text(row, NAME),
                 text(row, WEB_URL),
                 text(row, API_URL),
@@ -337,7 +409,7 @@ public class GiteaSettingsConfigurable implements SearchableConfigurable {
         buttons.forEach(button -> button.component().setText(GitHubWorkflowBundle.message(button.key())));
         setColumnHeaders();
         if (border != null) {
-            border.setTitle(GitHubWorkflowBundle.message("settings.gitea.title"));
+            border.setTitle(GitHubWorkflowBundle.message(github ? "settings.github.title" : "settings.gitea.title"));
         }
         if (panel != null) {
             panel.revalidate();

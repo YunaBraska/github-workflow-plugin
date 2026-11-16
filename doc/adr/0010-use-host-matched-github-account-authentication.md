@@ -6,29 +6,23 @@ Accepted
 
 ## Context
 
-Remote metadata and workflow dispatch calls need authentication for private repositories, higher rate limits, and
-write APIs such as `workflow_dispatch`. The plugin already depends on JetBrains' GitHub integration, so a separate token
-store or server UI would duplicate IDE settings and create more security surface.
-
-Tokens must not be sent to unrelated hosts. A github.com token must not be used for a GitHub Enterprise host, and an
-Enterprise token must not be sent to github.com.
+Private repositories, API rate limits, and workflow runs require GitHub authentication. The IDE's internal token API
+is not supported for plugins, while its public request executor does not expose all response details required by the
+workflow client. Account credentials must not be sent to another server.
 
 ## Decision
 
-For GitHub REST calls, use this order:
+The plugin manages its own GitHub accounts and stores their personal access tokens in the IDE password store. Existing
+JetBrains GitHub accounts are not imported. For GitHub REST calls, try enabled plugin accounts matching the target
+protocol, host, port, and API path, followed by the configured and default GitHub token environment variables, then
+anonymous access. Several accounts may be configured for the same server. Environment tokens remain explicit fallbacks
+for the configured target.
 
-1. GitHub accounts from JetBrains settings whose server host matches the request API host.
-2. Optional token environment variable configured on the run configuration or remote server test fixture.
-3. Anonymous request.
-
-For ambiguous remote action references, prefer github.com servers before Enterprise servers. For repository-derived
-workflow runs, infer the API host from the Git remote and use matching accounts first.
-
-Authentication and rate-limit workflow dispatch failures must include a direct hint to `Settings > Version Control >
-GitHub` and show a notification action that opens GitHub settings.
+Workflow authentication errors link to the plugin's GitHub account settings. GitHub Enterprise servers are configured
+in the same account settings.
 
 ## Consequences
 
-Public repositories still work without accounts where GitHub allows it. Authenticated dispatch uses the IDE account
-instead of forcing a `GH_TOKEN` environment variable. Failed or missing accounts degrade predictably instead of throwing
-an unexplained 401 at users.
+Users migrating from JetBrains GitHub accounts must add their accounts and tokens again. The plugin keeps complete HTTP
+response details and no longer depends on an internal JetBrains token API. Public repositories can still work without
+credentials. A token in an environment variable may be sent to the configured target and must be suitable for that host.

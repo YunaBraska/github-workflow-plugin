@@ -9,7 +9,6 @@ import com.google.gson.JsonParser;
 import com.intellij.credentialStore.CredentialAttributes;
 import com.intellij.credentialStore.Credentials;
 import com.intellij.ide.passwordSafe.PasswordSafe;
-import com.intellij.ide.impl.ProjectUtil;
 import com.intellij.openapi.application.Application;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.components.PersistentStateComponent;
@@ -17,13 +16,9 @@ import com.intellij.openapi.components.State;
 import com.intellij.openapi.components.Storage;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.project.Project;
-import com.intellij.openapi.project.ProjectManager;
 import com.intellij.util.xmlb.XmlSerializerUtil;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
-import org.jetbrains.plugins.github.authentication.GHAccountsUtil;
-import org.jetbrains.plugins.github.authentication.accounts.GithubAccount;
-import org.jetbrains.plugins.github.util.GHCompatibilityUtil;
 
 import java.io.IOException;
 import java.net.URI;
@@ -483,6 +478,44 @@ public class RemoteActionProviders {
             return this;
         }
 
+        /** Stores a GitHub account token in the IDE password safe.
+         * @param server account and server identifying the token
+         * @param token personal access token
+         * @return this settings service
+         * @throws RuntimeException if the password store cannot save the token
+         */
+        public Settings setGithubToken(final Server server, final String token) {
+            final Server normalized = server.normalized();
+            if (!normalized.isGitea() && hasText(token)) {
+                PasswordTokens.set(normalized, token);
+                markTokenStored(normalized, true);
+            }
+            return this;
+        }
+
+        /** Removes the token for one GitHub account.
+         * @param server account and server identifying the token
+         * @return this settings service
+         * @throws RuntimeException if the password store cannot remove the token
+         */
+        public Settings clearGithubToken(final Server server) {
+            final Server normalized = server.normalized();
+            if (!normalized.isGitea()) {
+                PasswordTokens.clear(normalized);
+                markTokenStored(normalized, false);
+            }
+            return this;
+        }
+
+        /** Reads a GitHub account token.
+         * @param server account and server identifying the token
+         * @return the token when available
+         */
+        public Optional<String> githubToken(final Server server) {
+            final Server normalized = server.normalized();
+            return normalized.isGitea() ? Optional.empty() : PasswordTokens.get(normalized);
+        }
+
         /**
          * Deletes the Gitea token for the supplied provider from the IDE password safe.
          *
@@ -532,6 +565,12 @@ public class RemoteActionProviders {
             return this;
         }
 
+        private void markTokenStored(final Server server, final boolean stored) {
+            state.servers.stream()
+                    .filter(entry -> entry.server().key().equals(server.key()) && entry.name.equals(server.name))
+                    .forEach(entry -> entry.tokenStored = stored);
+        }
+
         public List<Server> enabledServers() {
             final Map<String, Server> result = new LinkedHashMap<>();
             customServers().stream()
@@ -539,7 +578,6 @@ public class RemoteActionProviders {
                     .filter(Server::isEnabled)
                     .filter(Server::isValid)
                     .forEach(server -> result.put(server.key(), server));
-            jetBrainsGithubServers().forEach(server -> result.putIfAbsent(server.key(), server));
             final Server defaultGitHub = defaultGitHub();
             result.putIfAbsent(defaultGitHub.key(), defaultGitHub);
             return List.copyOf(result.values());
@@ -547,32 +585,6 @@ public class RemoteActionProviders {
 
         public static Server defaultGitHub() {
             return new Server("GitHub", "https://github.com", "https://api.github.com", "", true);
-        }
-
-        private static List<Server> jetBrainsGithubServers() {
-            try {
-                return GHAccountsUtil.getAccounts().stream()
-                        .sorted((left, right) -> {
-                            final int order = Integer.compare(accountOrder(left), accountOrder(right));
-                            return order == 0 ? left.getName().compareTo(right.getName()) : order;
-                        })
-                        .map(account -> new Server(
-                                account.getName(),
-                                account.getServer().toUrl(),
-                                account.getServer().toApiUrl(),
-                                "",
-                                true
-                        ))
-                        .map(Server::normalized)
-                        .filter(Server::isValid)
-                        .toList();
-            } catch (final RuntimeException ignored) {
-                return List.of();
-            }
-        }
-
-        private static int accountOrder(final GithubAccount account) {
-            return account.getServer().isGithubDotCom() ? 0 : 1;
         }
 
         private static class PasswordTokens {
@@ -604,9 +616,9 @@ public class RemoteActionProviders {
                         application.executeOnPooledThread(operation).get();
                     } catch (final InterruptedException exception) {
                         Thread.currentThread().interrupt();
-                        LOG.warn("Gitea token write interrupted", exception);
+                        throw new IllegalStateException("Token storage interrupted", exception);
                     } catch (final ExecutionException exception) {
-                        LOG.warn("Gitea token write failed", exception);
+                        throw new IllegalStateException("Token storage failed", exception.getCause());
                     }
                     return;
                 }
@@ -614,23 +626,18 @@ public class RemoteActionProviders {
             }
 
             private static void setNow(final Server server, final String token) {
-                try {
-                    PasswordSafe.getInstance().set(attributes(server), new Credentials(server.name, token));
-                } catch (final RuntimeException exception) {
-                    LOG.warn("Gitea token storage failed for [" + server.apiUrl + "]", exception);
-                }
+                PasswordSafe.getInstance().set(attributes(server), new Credentials(server.name, token));
             }
 
             private static void clearNow(final Server server) {
-                try {
-                    PasswordSafe.getInstance().set(attributes(server), null);
-                } catch (final RuntimeException exception) {
-                    LOG.warn("Gitea token deletion failed for [" + server.apiUrl + "]", exception);
-                }
+                PasswordSafe.getInstance().set(attributes(server), null);
             }
 
             private static CredentialAttributes attributes(final Server server) {
-                return new CredentialAttributes(SERVICE_PREFIX + server.normalized().apiUrl);
+                final Server normalized = server.normalized();
+                return new CredentialAttributes(normalized.isGitea()
+                        ? SERVICE_PREFIX + normalized.apiUrl
+                        : "GitHub Workflow GitHub " + normalized.apiUrl + " - " + normalized.name);
             }
         }
     }
@@ -755,7 +762,7 @@ public class RemoteActionProviders {
         }
 
         public String authorizationHeader() {
-            return Settings.getInstance().giteaToken(this)
+            return (isGitea() ? Settings.getInstance().giteaToken(this) : Settings.getInstance().githubToken(this))
                     .or(() -> Optional.ofNullable(tokenEnvVar)
                             .filter(RemoteActionProviders::hasText)
                             .map(System::getenv)
@@ -831,12 +838,12 @@ public class RemoteActionProviders {
 
         /**
          * Returns authorizations for a workflow-run request. Gitea run requests use Gitea token variables with
-         * {@code token ...}; GitHub requests keep JetBrains GitHub account and {@code Bearer ...} token priority.
+         * {@code token ...}; GitHub requests use configured GitHub accounts and {@code Bearer ...} tokens.
          *
          * @param apiUrl REST API URL configured for the run
          * @param workflowPath workflow file path being dispatched
          * @param tokenEnvVar optional token environment variable configured for the run
-         * @param project project used when JetBrains GitHub tokens need to be requested
+         * @param project project associated with the request
          * @return ordered authorizations ending with anonymous access
          */
         public static List<Authorization> forWorkflowRun(
@@ -854,7 +861,7 @@ public class RemoteActionProviders {
          * @param apiUrl REST API URL configured for the run
          * @param workflowPath workflow file path being dispatched
          * @param tokenEnvVar optional token environment variable configured for the run
-         * @param project project used when JetBrains GitHub tokens need to be requested
+         * @param project project associated with the request
          * @param environment environment variables used for explicit and default tokens
          * @return ordered authorizations ending with anonymous access
          */
@@ -873,12 +880,10 @@ public class RemoteActionProviders {
         }
 
         /**
-         * Returns authorizations for a configured remote provider. GitHub providers reuse JetBrains GitHub accounts
-         * and GitHub token environment variables. Gitea providers use only configured or Gitea-specific environment
-         * tokens because JetBrains has no compatible Gitea account store here.
+         * Returns authorizations for a configured remote provider using plugin accounts and token environment variables.
          *
          * @param server configured remote provider
-         * @param project project used when JetBrains GitHub tokens need to be requested
+         * @param project project associated with the request
          * @param environment environment variables used for explicit and default tokens
          * @return ordered authorizations ending with anonymous access
          */
@@ -907,10 +912,17 @@ public class RemoteActionProviders {
                 final Map<String, String> environment
         ) {
             final LinkedHashMap<String, Authorization> result = new LinkedHashMap<>();
-            orderedAccountsFor(apiUrl).stream()
-                    .map(account -> authorization(account, project))
-                    .flatMap(Optional::stream)
-                    .forEach(authorization -> result.putIfAbsent(authorization.key(), authorization));
+            final Application application = ApplicationManager.getApplication();
+            if (application != null) {
+                final Settings settings = Settings.getInstance();
+                settings.customServers().stream()
+                        .filter(server -> !server.isGitea() && server.isEnabled())
+                        .filter(server -> matchesApiServer(server, apiUrl))
+                        .map(server -> settings.githubToken(server)
+                                .map(token -> new Authorization(server.name, "Bearer " + token)))
+                        .flatMap(Optional::stream)
+                        .forEach(authorization -> result.putIfAbsent(authorization.key(), authorization));
+            }
             envAuthorizations(tokenEnvVar, environment, DEFAULT_GITHUB_ENV_TOKENS, "Bearer ")
                     .forEach(authorization -> result.putIfAbsent(authorization.key(), authorization));
             result.putIfAbsent(Authorization.anonymous().key(), Authorization.anonymous());
@@ -921,11 +933,11 @@ public class RemoteActionProviders {
             final Server normalized = Optional.ofNullable(server).orElseGet(Settings::defaultGitHub).normalized();
             return normalized.isGitea()
                     ? GitHubWorkflowBundle.message("workflow.run.auth.settings.gitea")
-                    : GitHubWorkflowBundle.message("workflow.run.auth.settings.github");
+                    : GitHubWorkflowBundle.message("workflow.run.auth.settings.github.plugin");
         }
 
         public static String settingsHint() {
-            return GitHubWorkflowBundle.message("workflow.run.auth.settings.github");
+            return GitHubWorkflowBundle.message("workflow.run.auth.settings.github.plugin");
         }
 
         private static List<Authorization> giteaAccountAuthorizations(final Server server) {
@@ -949,37 +961,30 @@ public class RemoteActionProviders {
             return sameHost(candidate.apiUrl, server.apiUrl) ? 1 : 2;
         }
 
-        private static List<GithubAccount> orderedAccountsFor(final String apiUrl) {
-            return accounts().stream()
-                    .sorted(Comparator
-                            .comparingInt((GithubAccount account) -> accountPriority(account, apiUrl))
-                            .thenComparing(account -> account.getServer().toApiUrl())
-                            .thenComparing(GithubAccount::getName))
-                    .toList();
-        }
-
-        private static int accountPriority(final GithubAccount account, final String apiUrl) {
-            if (sameHost(account.getServer().toApiUrl(), apiUrl)) {
-                return 0;
-            }
-            return account.getServer().isGithubDotCom() ? 1 : 2;
-        }
-
-        private static List<GithubAccount> accounts() {
+        private static boolean matchesApiServer(final Server account, final String apiUrl) {
             try {
-                return new ArrayList<>(GHAccountsUtil.getAccounts());
-            } catch (final RuntimeException ignored) {
-                return List.of();
-            }
-        }
-
-        private static Optional<Authorization> authorization(final GithubAccount account, final Project project) {
-            try {
-                return Optional.ofNullable(GHCompatibilityUtil.getOrRequestToken(account, project(project)))
-                        .filter(RemoteActionProviders::hasText)
-                        .map(token -> new Authorization(account.getName(), "Bearer " + token));
-            } catch (final RuntimeException ignored) {
-                return Optional.empty();
+                final URI accountApi = URI.create(account.apiUrl);
+                final URI targetApi = URI.create(apiUrl);
+                if (accountApi.getHost() == null || targetApi.getHost() == null
+                        || accountApi.getScheme() == null || targetApi.getScheme() == null
+                        || !accountApi.getScheme().equalsIgnoreCase(targetApi.getScheme())
+                        || !accountApi.getHost().equalsIgnoreCase(targetApi.getHost())) {
+                    return false;
+                }
+                final int defaultPort = "https".equalsIgnoreCase(accountApi.getScheme()) ? 443 : 80;
+                final int accountPort = accountApi.getPort() < 0 ? defaultPort : accountApi.getPort();
+                final int targetPort = targetApi.getPort() < 0 ? defaultPort : targetApi.getPort();
+                final String accountPath = Optional.ofNullable(accountApi.getPath()).orElse("").replaceAll("/+$", "");
+                final String targetPath = Optional.ofNullable(targetApi.getPath()).orElse("");
+                for (final String segment : targetPath.split("/")) {
+                    if (segment.equals(".") || segment.equals("..")) {
+                        return false;
+                    }
+                }
+                return accountPort == targetPort && (accountPath.isEmpty()
+                        || targetPath.equals(accountPath) || targetPath.startsWith(accountPath + "/"));
+            } catch (final IllegalArgumentException | NullPointerException ignored) {
+                return false;
             }
         }
 
@@ -1011,12 +1016,6 @@ public class RemoteActionProviders {
                     .flatMap(name -> Optional.ofNullable(environment.get(name))
                             .filter(RemoteActionProviders::hasText)
                             .map(token -> new Authorization(name, authorizationPrefix + token)));
-        }
-
-        private static Project project(final Project project) {
-            return Optional.ofNullable(project)
-                    .or(() -> Optional.ofNullable(ProjectUtil.getActiveProject()))
-                    .orElseGet(() -> ProjectManager.getInstance().getDefaultProject());
         }
 
         private static boolean sameHost(final String left, final String right) {

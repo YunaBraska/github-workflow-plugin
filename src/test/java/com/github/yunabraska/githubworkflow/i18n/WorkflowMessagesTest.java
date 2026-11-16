@@ -98,7 +98,7 @@ public class WorkflowMessagesTest {
     @Test
     public void testLocaleBundleValuesAreTranslatedAndKeepPlaceholders() throws IOException {
         final Properties defaultBundle = loadBundle("");
-        final Set<String> technicalKeysAllowedToMatchEnglish = Set.of(
+        final Set<String> keysAllowedToMatchEnglish = Set.of(
                 "workflow.run.field.apiUrl",
                 "workflow.run.field.ref",
                 "workflow.log.error",
@@ -110,6 +110,16 @@ public class WorkflowMessagesTest {
                 "error.report.os",
                 "error.report.stacktrace",
                 "settings.gitea.displayName",
+                // The new GitHub account settings use English until translations are available.
+                "workflow.run.auth.settings.github.plugin",
+                "settings.github.displayName",
+                "settings.github.title",
+                "settings.github.add",
+                "settings.github.noneSelected",
+                "settings.github.invalidRows",
+                "settings.github.token.prompt",
+                "settings.github.storageError",
+                "settings.github.changed",
                 "completion.shell.powershell"
         );
         final Pattern placeholder = Pattern.compile("\\{\\d+\\}");
@@ -129,7 +139,7 @@ public class WorkflowMessagesTest {
                 assertThat(placeholder.matcher(localized).results().map(match -> match.group()).toList())
                         .as("Locale suffix [%s] key [%s] keeps placeholders", suffix, key)
                         .containsExactlyInAnyOrderElementsOf(placeholder.matcher(defaultBundle.getProperty(key)).results().map(match -> match.group()).toList());
-                if (!technicalKeysAllowedToMatchEnglish.contains(key)) {
+                if (!keysAllowedToMatchEnglish.contains(key)) {
                     assertThat(localized)
                             .as("Locale suffix [%s] key [%s] is not the default English fallback", suffix, key)
                             .isNotEqualTo(defaultBundle.getProperty(key));

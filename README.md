@@ -30,8 +30,8 @@ _[See Screenshots](https://plugins.jetbrains.com/plugin/21396-github-workflow)_
 * 🌈 Autocomplete & Syntax Highlighting: Write workflow YAML files with confidence. Autocomplete suggestions and clear
   syntax highlighting will make your code look and feel pristine.
 * 🚀 Repository Access: Integrate with your private GitHub repositories for those secret projects you're working on.
-* 🏢 Self-hosted GitHub: Resolve metadata from public GitHub and GitHub Enterprise accounts already configured in
-  JetBrains settings, without storing plaintext tokens in this plugin.
+* 🏢 Self-hosted GitHub: Resolve metadata from GitHub.com and configured GitHub Enterprise accounts using tokens stored
+  in the IDE password store.
 * 🧹 Cache Controls: Refresh, inspect, export, import, or clear resolved action/workflow metadata from Find Action,
   `Tools > GitHub Workflow`, or `Settings > Tools > GitHub Workflow`.
 * ▶️ Workflow Runs: Create a GitHub Workflow Run Configuration from `workflow_dispatch`, default to the current branch,
@@ -52,21 +52,25 @@ _[See Screenshots](https://plugins.jetbrains.com/plugin/21396-github-workflow)_
 
 * **Installation**: Download the plugin
   from [JetBrains Marketplace](https://plugins.jetbrains.com/plugin/21396-github-workflow).
-* **Configuration**: Add GitHub or GitHub Enterprise accounts via `File > Settings > Version Control > GitHub`. The
-  plugin does not add a second server settings screen.
+* **Configuration**: Under `Settings > Version Control > GitHub Workflow Accounts`, add a GitHub or GitHub Enterprise
+  account and set its personal access token. The next release no longer reads accounts from JetBrains' GitHub settings,
+  so existing users need to add their account again. For private repositories, grant the token the required repository
+  access. Workflow dispatch requires [Actions write permission](https://docs.github.com/en/rest/actions/workflows#create-a-workflow-dispatch-event).
 * **Cache**: Use Find Action (`Shift` twice) for `Refresh Action Cache`, `Clear Action Cache`, or `Restore Action
   Warnings`. IDEs with the classic Tools menu also show these under `Tools > GitHub Workflow`. For review/delete,
   import/export, plugin cache size, and language override, use
   `Settings > Tools > GitHub Workflow`.
-* **Workflow Runs**: Add GitHub accounts in `File > Settings > Version Control > GitHub`, then use the gutter play
+* **Workflow Runs**: Add a GitHub Workflow account, then use the gutter play
   action on `workflow_dispatch` or create a `GitHub Workflow` Run Configuration. GitHub jobs appear in one Run tree with
   selected-node log output.
   Context-created runs default to the checked-out Git branch and print clickable workflow/job URLs where GitHub exposes
   them. The gutter play action is shown only when the workflow file belongs to a resolvable GitHub repository. Runs try
-  matching IDE accounts first, then other IDE GitHub accounts, then `GITHUB_TOKEN`, `GH_TOKEN`, `GITHUB_PAT`, then
+  matching plugin accounts first, then `GITHUB_TOKEN`, `GH_TOKEN`, `GITHUB_PAT`, then
   anonymous access. An optional token environment variable can still be set explicitly for custom setups. GitHub log
   timestamps, groups, command markers, and ANSI color codes are compacted before display.
 * **Usage**: Enjoy autocomplete, syntax highlighting, and much more as you code GitHub or Gitea Workflows and Actions.
+* **Known issue**: In IntelliJ IDEA Ultimate 2026.1.3 and 2026.3, JetBrains' GitHub Actions support can override this
+  plugin's autocomplete. Reusable workflow inputs may be missing, and action suggestions may appear for workflow references.
 
 ## Local Development
 
@@ -118,6 +122,8 @@ local theme is less likely to kick the test IDE back into light-mode betrayal. T
 predictable. Progress.
 
 ## Dependencies
+
+This release requires an IntelliJ Platform IDE from 2024.3 or later. Earlier plugin releases remain available for older IDEs.
 
 This plugin depends on:
 

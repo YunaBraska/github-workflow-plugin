@@ -6,8 +6,21 @@
 
 ### Fixes
 
+- GitHub accounts are now configured under `Settings > Version Control > GitHub Workflow Accounts`. Existing JetBrains
+  GitHub accounts must be added again with a personal access token. Tokens are stored in the IDE password store, and
+  configured/default environment tokens remain available as fallbacks.
+- Match GitHub accounts to the target API server before sending credentials.
+- Avoid incompatible path comparisons when finding workflow run markers and completing local paths.
+- Preserve JetBrains' cyclic-job inspection and action reload while resolving job and step references consistently.
+- Recognize job dependencies regardless of their declaration order in the workflow.
+- Require IntelliJ Platform 2024.3 or newer to use the current completion confidence API.
 - Step outputs written inside grouped shell redirects to `$GITHUB_OUTPUT` or `$GITEA_OUTPUT` are now recognized. Thanks
   to Adam Głowienka (@aglowienka) for pointing out the grouped-output edge case.
+
+### Known Issues
+
+- In IntelliJ IDEA Ultimate 2026.1.3 and 2026.3, JetBrains' GitHub Actions authoring support can suppress reusable
+  workflow input suggestions and suggest actions in reusable workflow references.
 
 ## [2026.6.20] - 2026-06-20
 

@@ -1,12 +1,52 @@
 package com.github.yunabraska.githubworkflow.run;
 
 import com.github.yunabraska.githubworkflow.test.EditorFeatureTestCase;
+import com.intellij.execution.actions.ConfigurationContext;
+import com.intellij.openapi.vfs.LocalFileSystem;
+import com.intellij.psi.PsiFile;
+import com.intellij.psi.PsiManager;
+import com.intellij.testFramework.LightVirtualFile;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 public class WorkflowRunConfigurationTest extends EditorFeatureTestCase {
+
+    public void testWorkflowPathIsRelativeToTheProjectDirectory() {
+        configureWorkflowProjectFile("on: workflow_dispatch");
+
+        assertThat(WorkflowRunConfiguration.Producer.workflowPath(getProject(), myFixture.getFile().getVirtualFile()))
+                .contains(".github/workflows/workflow.yml");
+    }
+
+    public void testWorkflowPathDoesNotRelativizeAFileOutsideTheProjectFileSystem() {
+        final LightVirtualFile file = new LightVirtualFile("workflow.yml", "on: workflow_dispatch");
+
+        assertThat(WorkflowRunConfiguration.Producer.workflowPath(getProject(), file)).isEmpty();
+    }
+
+    public void testExistingConfigurationMatchesWorkflowOutsideTheProjectDirectory() throws Exception {
+        final Path root = Files.createTempDirectory("workflow-run-test");
+        final Path workflowDirectory = Files.createDirectories(root.resolve(".github/workflows"));
+        final Path workflow = Files.writeString(workflowDirectory.resolve("workflow.yml"), "on: workflow_dispatch");
+        try {
+            final PsiFile file = PsiManager.getInstance(getProject())
+                    .findFile(LocalFileSystem.getInstance().refreshAndFindFileByNioFile(workflow));
+            assertThat(file).isNotNull();
+            final ConfigurationContext context = new ConfigurationContext(file);
+            final WorkflowRunConfiguration configuration = configuration("workflow").workflowPath(file.getName());
+
+            assertThat(new WorkflowRunConfiguration.Producer().isConfigurationFromContext(configuration, context)).isTrue();
+        } finally {
+            Files.deleteIfExists(workflow);
+            Files.deleteIfExists(workflowDirectory);
+            Files.deleteIfExists(root.resolve(".github"));
+            Files.deleteIfExists(root);
+        }
+    }
 
     public void testResetUsesOnlyTheSelectedConfigurationInputs() throws Exception {
         final WorkflowRunConfiguration.Editor editor = new WorkflowRunConfiguration.Editor();

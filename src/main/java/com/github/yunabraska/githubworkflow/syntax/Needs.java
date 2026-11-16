@@ -106,12 +106,16 @@ public class Needs {
     public static Optional<PsiReference[]> referenceNeeds(final PsiElement psiElement, final String need) {
         return getParent(psiElement, FIELD_NEEDS)
                 .flatMap(needs -> listJobs(needs).stream().filter(keyValue -> keyValue.getKeyText().equals(need)).findFirst())
-                .map(job -> new PsiReference[]{new LocalReferenceResolver(psiElement, job)});
+                // Match the IDE's job reference target so both references resolve to the same declaration.
+                .map(YAMLKeyValue::getKey)
+                .map(key -> new PsiReference[]{new LocalReferenceResolver(psiElement, key)});
     }
 
     // ########## COMMONS ##########
     private static List<YAMLKeyValue> listJobs(final PsiElement psiElement) {
-        return currentJob(psiElement).map(job -> listAllJobs(psiElement).stream().takeWhile(j -> !j.getKeyText().equals(job.getKeyText())).toList()).orElseGet(Collections::emptyList);
+        return currentJob(psiElement).map(job -> listAllJobs(psiElement).stream()
+                .filter(candidate -> !candidate.getKeyText().equals(job.getKeyText()))
+                .toList()).orElseGet(Collections::emptyList);
     }
 
     private static Optional<YAMLKeyValue> currentJob(final PsiElement psiElement) {
