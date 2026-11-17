@@ -2,7 +2,8 @@
 
 ## Status
 
-Accepted
+Partially superseded by [ADR 0010](0010-use-host-matched-github-account-authentication.md) for account settings and
+credential storage.
 
 ## Context
 

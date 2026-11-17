@@ -60,9 +60,9 @@ _[See Screenshots](https://plugins.jetbrains.com/plugin/21396-github-workflow)_
   so existing users need to add their account again. Tokens are stored in the IDE password store and expiring browser
   credentials are refreshed automatically. For private repositories, grant the token the required repository
   access. Workflow dispatch requires [Actions write permission](https://docs.github.com/en/rest/actions/workflows#create-a-workflow-dispatch-event).
-  When matching accounts do not authorize a request, personal access tokens from other GitHub accounts are also tried.
-  Those tokens can be sent to another configured server, including an HTTP server. Browser-login credentials are
-  restricted to their matching server.
+  When matching accounts do not authorize a request, personal access tokens from other accounts of the same provider
+  are also tried. GitHub and Gitea tokens can therefore be sent to another configured server, including an HTTP
+  server. GitHub browser-login credentials are restricted to their matching server.
 * **Cache**: Use Find Action (`Shift` twice) for `Refresh Action Cache`, `Clear Action Cache`, or `Restore Action
   Warnings`. IDEs with the classic Tools menu also show these under `Tools > GitHub Workflow`. For review/delete,
   import/export, plugin cache size, and language override, use

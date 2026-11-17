@@ -2,7 +2,8 @@
 
 ## Status
 
-Accepted
+Accepted. The account source and settings decisions are superseded by
+[ADR 0010](0010-use-host-matched-github-account-authentication.md).
 
 ## Context
 
