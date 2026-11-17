@@ -21,6 +21,8 @@ import com.intellij.openapi.actionSystem.AnActionEvent;
 import com.intellij.openapi.actionSystem.DataContext;
 import com.intellij.openapi.actionSystem.Presentation;
 import com.intellij.execution.configurations.ConfigurationTypeUtil;
+import com.intellij.ide.plugins.PluginManagerCore;
+import com.intellij.openapi.extensions.PluginId;
 import com.intellij.testFramework.fixtures.BasePlatformTestCase;
 
 import javax.swing.AbstractButton;
@@ -53,6 +55,17 @@ public class PluginWiringTest extends BasePlatformTestCase {
             "github-issue-config",
             "github-workflow-template-properties"
     );
+
+    public void testPluginLoadsWithoutRequiringJetBrainsGithubPlugin() {
+        final var descriptor = PluginManagerCore.getPlugin(PluginId.getId("com.github.yunabraska.githubworkflowplugin"));
+        assertThat(descriptor).isNotNull();
+        assertThat(ActionManager.getInstance().getAction("GitHubWorkflow.Tools")).isNotNull();
+        assertThat(descriptor.getDependencies()).noneMatch(dependency -> !dependency.isOptional()
+                && dependency.getPluginId().getIdString().equals("org.jetbrains.plugins.github"));
+        if (Boolean.getBoolean("githubWorkflow.test.githubPluginDisabled")) {
+            assertThat(PluginManagerCore.isDisabled(PluginId.getId("org.jetbrains.plugins.github"))).isTrue();
+        }
+    }
 
     public void testCacheActionGroupIsRegisteredFromPluginXml() {
         final AnAction action = ActionManager.getInstance().getAction("GitHubWorkflow.Tools");

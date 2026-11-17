@@ -52,8 +52,8 @@ _[See Screenshots](https://plugins.jetbrains.com/plugin/21396-github-workflow)_
 
 * **Installation**: Download the plugin
   from [JetBrains Marketplace](https://plugins.jetbrains.com/plugin/21396-github-workflow).
-* **Configuration**: Under `Settings > Version Control > GW GitHub`, add an account using GitHub.com browser login or
-  a personal access token. Browser login requires installing the [GitHub App](https://github.com/apps/workflow-ide-for-github)
+* **Configuration**: The JetBrains GitHub plugin is optional. Under `Settings > Version Control > GW GitHub`, add an
+  account using GitHub.com browser login or a personal access token. Browser login requires installing the [GitHub App](https://github.com/apps/workflow-ide-for-github)
   on the repositories it should access. GitHub Enterprise uses a personal access token. Configure
   Gitea accounts under `Settings > Version Control > GW Gitea`. Advanced options retain custom API URLs and token
   environment variables. The next release no longer reads accounts from JetBrains' GitHub settings,

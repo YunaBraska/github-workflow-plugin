@@ -21,7 +21,8 @@ for the configured target.
 GitHub.com supports the GitHub App device flow and personal access tokens. The device flow uses no client secret and
 stores the access and refresh tokens together in the password store. Background requests refresh expiring tokens once
 per account and do not restore credentials removed while a refresh is in progress. GitHub Enterprise uses personal
-access tokens. Workflow authentication errors link to the plugin's GitHub account settings.
+access tokens. Workflow authentication errors link to the plugin's GitHub account settings. JetBrains' GitHub plugin is
+not required; its authoring features remain independent when it is enabled.
 
 ## Consequences
 

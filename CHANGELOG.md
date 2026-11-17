@@ -6,6 +6,7 @@
 
 ### Fixes
 
+- The JetBrains GitHub plugin is no longer required. Its features remain available when it is enabled.
 - GitHub accounts are now configured under `Settings > Version Control > GW GitHub`. Existing JetBrains accounts must
   be added again using GitHub.com browser login or a personal access token. Browser login requires installing the
   GitHub App on selected repositories; GitHub Enterprise uses a personal access token. Tokens are stored in the IDE
