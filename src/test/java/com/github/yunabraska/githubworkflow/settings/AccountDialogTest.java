@@ -33,7 +33,7 @@ public class AccountDialogTest extends BasePlatformTestCase {
                     .setText("http://127.0.0.1:" + server.getAddress().getPort());
             component(content, JPasswordField.class).setText("test-token");
             dialog.performOKAction();
-            PlatformTestUtil.waitWithEventsDispatching("Account login", () -> dialog.result() != null, 15);
+            PlatformTestUtil.waitWithEventsDispatching("Account login", dialog::isOK, 5);
             assertThat(dialog.result().name).isEqualTo("actual-user");
             assertThat(dialog.resultToken()).isEqualTo("test-token");
         } finally {

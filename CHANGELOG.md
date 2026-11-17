@@ -6,9 +6,10 @@
 
 ### Fixes
 
-- GitHub accounts are now configured under `Settings > Version Control > GW GitHub`. Existing JetBrains
-  GitHub accounts must be added again with a personal access token. Tokens are stored in the IDE password store, and
-  configured/default environment tokens remain available as fallbacks.
+- GitHub accounts are now configured under `Settings > Version Control > GW GitHub`. Existing JetBrains accounts must
+  be added again using GitHub.com browser login or a personal access token. Browser login requires installing the
+  GitHub App on selected repositories; GitHub Enterprise uses a personal access token. Tokens are stored in the IDE
+  password store, refreshed when needed, and configured/default environment tokens remain available as fallbacks.
 - GitHub and Gitea accounts use an IDE-style account list and token verification dialog. Plugin settings use the `GW` prefix.
 - Match GitHub accounts to the target API server before sending credentials.
 - Avoid incompatible path comparisons when finding workflow run markers and completing local paths.

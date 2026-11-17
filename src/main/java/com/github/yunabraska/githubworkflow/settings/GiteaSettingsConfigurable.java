@@ -1,5 +1,6 @@
 package com.github.yunabraska.githubworkflow.settings;
 
+import com.github.yunabraska.githubworkflow.auth.GitHubDeviceAuth;
 import com.github.yunabraska.githubworkflow.git.RemoteActionProviders;
 import com.github.yunabraska.githubworkflow.i18n.GitHubWorkflowBundle;
 import com.github.yunabraska.githubworkflow.state.GitHubActionCache;
@@ -110,6 +111,18 @@ public class GiteaSettingsConfigurable implements SearchableConfigurable {
         for (int index = 0; index < model.size(); index++) {
             current.add(model.get(index).server());
         }
+        if (github) {
+            for (int index = 0; index < model.size(); index++) {
+                final AccountRow row = model.get(index);
+                if ("https://api.github.com".equalsIgnoreCase(row.server().apiUrl)) continue;
+                final RemoteActionProviders.Server old = originalRows.get(row.id());
+                final String credential = pendingTokens.containsKey(row.id()) ? pendingTokens.get(row.id())
+                        : old == null || clearedTokens.contains(row.id()) ? "" : settings.githubCredential(old).orElse("");
+                if (GitHubDeviceAuth.isDeviceCredential(credential)) {
+                    throw new ConfigurationException(GitHubWorkflowBundle.message("settings.account.browserServer"), getDisplayName());
+                }
+            }
+        }
         try {
             for (int index = 0; index < model.size(); index++) {
                 final AccountRow row = model.get(index);
@@ -122,7 +135,7 @@ public class GiteaSettingsConfigurable implements SearchableConfigurable {
                 } else {
                     final RemoteActionProviders.Server old = originalRows.get(row.id());
                     if (old != null && old.tokenStored && !sameCredential(old, row.server())) {
-                        final String token = (github ? settings.githubToken(old) : settings.giteaToken(old))
+                        final String token = (github ? settings.githubCredential(old) : settings.giteaToken(old))
                                 .orElseThrow(() -> new IllegalStateException("Stored token is unavailable"));
                         if (github) settings.setGithubToken(row.server(), token);
                         else settings.setGiteaToken(row.server(), token);

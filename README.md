@@ -52,11 +52,13 @@ _[See Screenshots](https://plugins.jetbrains.com/plugin/21396-github-workflow)_
 
 * **Installation**: Download the plugin
   from [JetBrains Marketplace](https://plugins.jetbrains.com/plugin/21396-github-workflow).
-* **Configuration**: Under `Settings > Version Control > GW GitHub`, add a GitHub or GitHub Enterprise account and
-  enter its personal access token. The add-account dialog verifies the token and identifies the account. Configure
+* **Configuration**: Under `Settings > Version Control > GW GitHub`, add an account using GitHub.com browser login or
+  a personal access token. Browser login requires installing the [GitHub App](https://github.com/apps/workflow-ide-for-github)
+  on the repositories it should access. GitHub Enterprise uses a personal access token. Configure
   Gitea accounts under `Settings > Version Control > GW Gitea`. Advanced options retain custom API URLs and token
   environment variables. The next release no longer reads accounts from JetBrains' GitHub settings,
-  so existing users need to add their account again. For private repositories, grant the token the required repository
+  so existing users need to add their account again. Tokens are stored in the IDE password store and expiring browser
+  credentials are refreshed automatically. For private repositories, grant the token the required repository
   access. Workflow dispatch requires [Actions write permission](https://docs.github.com/en/rest/actions/workflows#create-a-workflow-dispatch-event).
 * **Cache**: Use Find Action (`Shift` twice) for `Refresh Action Cache`, `Clear Action Cache`, or `Restore Action
   Warnings`. IDEs with the classic Tools menu also show these under `Tools > GitHub Workflow`. For review/delete,

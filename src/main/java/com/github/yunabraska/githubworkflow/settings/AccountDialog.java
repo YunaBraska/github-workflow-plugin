@@ -1,5 +1,6 @@
 package com.github.yunabraska.githubworkflow.settings;
 
+import com.github.yunabraska.githubworkflow.auth.GitHubDeviceAuth;
 import com.github.yunabraska.githubworkflow.git.RemoteActionProviders;
 import com.github.yunabraska.githubworkflow.i18n.GitHubWorkflowBundle;
 import com.intellij.ide.BrowserUtil;
@@ -23,6 +24,7 @@ import java.awt.Insets;
 import java.net.URI;
 import java.util.Arrays;
 import java.util.Locale;
+import java.util.List;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.ExecutionException;
 
@@ -41,7 +43,9 @@ final class AccountDialog extends DialogWrapper {
     private final JCheckBox withoutToken = new JCheckBox(GitHubWorkflowBundle.message("settings.account.withoutToken"));
     private final JPanel advancedPanel = new JPanel(new GridBagLayout());
     private final JLabel status = new JLabel();
+    private final JTextField deviceCode = new JTextField(12);
     private SwingWorker<AccountLogin.Result, Void> verification;
+    private SwingWorker<BrowserLogin, GitHubDeviceAuth.DeviceCode> browserLogin;
     private boolean updatingApi;
     private boolean apiCustomized;
     private RemoteActionProviders.Server result;
@@ -94,6 +98,20 @@ final class AccountDialog extends DialogWrapper {
         tokenPanel.add(token, java.awt.BorderLayout.CENTER);
         tokenPanel.add(generate, java.awt.BorderLayout.EAST);
         addRow(panel, 1, GitHubWorkflowBundle.message("settings.account.token"), tokenPanel);
+        if (github) {
+            final JPanel browserPanel = new JPanel(new java.awt.BorderLayout(6, 0));
+            final JButton browser = new JButton(GitHubWorkflowBundle.message("settings.account.browser"));
+            browser.addActionListener(event -> startBrowserLogin(browser));
+            final JButton install = new JButton(GitHubWorkflowBundle.message("settings.account.install"));
+            install.addActionListener(event -> BrowserUtil.browse("https://github.com/apps/workflow-ide-for-github"));
+            deviceCode.setEditable(false);
+            deviceCode.setVisible(false);
+            deviceCode.getAccessibleContext().setAccessibleName(GitHubWorkflowBundle.message("settings.account.deviceCode"));
+            browserPanel.add(browser, java.awt.BorderLayout.WEST);
+            browserPanel.add(deviceCode, java.awt.BorderLayout.CENTER);
+            browserPanel.add(install, java.awt.BorderLayout.EAST);
+            addRow(panel, 2, "", browserPanel);
+        }
         addRow(advancedPanel, 0, GitHubWorkflowBundle.message("settings.account.name"), name);
         addRow(advancedPanel, 1, GitHubWorkflowBundle.message("settings.account.api"), apiUrl);
         addRow(advancedPanel, 2, GitHubWorkflowBundle.message("settings.account.env"), tokenEnv);
@@ -116,14 +134,14 @@ final class AccountDialog extends DialogWrapper {
         });
         final GridBagConstraints full = new GridBagConstraints();
         full.gridx = 0;
-        full.gridy = 2;
+        full.gridy = 3;
         full.gridwidth = 2;
         full.anchor = GridBagConstraints.WEST;
         panel.add(advanced, full);
-        full.gridy = 3;
+        full.gridy = 4;
         full.fill = GridBagConstraints.HORIZONTAL;
         panel.add(advancedPanel, full);
-        full.gridy = 4;
+        full.gridy = 5;
         panel.add(status, full);
         return panel;
     }
@@ -180,6 +198,7 @@ final class AccountDialog extends DialogWrapper {
                             candidate.webUrl, candidate.apiUrl, candidate.tokenEnvVar, candidate.enabled, true).normalized();
                     resultToken = secret;
                     token.setText("");
+                    getOKAction().setEnabled(true);
                     AccountDialog.super.doOKAction();
                 } catch (final CancellationException ignored) {
                     // The dialog was cancelled.
@@ -202,6 +221,7 @@ final class AccountDialog extends DialogWrapper {
         if (verification != null) {
             verification.cancel(true);
         }
+        if (browserLogin != null) browserLogin.cancel(true);
         token.setText("");
         super.doCancelAction();
     }
@@ -209,6 +229,77 @@ final class AccountDialog extends DialogWrapper {
     RemoteActionProviders.Server result() { return result; }
     String resultToken() { return resultToken; }
     boolean tokenCleared() { return tokenCleared; }
+
+    private void startBrowserLogin(final JButton button) {
+        if (!"https://github.com".equalsIgnoreCase(webUrl.getText().trim().replaceAll("/+$", ""))
+                || !"https://api.github.com".equalsIgnoreCase(apiUrl.getText().trim().replaceAll("/+$", ""))) {
+            setErrorText(GitHubWorkflowBundle.message("settings.account.browserServer"));
+            return;
+        }
+        setErrorText(null);
+        final String environment = tokenEnv.getText().trim();
+        final boolean accountEnabled = enabled.isSelected();
+        getOKAction().setEnabled(false);
+        button.setEnabled(false);
+        webUrl.setEnabled(false);
+        apiUrl.setEnabled(false);
+        deviceCode.setVisible(false);
+        status.setText(GitHubWorkflowBundle.message("settings.account.browserStarting"));
+        browserLogin = new SwingWorker<>() {
+            @Override protected BrowserLogin doInBackground() throws Exception {
+                final GitHubDeviceAuth.Client client = GitHubDeviceAuth.github();
+                final GitHubDeviceAuth.DeviceCode code = client.start();
+                publish(code);
+                final GitHubDeviceAuth.Token credential = client.poll(code);
+                final RemoteActionProviders.Server candidate = new RemoteActionProviders.Server(
+                        RemoteActionProviders.Settings.TYPE_GITHUB, "GitHub", "https://github.com",
+                        "https://api.github.com", environment, accountEnabled, true);
+                return new BrowserLogin(candidate, credential, AccountLogin.verify(candidate, credential.accessToken()));
+            }
+
+            @Override protected void process(final List<GitHubDeviceAuth.DeviceCode> codes) {
+                if (isCancelled()) return;
+                deviceCode.setText(codes.get(codes.size() - 1).userCode());
+                deviceCode.setVisible(true);
+                status.setText(GitHubWorkflowBundle.message("settings.account.browserCode"));
+                pack();
+                BrowserUtil.browse("https://github.com/login/device");
+            }
+
+            @Override protected void done() {
+                try {
+                    final BrowserLogin login = get();
+                    if (login.verified().status() != AccountLogin.Status.SUCCESS) {
+                        setErrorText(GitHubWorkflowBundle.message("settings.account.error." + login.verified().status().name().toLowerCase(Locale.ROOT)));
+                        return;
+                    }
+                    final RemoteActionProviders.Server candidate = login.server();
+                    result = new RemoteActionProviders.Server(candidate.type, login.verified().login().orElseThrow(),
+                            candidate.webUrl, candidate.apiUrl, candidate.tokenEnvVar, candidate.enabled, true).normalized();
+                    resultToken = login.token().encode();
+                    token.setText("");
+                    getOKAction().setEnabled(true);
+                    AccountDialog.super.doOKAction();
+                } catch (final CancellationException ignored) {
+                    return;
+                } catch (final InterruptedException exception) {
+                    Thread.currentThread().interrupt();
+                    setErrorText(GitHubWorkflowBundle.message("settings.account.browserFailed"));
+                } catch (final ExecutionException exception) {
+                    setErrorText(GitHubWorkflowBundle.message("settings.account.browserFailed"));
+                } finally {
+                    status.setText("");
+                    getOKAction().setEnabled(true);
+                    button.setEnabled(true);
+                    webUrl.setEnabled(true);
+                    apiUrl.setEnabled(true);
+                }
+            }
+        };
+        browserLogin.execute();
+    }
+
+    private record BrowserLogin(RemoteActionProviders.Server server, GitHubDeviceAuth.Token token, AccountLogin.Result verified) { }
 
     private void updateApi() {
         if (!apiCustomized) {

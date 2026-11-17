@@ -1,5 +1,6 @@
 package com.github.yunabraska.githubworkflow.git;
 
+import com.github.yunabraska.githubworkflow.auth.GitHubDeviceAuth;
 import com.github.yunabraska.githubworkflow.i18n.GitHubWorkflowBundle;
 
 import com.google.gson.JsonArray;
@@ -38,6 +39,9 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import java.util.function.Function;
 import java.util.function.Predicate;
 
@@ -379,6 +383,7 @@ public class RemoteActionProviders {
 
     @State(name = "GitHubWorkflowRemoteSettings", storages = {@Storage("githubWorkflowRemoteSettings.xml")})
     public static class Settings implements PersistentStateComponent<Settings.StateData> {
+        private final ConcurrentMap<String, CompletableFuture<Optional<String>>> tokenRefreshes = new ConcurrentHashMap<>();
 
         public static final String TYPE_GITHUB = "github";
         public static final String TYPE_GITEA = "gitea";
@@ -478,15 +483,19 @@ public class RemoteActionProviders {
             return this;
         }
 
-        /** Stores a GitHub account token in the IDE password safe.
+        /** Stores a GitHub account credential in the IDE password safe.
          * @param server account and server identifying the token
-         * @param token personal access token
+         * @param token personal access token or encoded browser credential
          * @return this settings service
+         * @throws IllegalArgumentException if a GitHub.com browser credential targets another server
          * @throws RuntimeException if the password store cannot save the token
          */
-        public Settings setGithubToken(final Server server, final String token) {
+        public synchronized Settings setGithubToken(final Server server, final String token) {
             final Server normalized = server.normalized();
             if (!normalized.isGitea() && hasText(token)) {
+                if (GitHubDeviceAuth.isDeviceCredential(token) && !"https://api.github.com".equalsIgnoreCase(normalized.apiUrl)) {
+                    throw new IllegalArgumentException("GitHub browser credentials can only be used with GitHub.com");
+                }
                 PasswordTokens.set(normalized, token);
                 markTokenStored(normalized, true);
             }
@@ -498,7 +507,7 @@ public class RemoteActionProviders {
          * @return this settings service
          * @throws RuntimeException if the password store cannot remove the token
          */
-        public Settings clearGithubToken(final Server server) {
+        public synchronized Settings clearGithubToken(final Server server) {
             final Server normalized = server.normalized();
             if (!normalized.isGitea()) {
                 PasswordTokens.clear(normalized);
@@ -512,8 +521,90 @@ public class RemoteActionProviders {
          * @return the token when available
          */
         public Optional<String> githubToken(final Server server) {
+            return githubCredential(server).flatMap(value -> GitHubDeviceAuth.isDeviceCredential(value)
+                    ? ("https://api.github.com".equalsIgnoreCase(server.normalized().apiUrl)
+                        ? GitHubDeviceAuth.decode(value).map(GitHubDeviceAuth.Token::accessToken) : Optional.empty())
+                    : Optional.of(value));
+        }
+
+        /**
+         * @param server account identifying the credential
+         * @return the stored credential, including any refresh token, for account migration
+         */
+        public synchronized Optional<String> githubCredential(final Server server) {
             final Server normalized = server.normalized();
             return normalized.isGitea() ? Optional.empty() : PasswordTokens.get(normalized);
+        }
+
+        /**
+         * @param server account identifying the credential
+         * @return a usable token, rotating an expiring device credential on background request threads
+         */
+        public Optional<String> githubTokenForRequest(final Server server) {
+            return githubTokenForRequest(server, GitHubDeviceAuth.github());
+        }
+
+        Optional<String> githubTokenForRequest(final Server server, final GitHubDeviceAuth.Client client) {
+            final Optional<String> stored = githubCredential(server);
+            if (stored.isEmpty() || !GitHubDeviceAuth.isDeviceCredential(stored.get())) return stored;
+            if (!"https://api.github.com".equalsIgnoreCase(server.normalized().apiUrl)) return Optional.empty();
+            final Optional<GitHubDeviceAuth.Token> parsed = GitHubDeviceAuth.decode(stored.get());
+            if (parsed.isEmpty()) return Optional.empty();
+            final GitHubDeviceAuth.Token token = parsed.get();
+            final long now = System.currentTimeMillis();
+            if (token.expiresAtMillis() > now + 60_000) return Optional.of(token.accessToken());
+            final Application application = ApplicationManager.getApplication();
+            if (application != null && application.isDispatchThread()) {
+                return token.expiresAtMillis() > now ? Optional.of(token.accessToken()) : Optional.empty();
+            }
+            final String refreshKey = server.normalized().apiUrl + "\n" + server.normalized().name;
+            final CompletableFuture<Optional<String>> own = new CompletableFuture<>();
+            final CompletableFuture<Optional<String>> active = tokenRefreshes.putIfAbsent(refreshKey, own);
+            if (active != null) {
+                try {
+                    return active.get();
+                } catch (final InterruptedException exception) {
+                    Thread.currentThread().interrupt();
+                    return Optional.empty();
+                } catch (final ExecutionException exception) {
+                    return Optional.empty();
+                }
+            }
+            try {
+                if (!githubCredential(server).equals(stored)) {
+                    final Optional<String> current = githubToken(server);
+                    own.complete(current);
+                    return current;
+                }
+                final GitHubDeviceAuth.Token refreshed = client.refresh(token.refreshToken());
+                final Optional<String> result;
+                synchronized (this) {
+                    if (githubCredential(server).filter(stored.get()::equals).isPresent()) {
+                        PasswordTokens.set(server, refreshed.encode());
+                        result = Optional.of(refreshed.accessToken());
+                    } else {
+                        result = githubToken(server);
+                    }
+                }
+                own.complete(result);
+                return result;
+            } catch (final IOException exception) {
+                final Optional<String> current = githubCredential(server);
+                final Optional<String> result = !current.equals(stored) ? githubToken(server)
+                        : token.expiresAtMillis() > System.currentTimeMillis() ? Optional.of(token.accessToken()) : Optional.empty();
+                own.complete(result);
+                return result;
+            } catch (final InterruptedException exception) {
+                Thread.currentThread().interrupt();
+                own.complete(Optional.empty());
+                return Optional.empty();
+            } catch (final RuntimeException exception) {
+                own.completeExceptionally(exception);
+                throw exception;
+            } finally {
+                if (!own.isDone()) own.complete(Optional.empty());
+                tokenRefreshes.remove(refreshKey, own);
+            }
         }
 
         /**
@@ -918,7 +1009,7 @@ public class RemoteActionProviders {
                 settings.customServers().stream()
                         .filter(server -> !server.isGitea() && server.isEnabled())
                         .filter(server -> matchesApiServer(server, apiUrl))
-                        .map(server -> settings.githubToken(server)
+                        .map(server -> settings.githubTokenForRequest(server)
                                 .map(token -> new Authorization(server.name, "Bearer " + token)))
                         .flatMap(Optional::stream)
                         .forEach(authorization -> result.putIfAbsent(authorization.key(), authorization));
