@@ -157,7 +157,30 @@ tasks.withType(Test).configureEach {
 
 tasks.named('test') {
     exclude '**/WorkflowPerformanceTest.class'
+    // JetBrains' authoring contributor suppresses these completion cases in Ultimate.
+    // Run them in the isolated task below while keeping its authoring tests enabled here.
+    filter {
+        excludeTestsMatching '*WorkflowSyntaxCompletionTest.testLocalReusableWorkflowInputCompletionUsesWorkflowCallMetadata'
+        excludeTestsMatching '*WorkflowSyntaxCompletionTest.testJobUsesCompletionSuggestsLocalReusableWorkflowFiles'
+    }
+    dependsOn 'testCompletionWithoutJetBrainsGithub'
     finalizedBy tasks.jacocoTestReport
+}
+
+intellijPlatformTesting.testIde {
+    testCompletionWithoutJetBrainsGithub {
+        plugins { disablePlugin 'org.jetbrains.plugins.github' }
+        task {
+            testClassesDirs = tasks.named('test', Test).get().testClassesDirs
+            classpath = tasks.named('test', Test).get().classpath
+            filter {
+                includeTestsMatching '*WorkflowSyntaxCompletionTest.testLocalReusableWorkflowInputCompletionUsesWorkflowCallMetadata'
+                includeTestsMatching '*WorkflowSyntaxCompletionTest.testJobUsesCompletionSuggestsLocalReusableWorkflowFiles'
+                includeTestsMatching '*PluginWiringTest.testPluginLoadsWithoutRequiringJetBrainsGithubPlugin'
+            }
+            systemProperty 'githubWorkflow.test.githubPluginDisabled', 'true'
+        }
+    }
 }
 
 tasks.register('performanceTest', Test) {

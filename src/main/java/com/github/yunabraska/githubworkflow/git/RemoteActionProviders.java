@@ -1008,7 +1008,11 @@ public class RemoteActionProviders {
                 final Settings settings = Settings.getInstance();
                 settings.customServers().stream()
                         .filter(server -> !server.isGitea() && server.isEnabled())
-                        .filter(server -> matchesApiServer(server, apiUrl))
+                        .filter(server -> matchesApiServer(server, apiUrl)
+                                || settings.githubCredential(server).filter(GitHubDeviceAuth::isDeviceCredential).isEmpty())
+                        .sorted(Comparator.comparingInt((Server server) -> matchesApiServer(server, apiUrl) ? 0
+                                : sameHost(server.apiUrl, apiUrl) ? 1
+                                : sameHost(server.apiUrl, "https://api.github.com") ? 2 : 3))
                         .map(server -> settings.githubTokenForRequest(server)
                                 .map(token -> new Authorization(server.name, "Bearer " + token)))
                         .flatMap(Optional::stream)

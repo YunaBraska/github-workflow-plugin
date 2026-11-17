@@ -2,6 +2,7 @@ package com.github.yunabraska.githubworkflow.git;
 
 import com.intellij.testFramework.fixtures.BasePlatformTestCase;
 import com.github.yunabraska.githubworkflow.run.WorkflowRun;
+import com.github.yunabraska.githubworkflow.auth.GitHubDeviceAuth;
 import com.sun.net.httpserver.HttpServer;
 
 import java.net.InetSocketAddress;
@@ -13,7 +14,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import static org.assertj.core.api.Assertions.assertThat;
 
 public class GithubAccountIntegrationTest extends BasePlatformTestCase {
-    public void testWorkflowRunFallsBackToTheNextStoredAccount() throws Exception {
+    public void testWorkflowRunFallsBackToAnAccountForAnotherServer() throws Exception {
         final var headers = new CopyOnWriteArrayList<String>();
         final HttpServer http = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         http.createContext("/", exchange -> {
@@ -26,7 +27,7 @@ public class GithubAccountIntegrationTest extends BasePlatformTestCase {
         final String base = "http://127.0.0.1:" + http.getAddress().getPort();
         final String id = UUID.randomUUID().toString();
         final var first = github("first-" + id, base, base + "/api");
-        final var second = github("second-" + id, base, base + "/api");
+        final var second = github("second-" + id, "https://other.example.test", "https://other.example.test/api/v3");
         final var settings = RemoteActionProviders.Settings.getInstance();
         final var previous = settings.customServers();
         try {
@@ -50,17 +51,17 @@ public class GithubAccountIntegrationTest extends BasePlatformTestCase {
         final var foreign = github("foreign-" + id, "https://other.example.test", "https://other.example.test/api/v3");
         final var previous = settings.customServers();
         try {
-            settings.setCustomServers(List.of(first, second, foreign));
+            settings.setCustomServers(List.of(foreign, first, second));
             settings.setGithubToken(first, "first-token").setGithubToken(second, "second-token").setGithubToken(foreign, "foreign-token");
             assertThat(RemoteActionProviders.Authorizations.forApiUrl(first.apiUrl, "CUSTOM_TOKEN", getProject(), Map.of("CUSTOM_TOKEN", "env-token")))
                     .extracting(RemoteActionProviders.Authorizations.Authorization::authorizationHeader)
-                    .containsExactly("Bearer first-token", "Bearer second-token", "Bearer env-token", "");
+                    .containsExactly("Bearer first-token", "Bearer second-token", "Bearer foreign-token", "Bearer env-token", "");
         } finally {
             settings.clearGithubToken(first).clearGithubToken(second).clearGithubToken(foreign).setCustomServers(previous);
         }
     }
 
-    public void testCredentialsAreNotSentToOtherPortsProtocolsOrApiPaths() {
+    public void testPersonalAccessTokenFallbackIncludesOtherServers() {
         final var settings = RemoteActionProviders.Settings.getInstance();
         final var server = github("path-" + UUID.randomUUID(), "https://enterprise.example.test:8443/first", "https://enterprise.example.test:8443/first/api/v3");
         final var previous = settings.customServers();
@@ -69,10 +70,31 @@ public class GithubAccountIntegrationTest extends BasePlatformTestCase {
             for (final String target : List.of("http://enterprise.example.test:8443/first/api/v3", "https://enterprise.example.test:9443/first/api/v3", "https://enterprise.example.test:8443/second/api/v3", "https://enterprise.example.test:8443/first/api/v3/%2e%2e/other")) {
                 assertThat(RemoteActionProviders.Authorizations.forApiUrl(target, "", getProject(), Map.of()))
                         .extracting(RemoteActionProviders.Authorizations.Authorization::authorizationHeader)
-                        .doesNotContain("Bearer secret-token");
+                        .contains("Bearer secret-token");
             }
             assertThat(RemoteActionProviders.Authorizations.forApiUrl(server.apiUrl + "/repos", "", getProject(), Map.of()))
                     .extracting(RemoteActionProviders.Authorizations.Authorization::authorizationHeader).contains("Bearer secret-token");
+        } finally {
+            settings.clearGithubToken(server).setCustomServers(previous);
+        }
+    }
+
+    public void testBrowserCredentialsAreNotSentToOtherServers() {
+        final var settings = RemoteActionProviders.Settings.getInstance();
+        final var server = github("device-" + UUID.randomUUID(), "https://github.com", "https://api.github.com");
+        final var previous = settings.customServers();
+        try {
+            final var token = new GitHubDeviceAuth.Token("device-access", "device-refresh", System.currentTimeMillis() + 3600000);
+            settings.setCustomServers(List.of(server)).setGithubToken(server, token.encode());
+            for (final String target : List.of("https://other.example.test/api/v3", "http://api.github.com",
+                    "https://api.github.com:8443", "https://api.github.com/%2e%2e/other")) {
+                assertThat(RemoteActionProviders.Authorizations.forApiUrl(target, "", getProject(), Map.of()))
+                        .extracting(RemoteActionProviders.Authorizations.Authorization::authorizationHeader)
+                        .doesNotContain("Bearer device-access");
+            }
+            assertThat(RemoteActionProviders.Authorizations.forApiUrl(server.apiUrl, "", getProject(), Map.of()))
+                    .extracting(RemoteActionProviders.Authorizations.Authorization::authorizationHeader)
+                    .contains("Bearer device-access");
         } finally {
             settings.clearGithubToken(server).setCustomServers(previous);
         }

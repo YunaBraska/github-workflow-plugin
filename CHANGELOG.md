@@ -12,8 +12,11 @@
   GitHub App on selected repositories; GitHub Enterprise uses a personal access token. Tokens are stored in the IDE
   password store, refreshed when needed, and configured/default environment tokens remain available as fallbacks.
 - GitHub and Gitea accounts use an IDE-style account list and token verification dialog. Plugin settings use the `GW` prefix.
-- Match GitHub accounts to the target API server before sending credentials.
-- Avoid incompatible path comparisons when finding workflow run markers and completing local paths.
+- Try matching GitHub accounts first. Preserve the existing personal access token fallback to other servers, which can
+  send those tokens to the target server. Browser-login credentials remain limited to their matching server.
+- Avoid incompatible path comparisons when finding workflow run markers and completing local paths
+  ([#99](https://github.com/YunaBraska/github-workflow-plugin/issues/99),
+  [#100](https://github.com/YunaBraska/github-workflow-plugin/issues/100)).
 - Preserve JetBrains' cyclic-job inspection and action reload while resolving job and step references consistently.
 - Recognize job dependencies regardless of their declaration order in the workflow.
 - Require IntelliJ Platform 2024.3 or newer to use the current completion confidence API.

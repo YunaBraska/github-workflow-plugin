@@ -56,10 +56,13 @@ _[See Screenshots](https://plugins.jetbrains.com/plugin/21396-github-workflow)_
   account using GitHub.com browser login or a personal access token. Browser login requires installing the [GitHub App](https://github.com/apps/workflow-ide-for-github)
   on the repositories it should access. GitHub Enterprise uses a personal access token. Configure
   Gitea accounts under `Settings > Version Control > GW Gitea`. Advanced options retain custom API URLs and token
-  environment variables. The next release no longer reads accounts from JetBrains' GitHub settings,
+  environment variables. This version no longer reads accounts from JetBrains' GitHub settings,
   so existing users need to add their account again. Tokens are stored in the IDE password store and expiring browser
   credentials are refreshed automatically. For private repositories, grant the token the required repository
   access. Workflow dispatch requires [Actions write permission](https://docs.github.com/en/rest/actions/workflows#create-a-workflow-dispatch-event).
+  When matching accounts do not authorize a request, personal access tokens from other GitHub accounts are also tried.
+  Those tokens can be sent to another configured server, including an HTTP server. Browser-login credentials are
+  restricted to their matching server.
 * **Cache**: Use Find Action (`Shift` twice) for `Refresh Action Cache`, `Clear Action Cache`, or `Restore Action
   Warnings`. IDEs with the classic Tools menu also show these under `Tools > GitHub Workflow`. For review/delete,
   import/export, plugin cache size, and language override, use
@@ -69,8 +72,9 @@ _[See Screenshots](https://plugins.jetbrains.com/plugin/21396-github-workflow)_
   selected-node log output.
   Context-created runs default to the checked-out Git branch and print clickable workflow/job URLs where GitHub exposes
   them. The gutter play action is shown only when the workflow file belongs to a resolvable GitHub repository. Runs try
-  matching plugin accounts first, then `GITHUB_TOKEN`, `GH_TOKEN`, `GITHUB_PAT`, then
-  anonymous access. An optional token environment variable can still be set explicitly for custom setups. GitHub log
+  matching plugin accounts first, then personal access tokens from other GitHub accounts, then `GITHUB_TOKEN`,
+  `GH_TOKEN`, `GITHUB_PAT`, and anonymous access. An optional token environment variable can still be set explicitly
+  for custom setups. GitHub log
   timestamps, groups, command markers, and ANSI color codes are compacted before display.
 * **Usage**: Enjoy autocomplete, syntax highlighting, and much more as you code GitHub or Gitea Workflows and Actions.
 * **Known issue**: In IntelliJ IDEA Ultimate 2026.1.3 and 2026.3, JetBrains' GitHub Actions support can override this
