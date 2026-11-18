@@ -27,6 +27,7 @@ import com.intellij.openapi.options.SettingsEditor;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.InvalidDataException;
 import com.intellij.openapi.util.Ref;
+import com.intellij.openapi.vfs.VfsUtilCore;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.psi.PsiElement;
 import com.intellij.psi.PsiFile;
@@ -47,7 +48,6 @@ import java.awt.BorderLayout;
 import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
 import java.awt.Insets;
-import java.nio.file.Path;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -372,7 +372,7 @@ public class WorkflowRunConfiguration extends RunConfigurationBase<Object> {
                 @NotNull final ConfigurationContext context
         ) {
             return workflowFile(context.getPsiLocation())
-                    .flatMap(file -> workflowPath(context.getProject(), file.getVirtualFile()))
+                    .map(file -> workflowPath(context.getProject(), file.getVirtualFile()).orElse(file.getName()))
                     .filter(path -> path.equals(configuration.workflowPath()))
                     .filter(path -> new WorkflowLocation.RepositoryResolver().branch(context.getProject())
                             .map(branch -> branch.equals(configuration.ref()))
@@ -391,15 +391,9 @@ public class WorkflowRunConfiguration extends RunConfigurationBase<Object> {
 
         static Optional<String> workflowPath(final Project project, final VirtualFile file) {
             return Optional.ofNullable(project)
-                    .flatMap(p -> Optional.ofNullable(com.intellij.openapi.project.ProjectUtil.guessProjectDir(p)))
-                    .map(VirtualFile::getPath)
-                    .map(Path::of)
+                    .map(com.intellij.openapi.project.ProjectUtil::guessProjectDir)
                     .flatMap(root -> Optional.ofNullable(file)
-                            .map(VirtualFile::getPath)
-                            .map(Path::of)
-                            .map(root::relativize)
-                            .map(Path::toString)
-                            .map(path -> path.replace('\\', '/')));
+                            .map(workflow -> VfsUtilCore.getRelativePath(workflow, root)));
         }
     }
 

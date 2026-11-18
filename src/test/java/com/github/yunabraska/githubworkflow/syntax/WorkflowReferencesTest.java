@@ -150,7 +150,11 @@ public class WorkflowReferencesTest extends EditorFeatureTestCase {
 
         final PsiReference reference = referenceAtCaret();
 
-        assertThat(reference).isInstanceOf(WebReference.class);
+        assertThat(java.util.Arrays.stream(reference.getElement().getReferences())
+                .filter(WebReference.class::isInstance)
+                .map(WebReference.class::cast)
+                .map(WebReference::getUrl))
+                .contains("https://github.com/owner/tool/tree/v1#readme");
         assertThat(reference.getCanonicalText()).isEqualTo("owner/tool@v1");
         assertThat(reference.getElement().getUserData(ACTION_KEY))
                 .extracting(GitHubAction::githubUrl)
@@ -169,7 +173,11 @@ public class WorkflowReferencesTest extends EditorFeatureTestCase {
 
         final PsiReference reference = referenceAtCaret();
 
-        assertThat(reference).isInstanceOf(WebReference.class);
+        assertThat(java.util.Arrays.stream(reference.getElement().getReferences())
+                .filter(WebReference.class::isInstance)
+                .map(WebReference.class::cast)
+                .map(WebReference::getUrl))
+                .contains("https://github.com/owner/repo/blob/v1/.github/workflows/build.yml");
         assertThat(reference.getCanonicalText()).isEqualTo("owner/repo/.github/workflows/build.yml@v1");
         assertThat(reference.getElement().getUserData(ACTION_KEY))
                 .extracting(GitHubAction::githubUrl)
@@ -233,8 +241,30 @@ public class WorkflowReferencesTest extends EditorFeatureTestCase {
 
         final PsiElement resolved = referenceAtCaret().resolve();
 
-        assertThat(resolved).isInstanceOf(YAMLKeyValue.class);
-        assertThat(((YAMLKeyValue) resolved).getKeyText()).isEqualTo("build");
+        assertThat(resolved.getText()).isEqualTo("build");
+        assertThat(resolved.getParent()).isInstanceOf(YAMLKeyValue.class);
+    }
+
+    public void testNeedsReferenceResolvesToJobDeclaredLater() {
+        configureGiteaWorkflowProjectFile("""
+                name: References
+                on: workflow_dispatch
+                jobs:
+                  test:
+                    needs: <caret>build
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo ok
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo ok
+                """);
+
+        final PsiElement resolved = referenceAtCaret().resolve();
+        assertThat(resolved).isNotNull();
+        assertThat(resolved.getText()).isEqualTo("build");
+        assertThat(resolved.getParent()).isInstanceOf(YAMLKeyValue.class);
     }
 
     public void testNeedsQuotedScalarReferenceResolvesToPreviousJob() {
@@ -255,8 +285,8 @@ public class WorkflowReferencesTest extends EditorFeatureTestCase {
 
         final PsiElement resolved = referenceAtCaret().resolve();
 
-        assertThat(resolved).isInstanceOf(YAMLKeyValue.class);
-        assertThat(((YAMLKeyValue) resolved).getKeyText()).isEqualTo("build");
+        assertThat(resolved.getText()).isEqualTo("build");
+        assertThat(resolved.getParent()).isInstanceOf(YAMLKeyValue.class);
     }
 
     public void testNeedsArrayReferenceResolvesToPreviousJob() {
@@ -277,8 +307,8 @@ public class WorkflowReferencesTest extends EditorFeatureTestCase {
 
         final PsiElement resolved = referenceAtCaret().resolve();
 
-        assertThat(resolved).isInstanceOf(YAMLKeyValue.class);
-        assertThat(((YAMLKeyValue) resolved).getKeyText()).isEqualTo("build");
+        assertThat(resolved.getText()).isEqualTo("build");
+        assertThat(resolved.getParent()).isInstanceOf(YAMLKeyValue.class);
     }
 
     public void testWorkflowInputExpressionReferenceResolvesToInputKey() {
@@ -321,9 +351,9 @@ public class WorkflowReferencesTest extends EditorFeatureTestCase {
 
         final PsiElement resolved = referenceAtCaret().resolve();
 
-        assertThat(resolved).isInstanceOf(YAMLKeyValue.class);
-        assertThat(((YAMLKeyValue) resolved).getKeyText()).isEqualTo("id");
-        assertThat(((YAMLKeyValue) resolved).getValueText()).isEqualTo("package");
+        assertThat(resolved.getText()).isEqualTo("package");
+        assertThat(resolved.getParent()).isInstanceOf(YAMLKeyValue.class);
+        assertThat(((YAMLKeyValue) resolved.getParent()).getKeyText()).isEqualTo("id");
     }
 
     public void testBracketWorkflowInputExpressionReferenceResolvesToInputKey() {
@@ -386,9 +416,9 @@ public class WorkflowReferencesTest extends EditorFeatureTestCase {
 
         final PsiElement resolved = referenceAtCaret().resolve();
 
-        assertThat(resolved).isInstanceOf(YAMLKeyValue.class);
-        assertThat(((YAMLKeyValue) resolved).getKeyText()).isEqualTo("id");
-        assertThat(((YAMLKeyValue) resolved).getValueText()).isEqualTo("package");
+        assertThat(resolved.getText()).isEqualTo("package");
+        assertThat(resolved.getParent()).isInstanceOf(YAMLKeyValue.class);
+        assertThat(((YAMLKeyValue) resolved.getParent()).getKeyText()).isEqualTo("id");
     }
 
     public void testBracketStepExpressionReferenceResolvesToStepId() {
@@ -406,9 +436,9 @@ public class WorkflowReferencesTest extends EditorFeatureTestCase {
 
         final PsiElement resolved = referenceAtCaret().resolve();
 
-        assertThat(resolved).isInstanceOf(YAMLKeyValue.class);
-        assertThat(((YAMLKeyValue) resolved).getKeyText()).isEqualTo("id");
-        assertThat(((YAMLKeyValue) resolved).getValueText()).isEqualTo("package");
+        assertThat(resolved.getText()).isEqualTo("package");
+        assertThat(resolved.getParent()).isInstanceOf(YAMLKeyValue.class);
+        assertThat(((YAMLKeyValue) resolved.getParent()).getKeyText()).isEqualTo("id");
     }
 
     public void testStepRunOutputExpressionReferenceResolvesToRunKey() {

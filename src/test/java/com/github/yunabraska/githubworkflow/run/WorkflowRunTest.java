@@ -330,7 +330,7 @@ public class WorkflowRunTest extends TestCase {
                 .isThrownBy(() -> client.jobLogs(request, 100))
                 .withMessageContaining("GitHub workflow job logs failed with HTTP 403")
                 .withMessageContaining("Must have admin rights")
-                .withMessageNotContaining("Settings > Version Control > GitHub");
+                .withMessageNotContaining("Settings > Version Control > GW GitHub");
     }
 
     public void testDispatchAuthenticationFailureMentionsGithubSettings() throws Exception {
@@ -348,8 +348,8 @@ public class WorkflowRunTest extends TestCase {
             } catch (final WorkflowRun.WorkflowRunHttpException exception) {
                 assertThat(exception.getMessage())
                         .contains("GitHub workflow dispatch failed with HTTP 401")
-                        .contains("Settings > Version Control > GitHub");
-                assertThat(exception.settingsId()).isEqualTo("GitHub");
+                        .contains("Settings > Version Control > GW GitHub");
+                assertThat(exception.settingsId()).isEqualTo("github.workflow.github.settings");
             }
         }
     }
@@ -369,8 +369,8 @@ public class WorkflowRunTest extends TestCase {
             } catch (final WorkflowRun.WorkflowRunHttpException exception) {
                 assertThat(exception.getMessage())
                         .contains("GitHub workflow dispatch failed with HTTP 401")
-                        .contains("Settings > Version Control > Gitea")
-                        .doesNotContain("Settings > Version Control > GitHub");
+                        .contains("Settings > Version Control > GW Gitea")
+                        .doesNotContain("Settings > Version Control > GW GitHub");
                 assertThat(exception.settingsId()).isEqualTo("github.workflow.gitea.settings");
             }
         }

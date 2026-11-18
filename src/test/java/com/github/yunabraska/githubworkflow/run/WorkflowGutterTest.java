@@ -8,17 +8,22 @@ import com.github.yunabraska.githubworkflow.model.GitHubAction;
 import com.intellij.execution.lineMarker.RunLineMarkerContributor;
 import com.intellij.execution.process.ProcessHandler;
 import com.intellij.icons.AllIcons;
+import com.intellij.openapi.vfs.LocalFileSystem;
 import com.intellij.psi.PsiFile;
 import com.intellij.psi.util.PsiTreeUtil;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.yaml.psi.YAMLKeyValue;
 
 import java.io.OutputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static com.github.yunabraska.githubworkflow.model.NodeIcon.ICON_ENV;
@@ -258,6 +263,40 @@ public class WorkflowGutterTest extends EditorFeatureTestCase {
                     .satisfies(action -> assertThat(action.getTemplatePresentation().getText()).isEqualTo("Stop workflow run"));
         } finally {
             WorkflowRun.Tracker.getInstance(getProject()).unregister(workflowPath, processHandler);
+        }
+    }
+
+    public void testExternalWorkflowLineMarkerTracksRunByFileName() throws Exception {
+        final Path root = Files.createTempDirectory(Path.of(System.getProperty("PLUGIN_HOME_PATH"), "build"), "workflow-gutter-test");
+        final Path git = Files.createDirectories(root.resolve(".git"));
+        final Path workflowDirectory = Files.createDirectories(root.resolve(".github/workflows"));
+        Files.writeString(git.resolve("config"), "[remote \"origin\"]\n  url = https://github.com/example/repo.git\n");
+        final Path workflow = Files.writeString(workflowDirectory.resolve("workflow.yml"), "on:\n  workflow_dispatch:\n");
+        try {
+            final var virtualFile = LocalFileSystem.getInstance().refreshAndFindFileByNioFile(workflow);
+            assertThat(virtualFile).isNotNull();
+            myFixture.configureFromExistingVirtualFile(virtualFile);
+            final YAMLKeyValue dispatch = PsiTreeUtil.findChildrenOfType(myFixture.getFile(), YAMLKeyValue.class)
+                    .stream()
+                    .filter(keyValue -> "workflow_dispatch".equals(keyValue.getKeyText()))
+                    .findFirst()
+                    .orElseThrow();
+            final WorkflowRun.LineMarkerContributor contributor = new WorkflowRun.LineMarkerContributor();
+
+            assertThat(contributor.getInfo(dispatch.getKey())).extracting(info -> info.icon).isEqualTo(AllIcons.Actions.Execute);
+            final DummyProcessHandler processHandler = new DummyProcessHandler();
+            WorkflowRun.Tracker.getInstance(getProject()).register("workflow.yml", processHandler);
+            try {
+                assertThat(contributor.getInfo(dispatch.getKey())).extracting(info -> info.icon).isEqualTo(AllIcons.Actions.Suspend);
+            } finally {
+                WorkflowRun.Tracker.getInstance(getProject()).unregister("workflow.yml", processHandler);
+            }
+        } finally {
+            try (Stream<Path> paths = Files.walk(root)) {
+                for (final Path path : paths.sorted(Comparator.reverseOrder()).toList()) {
+                    Files.deleteIfExists(path);
+                }
+            }
         }
     }
 

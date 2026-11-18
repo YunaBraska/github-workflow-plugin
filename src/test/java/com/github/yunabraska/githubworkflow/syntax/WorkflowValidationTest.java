@@ -1503,6 +1503,36 @@ public class WorkflowValidationTest extends EditorFeatureTestCase {
                 """);
     }
 
+    public void testNeedsScalarAcceptsJobDeclaredLater() {
+        assertWorkflowHighlights("""
+                name: Needs
+                on: workflow_dispatch
+                jobs:
+                  test:
+                    needs: build
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo ok
+                  build:
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo ok
+                """);
+    }
+
+    public void testNeedsRejectsTheCurrentJob() {
+        assertWorkflowHighlights("""
+                name: Needs
+                on: workflow_dispatch
+                jobs:
+                  test:
+                    needs: <error descr="Remove invalid jobId [test]">test</error>
+                    runs-on: ubuntu-latest
+                    steps:
+                      - run: echo ok
+                """);
+    }
+
     public void testNeedsArrayHighlightsUnknownJob() {
         assertWorkflowHighlights("""
                 name: Needs
@@ -1513,7 +1543,7 @@ public class WorkflowValidationTest extends EditorFeatureTestCase {
                     steps:
                       - run: echo ok
                   test:
-                    needs: [ build, <error descr="Remove invalid jobId [missing_job] - this jobId doesn't match any previous job">missing_job</error> ]
+                    needs: [ build, <error descr="Remove invalid jobId [missing_job]">missing_job</error> ]
                     runs-on: ubuntu-latest
                     steps:
                       - run: echo ok

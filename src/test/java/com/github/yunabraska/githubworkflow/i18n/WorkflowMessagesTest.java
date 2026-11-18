@@ -98,7 +98,7 @@ public class WorkflowMessagesTest {
     @Test
     public void testLocaleBundleValuesAreTranslatedAndKeepPlaceholders() throws IOException {
         final Properties defaultBundle = loadBundle("");
-        final Set<String> technicalKeysAllowedToMatchEnglish = Set.of(
+        final Set<String> keysAllowedToMatchEnglish = Set.of(
                 "workflow.run.field.apiUrl",
                 "workflow.run.field.ref",
                 "workflow.log.error",
@@ -110,6 +110,46 @@ public class WorkflowMessagesTest {
                 "error.report.os",
                 "error.report.stacktrace",
                 "settings.gitea.displayName",
+                // The new GitHub account settings use English until translations are available.
+                "workflow.run.auth.settings.github.plugin",
+                "settings.github.displayName",
+                "settings.account.storageError",
+                "settings.account.github.title",
+                "settings.account.gitea.title",
+                "settings.account.browser",
+                "settings.account.install",
+                "settings.account.deviceCode",
+                "settings.account.browserServer",
+                "settings.account.browserStarting",
+                "settings.account.browserCode",
+                "settings.account.browserFailed",
+                "settings.account.login",
+                "settings.account.save",
+                "settings.account.server",
+                "settings.account.token",
+                "settings.account.generate",
+                "settings.account.advanced",
+                "settings.account.name",
+                "settings.account.api",
+                "settings.account.env",
+                "settings.account.enabled",
+                "settings.account.disabled",
+                "settings.account.clearToken",
+                "settings.account.withoutToken",
+                "settings.account.tokenRequired",
+                "settings.account.invalid",
+                "settings.account.tokenConflict",
+                    "settings.account.verifying",
+                "settings.account.changed",
+                "settings.account.duplicate",
+                "settings.account.error.missing_token",
+                "settings.account.error.invalid_token",
+                "settings.account.error.invalid_server",
+                "settings.account.error.unauthorized",
+                "settings.account.error.server_error",
+                "settings.account.error.invalid_response",
+                "settings.account.error.network_error",
+                "workflow.run.auth.settings.gitea.plugin",
                 "completion.shell.powershell"
         );
         final Pattern placeholder = Pattern.compile("\\{\\d+\\}");
@@ -129,7 +169,7 @@ public class WorkflowMessagesTest {
                 assertThat(placeholder.matcher(localized).results().map(match -> match.group()).toList())
                         .as("Locale suffix [%s] key [%s] keeps placeholders", suffix, key)
                         .containsExactlyInAnyOrderElementsOf(placeholder.matcher(defaultBundle.getProperty(key)).results().map(match -> match.group()).toList());
-                if (!technicalKeysAllowedToMatchEnglish.contains(key)) {
+                if (!keysAllowedToMatchEnglish.contains(key)) {
                     assertThat(localized)
                             .as("Locale suffix [%s] key [%s] is not the default English fallback", suffix, key)
                             .isNotEqualTo(defaultBundle.getProperty(key));
@@ -144,9 +184,7 @@ public class WorkflowMessagesTest {
                 "notification.cache.refresh.started",
                 "action.GitHubWorkflow.RefreshActionCache.text",
                 "action.GitHubWorkflow.RefreshActionCache.description",
-                "settings.cache.refresh",
-                "workflow.run.auth.settings.github",
-                "workflow.run.auth.settings.gitea"
+                "settings.cache.refresh"
         );
         for (final String suffix : LOCALE_SUFFIXES) {
             final Properties bundle = loadBundle("_" + suffix);
@@ -187,7 +225,7 @@ public class WorkflowMessagesTest {
         for (final String suffix : LOCALE_SUFFIXES) {
             final Locale locale = Locale.forLanguageTag(suffix.replace('_', '-'));
             assertThat(GitHubWorkflowBundle.messageFor(locale, "settings.displayName")).isNotBlank();
-            assertThat(GitHubWorkflowBundle.messageFor(locale, "settings.gitea.displayName")).isEqualTo("Gitea");
+            assertThat(GitHubWorkflowBundle.messageFor(locale, "settings.gitea.displayName")).isEqualTo("GW Gitea");
             assertThat(GitHubWorkflowBundle.messageFor(locale, "inspection.action.delete.invalid", "input", "bad"))
                     .contains("bad");
             assertThat(GitHubWorkflowBundle.messageFor(locale, "inspection.output.unused", "artifact"))
@@ -203,7 +241,7 @@ public class WorkflowMessagesTest {
             assertThat(GitHubWorkflowBundle.messageFor(locale, "documentation.step.title", "build"))
                     .contains("build");
             assertThat(GitHubWorkflowBundle.messageFor(locale, "settings.cache.summary", 1, 2, 3, 4, 5, 6))
-                    .contains("1");
+                    .contains(java.text.NumberFormat.getInstance(locale).format(1));
             assertThat(GitHubWorkflowBundle.messageFor(locale, "workflow.run.tree.done")).isNotBlank();
             assertThat(GitHubWorkflowBundle.messageFor(locale, "workflow.run.tree.failed")).isNotBlank();
             assertThat(GitHubWorkflowBundle.messageFor(locale, "workflow.run.tree.warn")).isNotBlank();
@@ -492,6 +530,9 @@ public class WorkflowMessagesTest {
             usedKeys.addAll(bundleKeys.stream()
                     .filter(key -> key.startsWith("action.GitHubWorkflow."))
                     .toList());
+        }
+        if (productionJava.contains("\"settings.account.error.\" +")) {
+            usedKeys.addAll(bundleKeys.stream().filter(key -> key.startsWith("settings.account.error.")).toList());
         }
         if (productionJava.contains("\"settings.support.line.\" +")) {
             usedKeys.addAll(bundleKeys.stream()

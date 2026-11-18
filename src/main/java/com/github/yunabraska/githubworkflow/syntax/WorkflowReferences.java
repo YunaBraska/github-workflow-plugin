@@ -77,13 +77,11 @@ public class WorkflowReferences {
                                 @NotNull final ProcessingContext context
                         ) {
                             return getWorkflowFile(psiElement).isEmpty() ? PsiReference.EMPTY_ARRAY : textElement(psiElement)
-                                    .flatMap(element -> {
-                                                final String text = removeQuotes(element.getText().replace("IntellijIdeaRulezzz ", "").replace("IntellijIdeaRulezzz", ""));
-                                                return referenceGithubAction(element)
-                                                        .or(() -> referenceNeeds(element, text))
-                                                        .or(() -> referenceVariables(element));
-                                            }
-                                    )
+                                    .flatMap(element -> referenceGithubAction(element)
+                                            .or(() -> referenceNeeds(element, removeQuotes(element.getText()
+                                                    .replace("IntellijIdeaRulezzz ", "")
+                                                    .replace("IntellijIdeaRulezzz", ""))))
+                                            .or(() -> referenceVariables(element)))
                                     .orElse(PsiReference.EMPTY_ARRAY);
                         }
                     }
@@ -143,7 +141,8 @@ public class WorkflowReferences {
                 .map(target -> new VariableReferenceResolver(
                         psiElement,
                         new TextRange(target.segment().startIndexOffset(), target.segment().endIndexOffset()),
-                        target.target()
+                        "step".equals(target.kind()) && target.target() instanceof YAMLKeyValue step && step.getValue() != null
+                                ? step.getValue() : target.target()
                 ))
                 .toArray(PsiReference[]::new);
         return references.length == 0 ? Optional.empty() : Optional.of(references);
