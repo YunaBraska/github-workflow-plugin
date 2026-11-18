@@ -4,6 +4,8 @@
 
 ## [Unreleased]
 
+## [2026.11.18] - 2026-11-18
+
 ### Fixes
 
 - The JetBrains GitHub plugin is no longer required. Its features remain available when it is enabled.
